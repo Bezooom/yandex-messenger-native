@@ -435,17 +435,16 @@ mod tests {
     }
 
     #[test]
-    fn test_new_panel() {
+    fn test_sticker_panel_workflow() {
         let _ = gtk::init();
+
+        // 1. Test creation
         let packs = vec![sample_pack(), sample_pack()];
         let panel = StickerPanel::new(packs);
         assert!(panel.container().is_visible());
-    }
 
-    #[test]
-    fn test_select_pack() {
-        let _ = gtk::init();
-        let packs = vec![
+        // 2. Test select pack
+        let packs_new = vec![
             StickerPack {
                 pack_id: "a".to_string(),
                 ..sample_pack()
@@ -459,19 +458,16 @@ mod tests {
                 ..sample_pack()
             },
         ];
-        let panel = StickerPanel::new(packs);
-        panel.select_pack(2);
-        assert_eq!(*panel.selected_pack.borrow(), 2);
-    }
+        let panel2 = StickerPanel::new(packs_new);
+        panel2.select_pack(2);
+        assert_eq!(*panel2.selected_pack.borrow(), 2);
 
-    #[test]
-    fn test_update_packs() {
-        let _ = gtk::init();
-        let packs = vec![sample_pack()];
-        let panel = StickerPanel::new(packs);
+        // 3. Test update packs
+        let packs_to_update = vec![sample_pack()];
+        let panel3 = StickerPanel::new(packs_to_update);
         let new_packs = vec![sample_pack(), sample_pack()];
-        panel.update_packs(new_packs);
-        assert_eq!(panel.packs.borrow().len(), 2);
+        panel3.update_packs(new_packs);
+        assert_eq!(panel3.packs.borrow().len(), 2);
     }
 }
 
