@@ -1,77 +1,77 @@
-# История изменений (Changelog)
+# Changelog
 
-Все значимые изменения в проекте документируются в этом файле.
-Формат основан на руководстве [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/) и соответствует [семантическому версионированию](https://semver.org/lang/ru/).
+All notable changes to this project will be documented in this file.
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
 ## 2.162.0 - 2026-06-29
 
-### Добавлено
-* **Интеграция Libadwaita**:
-  - Приложение переведено на использование `libadwaita` (`adw::Application` / `adw::ApplicationWindow`).
-  - Стандартные плейсхолдеры аватаров заменены на современный виджет `adw::Avatar` с автоматической поддержкой инициалов и палитры цветов.
-  - Добавлен компонент `adw::HeaderBar` в верхнюю часть интерфейса.
-* **Улучшения списка чатов**:
-  - Внедрено кэширование текстур аватаров в оперативной памяти (`AVATAR_CACHE`), что устранило мерцание и повторные загрузки при прокрутке.
-  - Реализован индикатор закрепленных чатов (булавка 📌) в строках списка.
-  - Добавлена автоматическая сортировка чатов: закрепленные чаты всегда располагаются вверху списка, остальные сортируются по времени последнего сообщения.
-* **Редактор и ввод сообщений**:
-  - Обычное поле ввода заменено на многострочный `TextView` с адаптивной высотой (до 120px) в `ScrolledWindow`.
-  - Отправка сообщения теперь осуществляется по клавише `Enter`, а перенос строки — по `Shift+Enter`.
-  - Добавлена функция быстрого редактирования последнего отправленного сообщения по клавише `Up` при пустом вводе.
-* **Улучшения чата и истории**:
-  - Добавлено локальное кэширование строк сообщений (`message_rows`) для оптимизации UI и предотвращения лишних перерисовок.
-  - Добавлена асинхронная загрузка и сохранение L2-кэша (`load_cache_l2_async` / `save_cache_l2_async`) в JSON-файлы через фоновый поток.
-  - При выборе чата история мгновенно отображается из кэша, пока идет фоновый сетевой запрос.
-  - Добавлен автоматический скролл вниз списка сообщений при переключении чатов или получении новых сообщений.
-  - Реализованы визуальные разделители дат («Сегодня», «Вчера», даты).
-  - Внедрена обработка сообщений-стикеров с отображением картинок размером 128x128px.
-  - Внедрен режим «только эмодзи» (увеличенный размер эмодзи до 40px без пузыря баббла при отправке от 1 до 3 эмодзи).
-  - Добавлены меню вложений (отправка файла, создание опроса, планирование) и меню заголовка (информация о чате, включение/выключение уведомлений).
+### Added
+* **Libadwaita Integration**:
+  - Migrated the application structure to use `libadwaita` (`adw::Application` / `adw::ApplicationWindow`).
+  - Replaced standard avatar placeholders with `adw::Avatar`, offering automatic color palettes and initials support.
+  - Added `adw::HeaderBar` to the top of the interface.
+* **Chat List Enhancements**:
+  - Implemented in-memory avatar texture caching (`AVATAR_CACHE`), eliminating scrolling flicker and redundant downloads.
+  - Added pinned chat indicators (pin icon 📌) to list rows.
+  - Implemented automatic sorting: pinned chats always reside at the top of the list, followed by other chats sorted by the last message timestamp.
+* **Editor & Message Input**:
+  - Replaced the simple entry field with a multi-line `TextView` inside a `ScrolledWindow` with adaptive height limits (up to 120px).
+  - Configured message submission on `Enter` and new line insertion on `Shift+Enter`.
+  - Added a quick edit feature: pressing the `Up` arrow when the input is empty instantly edits the last sent message.
+* **Chat & History Improvements**:
+  - Implemented local message row caching (`message_rows`) to optimize rendering and avoid redundant UI rebuilds.
+  - Integrated asynchronous JSON-based L2 caching (`load_cache_l2_async` / `save_cache_l2_async`) running on a background thread.
+  - Chat history displays immediately from the cache while background network synchronization runs.
+  - Added automatic scrolling to the latest message on chat switching or when new messages arrive.
+  - Added date separators ("Today", "Yesterday", and formatted date strings).
+  - Added sticker support rendering images at 128x128px.
+  - Added "emoji-only" mode (large 40px emojis without chat bubbles when sending 1 to 3 emojis).
+  - Integrated attachment popups (file share, poll creation, scheduling) and header menus (chat info, notification toggle).
 
-### Изменено
-* Контейнер сайдбара и чата переведен на `gtk::Paned` с регулируемой границей и поддержкой компактного режима сайдбара (скрытие текста при ширине < 180px).
-* Базовая ширина сайдбара уменьшена с 320 до 260px.
-* В случае сбоя или пустого каталога стикеров на сервере приложение переключается на встроенные mock-стикеры.
+### Changed
+* Migrated the sidebar and chat panels to `gtk::Paned` with adjustable boundaries and a compact sidebar mode (collapsing text when width is < 180px).
+* Reduced default sidebar width from 320px to 260px.
+* Configured fallback built-in mock stickers in case of server-side sticker index failures.
 
-### Исправлено
-* Устранена критическая ошибка типов `E0308 mismatched types` в `src/ui/chat_list.rs` при обработке коллбеков.
-* Исправлены GTK layout баги (бесконечный цикл и растягивание виджетов до `1048576px`) за счет правильной настройки `hexpand`/`vexpand`.
-* Исправлена отправка сообщений и привязка коллбеков в `ChatView` через `bind_callbacks`.
+### Fixed
+* Fixed a critical type mismatch issue `E0308 mismatched types` in `src/ui/chat_list.rs` during callback setup.
+* Solved GTK layout issues (infinite size calculation cycles expanding widgets to `1048576px`) by configuring `hexpand`/`vexpand` options.
+* Corrected message dispatching and callback binding in `ChatView` via `bind_callbacks`.
 
 ---
 
 ## 2.160.0 - 2026-05-10
 
-### Изменено
-* **Неблокирующий OAuth-диалог**:
-  - Локальный callback-сервер переведен на фоновый поток, что предотвращает блокировку основного GTK-цикла.
-  - Кнопка авторизации меняет состояние на «Ожидаем подтверждения…» со спиннером (`Spinner`) во время выполнения входа.
-  - Тайм-аут ожидания авторизации увеличен до 180 секунд.
-  - Корректная обработка Implicit-grant flow (извлечение токена из URL fragment).
-* **Упрощение интерфейса входа**:
-  - Поле ручного ввода токена вынесено под скрытый `Expander`.
-* **Обновление стилей**:
-  - Добавлены градиенты к кнопкам, радиальное свечение на фоне окна входа и мягкие тени при фокусе на полях ввода.
+### Changed
+* **Non-blocking OAuth Dialog**:
+  - Re-routed the local callback server to run on a background thread, preventing GTK main loop freezes.
+  - The authorization button updates to "Awaiting approval..." with a loading `Spinner` while waiting for login.
+  - Increased the authorization timeout to 180 seconds.
+  - Correctly handled Implicit Grant flow token parsing from URL fragments.
+* **Streamlined Login UI**:
+  - Moved the manual token entry field under a collapsed `Expander`.
+* **Visual Styling**:
+  - Added button gradients, radial lighting to the login panel background, and soft shadows on entry fields.
 
-### Исправлено
-* Исправлены паники и ошибки инициализации Tokio-рантайма в `src/ui/auth_dialog.rs`.
+### Fixed
+* Fixed panics and Tokio runtime initialization issues in `src/ui/auth_dialog.rs`.
 
 ---
 
 ## 2.158.0 - 2026-05-04
 
-### Добавлено
-* **Поиск и оптимизация**:
-  - Добавлена ленивая загрузка медиафайлов.
-  - Реализован глобальный поиск по сообщениям через оверлей `GlobalSearch` с вызовом по горячей клавише `Ctrl+K`.
-  - Реализовано кэширование сообщений в оперативной памяти (L1) и фоновая синхронизация с сервером.
+### Added
+* **Search & Performance**:
+  - Added lazy loading for media attachments.
+  - Implemented a global message and contact search overlay (`GlobalSearch`), triggered with `Ctrl+K`.
+  - Added in-memory message caching (L1) with background server synchronization.
 
 ---
 
 ## 2.156.0 - 2026-04-25
 
-### Добавлено
-* Создана базовая архитектурная документация (`ARCHITECTURE.md`) и файл безопасности (`SECURITY.md`).
-* Добавлена поддержка автоматического обновления токенов доступа за 5 минут до истечения срока действия.
+### Added
+* Drafted initial architecture documentation (`ARCHITECTURE.md`) and security policy (`SECURITY.md`).
+* Implemented automatic access token refresh 5 minutes before expiration.
