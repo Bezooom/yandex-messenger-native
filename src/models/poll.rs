@@ -40,6 +40,6 @@ impl Poll {
     }
 
     pub fn can_vote(&self) -> bool {
-        !self.is_closed && !self.is_anonymous || !self.is_closed
+        !self.is_closed
     }
 }
