@@ -178,168 +178,89 @@ sequenceDiagram
 ```
 
 ### Выбор чата (Chat Selection Flow)
-```
-Пользователь выбирает чат в ChatListPanel
-        │
-        ▼
-ChatListPanel генерирует сигнал chat_selected
-        │
-        ▼
-Коллбек в main.rs: controller.select_chat(chat_id)
-        │
-        ├──▶ WebSocketClient.subscribe(chat_id)
-        │        │
-        │        ▼
-        │   Отправка WS {"method":"subscribe","params":{"chatId":"..."}}
-        │        │
-        │        ▼
-        │   Ожидание входящих сообщений WS (в процессе)
-        │
-        └──▶ HttpClient.get_messages(chat_id, limit=50)
-                 │
-                 ▼
-            GET /api/get_history?chatId=...&offset=0&limit=50
-                 │
-                 ▼
-            Парсинг ответа → Vec<Message>
-                 │
-                 ▼
-            Обновление AppState.messages_by_chat[chat_id]
-                 │
-                 ▼
-            ChatView.set_messages(messages)
-                 │
-                 ▼
-            Рендеринг списка сообщений в интерфейсе
+
+```mermaid
+flowchart TD
+    Click["Пользователь выбирает чат в ChatListPanel"] --> Emit["ChatListPanel генерирует сигнал chat_selected"]
+    Emit --> Controller["Коллбек в main.rs: controller.select_chat(chat_id)"]
+    
+    Controller --> WSSub["WebSocketClient.subscribe(chat_id)"]
+    WSSub --> WSSend["Отправка WS {'method':'subscribe','params':{'chatId':'...'}}"]
+    WSSend --> WSWait["Ожидание входящих сообщений WS (в процессе)"]
+    
+    Controller --> HTTPGet["HttpClient.get_messages(chat_id, limit=50)"]
+    HTTPGet --> HTTPReq["GET /api/get_history?chatId=...&offset=0&limit=50"]
+    HTTPReq --> Parse["Парсинг ответа → Vec&lt;Message&gt;"]
+    Parse --> UpdateState["Обновление AppState.messages_by_chat[chat_id]"]
+    UpdateState --> SetMsgs["ChatView.set_messages(messages)"]
+    SetMsgs --> Render["Рендеринг списка сообщений в интерфейсе"]
 ```
 
 ### Отправка сообщения (Message Send Flow)
-```
-Пользователь вводит текст и нажимает отправить
-        │
-        ▼
-ChatView генерирует событие send_message(chat_id, text)
-        │
-        ▼
-Коллбек в main.rs: controller.send_text_message(chat_id, text)
-        │
-        ▼
-HttpClient.send_message(chat_id, text)
-        │
-        ▼
-POST /api/send_text {"chatId":"...","text":"..."}
-        │
-        ▼
-Парсинг ответа → Message
-        │
-        ▼
-Обновление AppState.messages_by_chat[chat_id].push(message)
-        │
-        ▼
-ChatView.append_message(message)
-        │
-        ▼
-Отображение нового сообщения внизу списка
-        │
-        ▼
-Отправка системного уведомления на рабочий стол
+
+```mermaid
+flowchart TD
+    SendClick["Пользователь вводит текст и нажимает отправить"] --> EmitSend["ChatView генерирует событие send_message(chat_id, text)"]
+    EmitSend --> ControllerSend["Коллбек в main.rs: controller.send_text_message(chat_id, text)"]
+    ControllerSend --> HTTPSend["HttpClient.send_message(chat_id, text)"]
+    HTTPSend --> HTTPPost["POST /api/send_text {'chatId':'...','text':'...'}"]
+    HTTPPost --> ParseMsg["Парсинг ответа → Message"]
+    ParseMsg --> UpdateStateMsg["Обновление AppState.messages_by_chat[chat_id].push(message)"]
+    UpdateStateMsg --> AppendUI["ChatView.append_message(message)"]
+    AppendUI --> RenderBottom["Отображение нового сообщения внизу списка"]
+    RenderBottom --> Notify["Отправка системного уведомления на рабочий стол"]
 ```
 
 ### Авторизация OAuth (OAuth Flow)
-```
-Запуск приложения
-    │
-    ▼
-AuthManager.load_token()
-    │
-    ├── Токен существует И не истек ──▶ Переход к главному окну
-    │
-    └── Токен отсутствует ИЛИ истек
-            │
-            ▼
-    AuthDialog.show()
-            │
-            ▼
-    Открытие браузера → Страница авторизации Yandex OAuth
-            │
-            ▼
-    Пользователь вводит учетные данные и подтверждает вход
-            │
-            ▼
-    Перенаправление на redirect_uri с #access_token=...
-            │
-            ▼
-    AuthDialog.parse_token_from_url()
-            │
-            ▼
-    AuthManager.save_token(token)
-            │
-            ▼
-    AppController.new(auth, token)
-            │
-            ▼
-    AppController.connect_realtime()
-            │
-            ▼
-    WebSocketClient.connect() → WSState.Connected
-            │
-            ▼
-    AppController.load_chats()
-            │
-            ▼
-    Отрисовка главного окна интерфейса
+
+```mermaid
+flowchart TD
+    Start["Запуск приложения"] --> LoadToken["AuthManager.load_token()"]
+    LoadToken --> CheckToken{"Токен существует и не истек?"}
+    
+    CheckToken -- Да --> ControllerNew["AppController.new(auth, token)"]
+    CheckToken -- Нет --> ShowDialog["AuthDialog.show()"]
+    
+    ShowDialog --> OpenBrowser["Открытие браузера → Страница авторизации Yandex OAuth"]
+    OpenBrowser --> UserAuth["Пользователь вводит учетные данные и подтверждает вход"]
+    UserAuth --> Redirect["Перенаправление на redirect_uri с #access_token=..."]
+    Redirect --> ParseToken["AuthDialog.parse_token_from_url()"]
+    ParseToken --> SaveToken["AuthManager.save_token(token)"]
+    
+    SaveToken --> ControllerNew
+    ControllerNew --> ConnectRT["AppController.connect_realtime()"]
+    ConnectRT --> WSConnect["WebSocketClient.connect() → WSState.Connected"]
+    WSConnect --> LoadChats["AppController.load_chats()"]
+    LoadChats --> RenderUI["Отрисовка главного окна интерфейса"]
 ```
 
 ### Обновление токена (Token Refresh Flow)
-```
-Срок действия AccessToken истекает (expires_in <= 300)
-    │
-    ▼
-AuthManager.refresh_token(refresh_token)
-    │
-    ▼
-POST /token {grant_type: "refresh_token", client_id, refresh_token}
-    │
-    ├── Успешно ──▶ Новый токен сохраняется на диск
-    │                  │
-    │                  ▼
-    │             Обновление AppState в памяти
-    │
-    └── Ошибка ──▶ Повторное отображение AuthDialog
-                     │
-                     ▼
-                  Пользователь проходит авторизацию заново
+
+```mermaid
+flowchart TD
+    Expire["Срок действия AccessToken истекает (expires_in &lt;= 300)"] --> Refresh["AuthManager.refresh_token(refresh_token)"]
+    Refresh --> POST["POST /token {grant_type: 'refresh_token', client_id, refresh_token}"]
+    POST --> CheckSuccess{"Обновление успешно?"}
+    
+    CheckSuccess -- Да --> SaveDisk["Новый токен сохраняется на диск"]
+    SaveDisk --> UpdateMem["Обновление AppState в памяти"]
+    
+    CheckSuccess -- Нет --> ShowDialog["Повторное отображение AuthDialog"]
+    ShowDialog --> Reauth["Пользователь проходит авторизацию заново"]
 ```
 
 ### Загрузка файлов (File Upload Flow)
-```
-Пользователь прикрепляет файл в ChatView
-    │
-    ▼
-ChatView генерирует событие upload_file(chat_id, bytes, filename)
-    │
-    ▼
-AppController.upload_file(chat_id, bytes, filename)
-    │
-    ▼
-HttpClient.upload_file()
-    │
-    ▼
-PUT https://files.messenger.yandex.net/media_upload/<chatId>/<filename>?<uuid>
-    Заголовки: Authorization: OAuth <token>
-    Тело: байты файла
-    │
-    ▼
-Парсинг ответа → fileId
-    │
-    ▼
-Отправка сообщения со ссылкой на файл через send_message()
-    │
-    ▼
-Системное уведомление: "Файл успешно загружен"
-```
 
----
+```mermaid
+flowchart TD
+    Attach["Пользователь прикрепляет файл в ChatView"] --> EmitUpload["ChatView генерирует событие upload_file(chat_id, bytes, filename)"]
+    EmitUpload --> ControllerUpload["AppController.upload_file(chat_id, bytes, filename)"]
+    ControllerUpload --> HTTPUpload["HttpClient.upload_file()"]
+    HTTPUpload --> PUTReq["PUT https://files.messenger.yandex.net/media_upload/&lt;chatId&gt;/&lt;filename&gt;?&lt;uuid&gt;<br/>Заголовки: Authorization: OAuth &lt;token&gt;<br/>Тело: байты файла"]
+    PUTReq --> ParseFileId["Парсинг ответа → fileId"]
+    ParseFileId --> SendMsgFile["Отправка сообщения со ссылкой на файл через send_message()"]
+    SendMsgFile --> NotifyFile["Системное уведомление: 'Файл успешно загружен'"]
+```
 
 ## Управление состоянием (State Management)
 

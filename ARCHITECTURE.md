@@ -201,169 +201,87 @@ sequenceDiagram
 
 ### Chat Selection Flow
 
-```
-User clicks chat in ChatListPanel
-        │
-        ▼
-ChatListPanel emits chat_selected signal
-        │
-        ▼
-main.rs callback: controller.select_chat(chat_id)
-        │
-        ├──▶ WebSocketClient.subscribe(chat_id)
-        │        │
-        │        ▼
-        │   Send WS {"method":"subscribe","params":{"chatId":"..."}}
-        │        │
-        │        ▼
-        │   Wait for WS incoming messages (pending)
-        │
-        └──▶ HttpClient.get_messages(chat_id, limit=50)
-                 │
-                 ▼
-            GET /api/get_history?chatId=...&offset=0&limit=50
-                 │
-                 ▼
-            Parse response → Vec<Message>
-                 │
-                 ▼
-            Update AppState.messages_by_chat[chat_id]
-                 │
-                 ▼
-            ChatView.set_messages(messages)
-                 │
-                 ▼
-            Render message list in UI
+```mermaid
+flowchart TD
+    Click["User clicks chat in ChatListPanel"] --> Emit["ChatListPanel emits chat_selected signal"]
+    Emit --> Controller["main.rs callback: controller.select_chat(chat_id)"]
+    
+    Controller --> WSSub["WebSocketClient.subscribe(chat_id)"]
+    WSSub --> WSSend["Send WS {'method':'subscribe','params':{'chatId':'...'}}"]
+    WSSend --> WSWait["Wait for WS incoming messages"]
+    
+    Controller --> HTTPGet["HttpClient.get_messages(chat_id, limit=50)"]
+    HTTPGet --> HTTPReq["GET /api/get_history?chatId=...&offset=0&limit=50"]
+    HTTPReq --> Parse["Parse response → Vec&lt;Message&gt;"]
+    Parse --> UpdateState["Update AppState.messages_by_chat[chat_id]"]
+    UpdateState --> SetMsgs["ChatView.set_messages(messages)"]
+    SetMsgs --> Render["Render message list in UI"]
 ```
 
 ### Message Send Flow
 
-```
-User types text + clicks send
-        │
-        ▼
-ChatView emits send_message(chat_id, text)
-        │
-        ▼
-main.rs callback: controller.send_text_message(chat_id, text)
-        │
-        ▼
-HttpClient.send_message(chat_id, text)
-        │
-        ▼
-POST /api/send_text {"chatId":"...","text":"..."}
-        │
-        ▼
-Parse response → Message
-        │
-        ▼
-Update AppState.messages_by_chat[chat_id].push(message)
-        │
-        ▼
-ChatView.append_message(message)
-        │
-        ▼
-Render new message at bottom of list
-        │
-        ▼
-Send desktop notification
+```mermaid
+flowchart TD
+    SendClick["User types text + clicks send"] --> EmitSend["ChatView emits send_message(chat_id, text)"]
+    EmitSend --> ControllerSend["main.rs callback: controller.send_text_message(chat_id, text)"]
+    ControllerSend --> HTTPSend["HttpClient.send_message(chat_id, text)"]
+    HTTPSend --> HTTPPost["POST /api/send_text {'chatId':'...','text':'...'}"]
+    HTTPPost --> ParseMsg["Parse response → Message"]
+    ParseMsg --> UpdateStateMsg["Update AppState.messages_by_chat[chat_id].push(message)"]
+    UpdateStateMsg --> AppendUI["ChatView.append_message(message)"]
+    AppendUI --> RenderBottom["Render new message at bottom of list"]
+    RenderBottom --> Notify["Send desktop notification"]
 ```
 
 ### OAuth Flow
 
-```
-App starts
-    │
-    ▼
-AuthManager.load_token()
-    │
-    ├── Token exists AND not expired ──▶ Continue to main UI
-    │
-    └── No token OR expired
-            │
-            ▼
-    AuthDialog.show()
-            │
-            ▼
-    Open browser → Yandex OAuth authorize page
-            │
-            ▼
-    User enters credentials + confirms
-            │
-            ▼
-    Redirect to callback with #access_token=...
-            │
-            ▼
-    AuthDialog.parse_token_from_url()
-            │
-            ▼
-    AuthManager.save_token(token)
-            │
-            ▼
-    AppController.new(auth, token)
-            │
-            ▼
-    AppController.connect_realtime()
-            │
-            ▼
-    WebSocketClient.connect() → WSState.Connected
-            │
-            ▼
-    AppController.load_chats()
-            │
-            ▼
-    Main UI rendered
+```mermaid
+flowchart TD
+    Start["App starts"] --> LoadToken["AuthManager.load_token()"]
+    LoadToken --> CheckToken{"Token exists & not expired?"}
+    
+    CheckToken -- Yes --> ControllerNew["AppController.new(auth, token)"]
+    CheckToken -- No --> ShowDialog["AuthDialog.show()"]
+    
+    ShowDialog --> OpenBrowser["Open browser → Yandex OAuth authorize page"]
+    OpenBrowser --> UserAuth["User enters credentials + confirms"]
+    UserAuth --> Redirect["Redirect to callback with #access_token=..."]
+    Redirect --> ParseToken["AuthDialog.parse_token_from_url()"]
+    ParseToken --> SaveToken["AuthManager.save_token(token)"]
+    
+    SaveToken --> ControllerNew
+    ControllerNew --> ConnectRT["AppController.connect_realtime()"]
+    ConnectRT --> WSConnect["WebSocketClient.connect() → WSState.Connected"]
+    WSConnect --> LoadChats["AppController.load_chats()"]
+    LoadChats --> RenderUI["Main UI rendered"]
 ```
 
 ### Token Refresh Flow
 
-```
-AccessToken expires (expires_in <= 300)
-    │
-    ▼
-AuthManager.refresh_token(refresh_token)
-    │
-    ▼
-POST /token {grant_type: "refresh_token", client_id, refresh_token}
-    │
-    ├── Success ──▶ New token saved to disk
-    │                  │
-    │                  ▼
-    │             Update AppState in memory
-    │
-    └── Failure ──▶ AuthDialog shown again
-                     │
-                     ▼
-                  User re-authenticates
+```mermaid
+flowchart TD
+    Expire["AccessToken expires (expires_in &lt;= 300)"] --> Refresh["AuthManager.refresh_token(refresh_token)"]
+    Refresh --> POST["POST /token {grant_type: 'refresh_token', client_id, refresh_token}"]
+    POST --> CheckSuccess{"Refresh Successful?"}
+    
+    CheckSuccess -- Yes --> SaveDisk["New token saved to disk"]
+    SaveDisk --> UpdateMem["Update AppState in memory"]
+    
+    CheckSuccess -- No --> ShowDialog["AuthDialog shown again"]
+    ShowDialog --> Reauth["User re-authenticates"]
 ```
 
 ### File Upload Flow
 
-```
-User attaches file in ChatView
-    │
-    ▼
-ChatView emits upload_file(chat_id, bytes, filename)
-    │
-    ▼
-AppController.upload_file(chat_id, bytes, filename)
-    │
-    ▼
-HttpClient.upload_file()
-    │
-    ▼
-PUT https://files.messenger.yandex.net/media_upload/<chatId>/<filename>?<uuid>
-    Headers: Authorization: OAuth <token>
-    Body: file bytes
-    │
-    ▼
-Parse response → fileId
-    │
-    ▼
-Send message with file attachment via send_message()
-    │
-    ▼
-Desktop notification: "File uploaded"
+```mermaid
+flowchart TD
+    Attach["User attaches file in ChatView"] --> EmitUpload["ChatView emits upload_file(chat_id, bytes, filename)"]
+    EmitUpload --> ControllerUpload["AppController.upload_file(chat_id, bytes, filename)"]
+    ControllerUpload --> HTTPUpload["HttpClient.upload_file()"]
+    HTTPUpload --> PUTReq["PUT https://files.messenger.yandex.net/media_upload/&lt;chatId&gt;/&lt;filename&gt;?&lt;uuid&gt;<br/>Headers: Authorization: OAuth &lt;token&gt;<br/>Body: file bytes"]
+    PUTReq --> ParseFileId["Parse response → fileId"]
+    ParseFileId --> SendMsgFile["Send message with file attachment via send_message()"]
+    SendMsgFile --> NotifyFile["Desktop notification: 'File uploaded'"]
 ```
 
 ## State Management
