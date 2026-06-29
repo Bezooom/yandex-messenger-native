@@ -1,40 +1,45 @@
 # Yandex Messenger Native
 
-Нативный Linux-клиент для Яндекс Мессенджера, разработанный на Rust с использованием GTK4 и Libadwaita. Проект предлагает высокую производительность, низкое потребление ресурсов и премиальный темный интерфейс в стиле Obsidian.
+A native Linux desktop client for Yandex Messenger built with Rust, GTK4, and Libadwaita. The project offers high performance, low resource consumption, and a premium Obsidian-style dark theme.
 
-## Возможности
+> ⚠️ **Project Status: Active Development / Unfinished**
+> This is an open-source project that is currently unfinished and under active development. While the core backend API integrations and messaging components are functional, the user interface (UI) requires significant polishing, refinement, and bug fixing. 
+> 
+> We would be absolutely thrilled to have your help! If you are interested in Rust, GTK4, Libadwaita, or reverse-engineering APIs, we warmly welcome any contributions, bug reports, and pull requests. Check out our [Contributing Guidelines](CONTRIBUTING.md) to get started!
 
-### Авторизация и безопасность
-* **OAuth2 протокол**: Поддержка Authorization Code и Implicit Grant flows с локальным callback-сервером.
-* **Неблокирующий UI**: Интерактивный диалог входа с анимацией ожидания (`Spinner`) и таймаутом в 180 секунд.
-* **Безопасное хранение**: Токены сохраняются по пути `~/.config/yandex-messenger-native/token.json` с правами доступа `0600`.
-* **Автопродление**: Автоматическое обновление токенов доступа (refresh token) за 5 минут до истечения срока действия.
-* **Ввод токена**: Возможность ручного ввода Access Token при необходимости.
-* **Сеть и прокси**: Поддержка шифрования через `rustls` (без внешнего OpenSSL) и поддержка корпоративного режима авторизации через `YANDEX_AUTH_PROXY_URL`.
+## Features
 
-### Интерфейс пользователя (UI)
-* **Адаптивный макет**: Использование `gtk::Paned` в качестве разделителя с поддержкой компактного режима сайдбара (ширина < 180px).
-* **Списки чатов**: Сортировка (закрепленные чаты всегда вверху, остальные — по времени последнего сообщения), индикатор закрепления 📌 и отображение аватаров с помощью `adw::Avatar`.
-* **Быстродействие**: Асинхронное кэширование аватаров в памяти (`AVATAR_CACHE`), мгновенный рендеринг сообщений из локального L2-кэша (`load_cache_l2_async`) при выборе чата, и фоновое обновление истории с сервера.
-* **Премиальная темная тема**: Набор стилей в Obsidian-like тонах, плавные переходы, кастомные тонкие скроллбары (расширяются при наведении) и поддержка размытия.
+### Authorization & Security
+* **OAuth2 Protocol**: Supports Authorization Code and Implicit Grant flows with a local loopback callback server.
+* **Non-blocking UI**: Interactive login dialog featuring a loading spinner (`Spinner`) and a 180-second timeout.
+* **Secure Storage**: Tokens are stored at `~/.config/yandex-messenger-native/token.json` with `0600` file permissions.
+* **Auto-refresh**: Automatic access token refresh (via refresh token) triggered 5 minutes before expiration.
+* **Manual Entry**: Option to manually enter an Access Token if needed.
+* **Network & Proxy**: Encryption handled via `rustls` (no external OpenSSL dependency) and support for enterprise auth proxy mode via the `YANDEX_AUTH_PROXY_URL` environment variable.
 
-### Сообщения и интерактивность
-* **Редактор ввода**: Многострочное поле ввода (`TextView`) с автоматической высотой (до 120px). Отправка по нажатию `Enter`, новая строка по `Shift+Enter`.
-* **Быстрое редактирование**: Нажатие стрелки `Up` при пустом поле ввода мгновенно открывает режим редактирования последнего отправленного сообщения.
-* **Разделители дат**: Логические разделители сообщений по дням («Сегодня», «Вчера», даты).
-* **Специальные форматы**: Отображение стикеров (128x128px) и режим "только эмодзи" (увеличенный размер без баббла при отправке 1-3 эмодзи).
-* **Контекстное меню**: По клику правой кнопкой мыши доступны действия (ответ, копирование, удаление, редактирование).
-* **Меню прикреплений**: Единое меню скрепки (выбор отправки файлов, создания опросов, планирования сообщений).
-* **Просмотр медиа**: Галерея картинок с поддержкой свайпов и скачивания в папку `Downloads`.
-* **Голосовые сообщения**: Запись аудио и отрисовка waveform с использованием опционального пайплайна GStreamer.
-* **Глобальный поиск**: Быстрый вызов по `Ctrl+K` с фильтрацией результатов.
-* **Расширенные сущности**: Поддержка ботов (инлайн-кнопки, клавиатуры), отложенных сообщений (Message Scheduling), раздела «Избранное» (Saved Messages), групповых чатов и каналов.
+### User Interface (UI)
+* **Adaptive Layout**: Uses `gtk::Paned` as a separator supporting a compact sidebar mode (collapses text when width is < 180px).
+* **Chat Lists**: Sorted chat entries (pinned chats remain at the top, others are sorted by the latest message time), pin indicators 📌, and avatars rendered using `adw::Avatar`.
+* **Performance**: Asynchronous caching of avatar textures in RAM (`AVATAR_CACHE`) to prevent flickering/re-downloads, instant L2 JSON cache-based history loading (`load_cache_l2_async`) upon selecting a chat, and background network updates.
+* **Premium Dark Theme**: Dark Obsidian-like styling with smooth transitions, custom thin scrollbars (expanding on hover), and blur effects.
+
+### Messaging & Interactivity
+* **Input Editor**: Multi-line input field (`TextView`) with automatic height adjustment (up to 120px). Messages are sent by pressing `Enter`, while a new line is inserted with `Shift+Enter`.
+* **Quick Edit**: Pressing the `Up` arrow key when the input is empty instantly opens edit mode for the last sent message.
+* **Date Separators**: Logical chat message grouping by days ("Today", "Yesterday", and formatted dates).
+* **Special Formats**: Rendering of sticker images (128x128px) and "emoji-only" mode (large 40px emoji size without a chat bubble when sending 1 to 3 emojis).
+* **Context Menu**: Actions available on right-click (reply, copy, delete, edit).
+* **Attachments Menu**: A unified attachment popover (file picker, poll creator, message scheduling).
+* **Media Viewer**: Full-screen image gallery with swipe gesture navigation and downloads to the `Downloads` directory.
+* **Voice Messages**: Audio recording and waveform visualization using an optional GStreamer pipeline.
+* **Global Search**: Quick search overlay triggered with `Ctrl+K` for global message and contact filtering.
+* **Advanced Entities**: Support for bots (inline buttons, custom keyboards), scheduled messages, "Saved Messages" section (favorites), group chats, and channels.
 
 ---
 
-## Требования к системе
+## System Requirements
 
-Для сборки и запуска в Linux (Ubuntu/Debian) требуются следующие системные библиотеки:
+To build and run the application on Linux (Ubuntu/Debian), you need the following system development libraries:
 
 ```bash
 sudo apt update
@@ -44,37 +49,37 @@ sudo apt install -y \
   libssl-dev libnotify-dev libwebkitgtk-6.0-dev
 ```
 
-*Примечание: для поддержки записи голосовых сообщений рекомендуется установить пакеты GStreamer (`libgstreamer1.0-dev`, `libgstreamer-plugins-base1.0-dev`).*
+*Note: For voice recording support, it is recommended to install GStreamer packages (`libgstreamer1.0-dev`, `libgstreamer-plugins-base1.0-dev`).*
 
 ---
 
-## Сборка и установка
+## Building and Installation
 
-### 1. Компиляция
-Сборка проекта в режиме оптимизации (релизе):
+### 1. Compilation
+Build the project in release mode:
 
 ```bash
 cargo build --release
 ```
 
-Бинарный файл будет расположен по пути `target/release/yandex-messenger`.
+The compiled binary will be placed at `target/release/yandex-messenger`.
 
-### 2. Сборка через Makefile (упрощенная)
-Собрать и запустить проект в один шаг:
+### 2. Makefile Actions
+Build and run the project in a single step:
 
 ```bash
 make build
 make run
 ```
 
-### 3. Установка в систему
-Чтобы установить исполняемый файл, иконки и desktop-файл в системные директории:
+### 3. System Installation
+To install the binary, icons, and desktop entries into system directories:
 
 ```bash
 sudo make install
 ```
 
-Сборка локального `.deb` пакета для дистрибутивов Debian/Ubuntu:
+To build a local `.deb` package for Debian/Ubuntu distributions:
 
 ```bash
 make dist
@@ -83,29 +88,31 @@ sudo apt install -y ./dist/yandex-messenger-native_*_amd64.deb
 
 ---
 
-## Переменные окружения
+## Environment Variables
 
-Клиент можно конфигурировать через переменные окружения:
+The client can be configured using the following environment variables:
 
-| Переменная | Описание | По умолчанию |
+| Variable | Description | Default Value |
 |---|---|---|
-| `YANDEX_CLIENT_ID` | OAuth client ID приложения | `bef24ec2889b481bb39af0b430099845` |
-| `YANDEX_CLIENT_SECRET` | OAuth client secret приложения | — |
-| `YANDEX_REDIRECT_URI` | Redirect URI для callback-сервера | Автоопределение (локальный порт) |
-| `YANDEX_AUTH_PROXY_URL` | URL внешнего auth-proxy | — |
-| `YANDEX_OAUTH_AUTHORIZE_URL` | URL страницы авторизации | `https://oauth.yandex.com/authorize` |
-| `YANDEX_OAUTH_TOKEN_URL` | URL обмена авторизационного кода | `https://oauth.yandex.com/token` |
-| `RUST_LOG` | Уровень логирования приложения | `info` |
+| `YANDEX_CLIENT_ID` | Application OAuth client ID | `bef24ec2889b481bb39af0b430099845` |
+| `YANDEX_CLIENT_SECRET` | Application OAuth client secret | — |
+| `YANDEX_REDIRECT_URI` | Redirect URI for the callback server | Auto-detected (local port) |
+| `YANDEX_AUTH_PROXY_URL` | URL of the external authorization proxy | — |
+| `YANDEX_OAUTH_AUTHORIZE_URL`| Yandex OAuth authorization endpoint | `https://oauth.yandex.com/authorize` |
+| `YANDEX_OAUTH_TOKEN_URL` | Yandex OAuth token exchange endpoint | `https://oauth.yandex.com/token` |
+| `RUST_LOG` | Logging level for the application | `info` |
 
 ---
 
-## Разработка и документация
+## Development & Documentation
 
-* **Архитектурное устройство**: [ARCHITECTURE.md](ARCHITECTURE.md)
-* **Процесс разработки**: [DEVELOPMENT.md](DEVELOPMENT.md)
-* **Анализ безопасности**: [SECURITY.md](SECURITY.md)
-* **История изменений**: [CHANGELOG.md](CHANGELOG.md)
+* **Architecture Specification**: [ARCHITECTURE.md](ARCHITECTURE.md) ([Russian version](ARCHITECTURE.ru.md))
+* **Development Guide**: [DEVELOPMENT.md](DEVELOPMENT.md) ([Russian version](DEVELOPMENT.ru.md))
+* **Security Auditing**: [SECURITY.md](SECURITY.md)
+* **API Specification**: [API.md](API.md) ([Russian version](API.ru.md))
+* **Changelog**: [CHANGELOG.md](CHANGELOG.md) ([Russian version](CHANGELOG.ru.md))
+* **Roadmap**: [ROADMAP.md](ROADMAP.md) ([Russian version](ROADMAP.ru.md))
 
-## Лицензия
+## License
 
-Проект распространяется под лицензией MIT. Подробнее см. [LICENSE](LICENSE).
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
