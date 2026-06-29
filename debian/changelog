@@ -1,0 +1,58 @@
+yandex-messenger-native (2.162.0-1) unstable; urgency=medium
+
+  * Auth dialog: non-blocking OAuth callback
+    - Replaced blocking recv_timeout with spawn_callback_listener +
+      try_recv polled from the GTK main loop (no more 120 s UI freeze).
+    - Timeout extended to 180 s.
+    - Primary CTA shows inline Spinner + status while browser flow runs.
+    - Implicit-grant fragment (access_token) captured via HTML bridge
+      (/token POST) — previously fragments never reached the server.
+    - Branded success page replaces plain-text "OK" response.
+  * Auth dialog: simplified UI
+    - Manual token entry moved under an Expander; single primary CTA.
+    - "Продолжить" stays disabled until a token is pasted.
+    - show_auth_dialog + session_auth_flow unified via finalize_token.
+  * Auth CSS: premium polish
+    - Gradient brand button (#FFCC00 → #FF8A00) with layered shadow,
+      inset highlight, hover/active/disabled states.
+    - Radial brand glow behind the auth window.
+    - 3 px focus ring on .auth-entry.
+    - New .auth-logo, .auth-status, .auth-expander classes.
+  * Fixed: removed stale Runtime::new() calls in auth_dialog.rs that
+    panicked inside #[tokio::main]. Dialog now takes a shared
+    tokio::runtime::Handle; AuthDialog::new in main.rs updated.
+
+ -- BeZoom <bezoom@example.com>  Sun, 10 May 2026 12:40:00 +0300
+
+yandex-messenger-native (2.161.0-1) unstable; urgency=medium
+
+  * Sprint 9: Search & Performance
+    - Search within chat (highlight matches)
+    - Global search (Ctrl+K shortcut)
+    - Virtualization chat list (gtk::ListView)
+    - Lazy loading media
+    - Message caching (L1/L2)
+  * Sprint 10: Polish & UX
+    - Emoji picker (FlowBox with 10+ emojis)
+    - Typing indicator (enhanced, debounced)
+    - Online status (real-time WebSocket)
+    - Reply & Edit (inline)
+    - Message actions (copy, delete, forward, save, pin)
+    - Undo delete/undo send (5s timeout)
+    - Pin messages
+  * Sprint 11: Advanced features
+    - Thread management (create, navigate, switch)
+    - Chat groups / channels
+    - Bot support
+    - Message scheduling
+    - Saved messages
+    - Drag-to-reorder chats (fixed)
+  * Sprint 12: Enterprise & Accessibility
+    - Multi-account support (Account model, AuthManager, AccountDropdown UI)
+    - Drag-to-reorder fix (selection.selected() instead of Y-coordinate)
+    - High DPI support (CSS classes .hidpi-2x)
+    - Accessibility (AccessibleRole for ListView, main container, search)
+  * Fixed: 25+ compilation errors across Sprint 10-12
+  * Updated Cargo.toml version to 2.161.0
+
+ -- BeZoom <bezoom@example.com>  Tue, 06 May 2026 22:24:00 +0300

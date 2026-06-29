@@ -1,0 +1,31 @@
+#!/usr/bin/make -f
+
+# Ensure cargo is available
+export CARGO_HOME := $(HOME)/.cargo
+export PATH := $(CARGO_HOME)/bin:$(PATH)
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	./scripts/prepare-icons.sh
+	$(HOME)/.cargo/bin/cargo build --release
+
+# Disable auto-test because dh_auto_test calls Makefile test target
+# which uses $(CARGO_BIN) that may not have .cargo/env loaded
+override_dh_auto_test:
+	@echo "Skipping dh_auto_test (GTK tests require display)"
+
+override_dh_auto_install:
+	install -D -m 0755 target/release/yandex-messenger debian/yandex-messenger-native/usr/bin/yandex-messenger
+	install -D -m 0644 yandex-messenger.desktop debian/yandex-messenger-native/usr/share/applications/yandex-messenger.desktop
+	install -D -m 0644 icons/hicolor/scalable/apps/yandex-messenger.svg debian/yandex-messenger-native/usr/share/icons/hicolor/scalable/apps/yandex-messenger.svg
+	@if [ -f icons/hicolor/128x128/apps/yandex-messenger.png ]; then \
+		install -D -m 0644 icons/hicolor/128x128/apps/yandex-messenger.png debian/yandex-messenger-native/usr/share/icons/hicolor/128x128/apps/yandex-messenger.png; \
+	fi
+	install -D -m 0644 yandex-messenger.1 debian/yandex-messenger-native/usr/share/man/man1/yandex-messenger.1
+	install -D -m 0644 src/ui/theme.css debian/yandex-messenger-native/usr/share/yandex-messenger-native/theme.css
+	install -D -m 0644 icons/b2c_main_logo.png debian/yandex-messenger-native/usr/share/yandex-messenger-native/b2c_main_logo.png
+
+override_dh_auto_clean:
+	$(HOME)/.cargo/bin/cargo clean

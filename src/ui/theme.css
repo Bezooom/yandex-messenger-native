@@ -1,0 +1,2362 @@
+/* ============================================================
+   Yandex Messenger — Premium Dark Theme v2
+   Production-grade, highly polished, strict dark surfaces.
+   ============================================================ */
+
+/* ==========================================================
+   Color Palette & Spacing Tokens
+   ========================================================== */
+
+@define-color brand_yellow         #ffcc00;
+@define-color brand_yellow_hover   #ffb300;
+@define-color brand_yellow_active  #e6a100;
+@define-color brand_yellow_fg      #1a1a24;
+
+@define-color bg_root              #09090b;  /* Obsidian */
+@define-color bg_sidebar           #111116;  /* Deep clean slate */
+@define-color bg_chat              #09090b;  /* Obsidian */
+@define-color bg_header            #111116;
+@define-color bg_hover             rgba(255, 255, 255, 0.04);
+@define-color bg_selected          rgba(255, 255, 255, 0.08);
+@define-color bg_active            rgba(255, 255, 255, 0.12);
+@define-color bg_composer          #14141c;
+
+@define-color border_color         rgba(255, 255, 255, 0.04);
+@define-color border_light         rgba(255, 255, 255, 0.08);
+@define-color border_faint         rgba(255, 255, 255, 0.02);
+@define-color border_active        #2f80ed;
+
+@define-color text_primary         #f4f4f7;
+@define-color text_secondary       #a1a1aa;
+@define-color text_tertiary        #71717a;
+@define-color text_muted           #52525b;
+@define-color text_dim             #3f3f46;
+@define-color text_on_brand        #1a1a24;
+
+@define-color bubble_received      #1e1e28;
+@define-color bubble_sent          #2f80ed;
+@define-color bubble_sent_hover    #3897ff;
+@define-color bubble_received_hover #242432;
+
+@define-color status_online        #10b981;
+@define-color status_away          #f59e0b;
+@define-color status_offline       #71717a;
+@define-color status_dnd           #ef4444;
+
+@define-color accent_blue          #2f80ed;
+@define-color accent_red           #ef4444;
+@define-color accent_green         #10b981;
+@define-color danger               #ef4444;
+@define-color warning              #f59e0b;
+
+@define-color scrollbar_track      rgba(0, 0, 0, 0.02);
+@define-color scrollbar_handle     rgba(255, 255, 255, 0.08);
+@define-color scrollbar_handle_hover rgba(255, 255, 255, 0.16);
+@define-color scrollbar_handle_active rgba(255, 255, 255, 0.24);
+
+@define-color popover_bg           #181822;
+@define-color popover_border       rgba(255, 255, 255, 0.06);
+@define-color popover_shadow       rgba(0, 0, 0, 0.6);
+
+/* ==========================================================
+   Global Transitions & Typography
+   ========================================================== */
+
+* {
+  transition-duration: 250ms;
+  transition-timing-function: cubic-bezier(0.2, 0.0, 0.0, 1.0); /* motionEasingEmphasized (Yandex Android) */
+  font-family: "YS Text", "Inter", "Geist", "Roboto", "Helvetica Neue", sans-serif;
+  letter-spacing: -0.1px;
+}
+
+/* ==========================================================
+   Root & Window
+   ========================================================== */
+
+window,
+window.background {
+  background-color: @bg_chat;
+  color: @text_primary;
+}
+
+/* ==========================================================
+   Hi-DPI Scaling
+   ========================================================== */
+
+.hidpi-2x .dim-label {
+  font-size: 16px;
+}
+
+.hidpi-2x .title {
+  font-size: 19px;
+}
+
+.hidpi-2x .header-title {
+  font-size: 24px;
+}
+
+.hidpi-2x .avatar {
+   min-width: 52px;
+   min-height: 52px;
+}
+
+.hidpi-2x .bubble-label {
+  font-size: 15px;
+}
+
+/* ==========================================================
+   Typography
+   ========================================================== */
+
+label {
+  color: @text_primary;
+}
+
+.dim-label {
+  color: @text_secondary;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.title {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.1px;
+}
+
+.header-title {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.2px;
+}
+
+/* ==========================================================
+   Selection
+   ========================================================== */
+
+row:selected,
+list > row:selected,
+listview > row:selected {
+  background-color: transparent;
+  outline: none;
+  box-shadow: none;
+}
+
+row:focus,
+entry:focus,
+button:focus,
+textview:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+*:focus {
+  outline: none;
+}
+
+/* ==========================================================
+   Buttons (Global)
+   ========================================================== */
+
+button {
+  background-color: transparent;
+  border: none;
+  border-radius: 10px;
+  padding: 6px 14px;
+  font-weight: 500;
+  box-shadow: none;
+}
+
+button:hover {
+  background-color: @bg_hover;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+button:active {
+  background-color: @bg_active;
+  box-shadow: none;
+}
+
+button.flat {
+  border: none;
+  background: transparent;
+}
+
+button.flat:hover {
+  background-color: @bg_hover;
+}
+
+button.circular {
+  border-radius: 50%;
+  padding: 0;
+}
+
+button.circular:hover {
+  background-color: @bg_hover;
+}
+
+button.pressed,
+button:active {
+  transition-duration: 0.1s;
+}
+
+/* Primary action button */
+
+button.primary-action {
+  background-image: linear-gradient(135deg, @brand_yellow, @brand_yellow_hover);
+  color: @text_on_brand;
+  font-weight: 700;
+  font-size: 15px;
+  border-radius: 12px;
+  padding: 14px 28px;
+  border: none;
+  box-shadow: 0 4px 16px rgba(255, 179, 0, 0.25);
+}
+
+button.primary-action:hover {
+  background-image: linear-gradient(135deg, @brand_yellow_hover, @brand_yellow_active);
+  box-shadow: 0 6px 20px rgba(255, 179, 0, 0.4);
+}
+
+button.primary-action:active {
+  background-image: linear-gradient(135deg, @brand_yellow_active, @brand_yellow_active);
+  box-shadow: none;
+}
+
+button.suggested-action {
+  background-image: linear-gradient(135deg, @brand_yellow, @brand_yellow_hover);
+  color: @text_on_brand;
+  font-weight: 600;
+  border-radius: 10px;
+  padding: 8px 16px;
+  border: none;
+  box-shadow: 0 2px 8px rgba(255, 179, 0, 0.15);
+}
+
+button.suggested-action:hover {
+  background-image: linear-gradient(135deg, @brand_yellow_hover, @brand_yellow_active);
+}
+
+button.danger {
+  color: @accent_red;
+}
+
+button.danger:hover {
+  background-color: rgba(239, 68, 68, 0.1);
+}
+
+/* ==========================================================
+   Entry / Input Fields
+   ========================================================== */
+
+entry {
+  background-color: rgba(255, 255, 255, 0.03);
+  border: 1px solid @border_color;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 15px;
+  color: @text_primary;
+  transition: all 180ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+entry:focus {
+  border-color: @border_active;
+  background-color: rgba(255, 255, 255, 0.05);
+  box-shadow: 0 0 0 1px rgba(52, 152, 219, 0.25);
+  outline: none;
+}
+
+entry.placeholder {
+  color: @text_tertiary;
+}
+
+entry > text {
+  color: @text_primary;
+}
+
+/* Search bar entry */
+
+.search-bar {
+  background-color: rgba(255, 255, 255, 0.03);
+  border-radius: 12px; /* radius token */
+  border: 1px solid @border_color;
+  padding: 10px 14px;
+  color: @text_primary;
+  min-height: 44px;
+  font-size: 14px;
+  transition: all 180ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.search-bar:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.search-bar:focus {
+  border-color: @accent_blue;
+  background-color: rgba(255, 255, 255, 0.05);
+  box-shadow: 0 0 0 1px rgba(52, 152, 219, 0.25);
+  outline: none;
+}
+
+/* ==========================================================
+   Scrollbar
+   ========================================================== */
+
+scrollbar {
+  background-color: transparent;
+}
+
+scrollbar slider {
+  background-color: @scrollbar_handle;
+  border-radius: 10px;
+  min-width: 4px;
+  min-height: 4px;
+  margin: 2px;
+  transition: min-width 0.2s ease, min-height 0.2s ease, background-color 0.2s ease;
+}
+
+scrollbar slider:hover {
+  background-color: @scrollbar_handle_hover;
+  min-width: 8px;
+  min-height: 8px;
+}
+
+scrollbar slider:active {
+  background-color: @scrollbar_handle_active;
+}
+
+scrollbar slider:backdrop {
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+scrollbar.horizontal slider {
+   min-width: 40px;
+   min-height: 4px;
+}
+
+scrollbar.horizontal slider:hover {
+   min-height: 8px;
+}
+
+/* ==========================================================
+   Separator — тонкие линии
+   ========================================================== */
+
+separator {
+  border-color: transparent;
+  background-color: @border_color;
+  min-width: 1px;
+  min-height: 1px;
+}
+
+/* ==========================================================
+   Chat List Sidebar — glassmorphism
+   ========================================================== */
+
+.sidebar {
+  background-color: @bg_sidebar;
+  border-right: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.chat-list {
+  background-color: transparent;
+}
+
+/* Chat list navigation sidebar */
+
+.navigation-sidebar {
+  background-color: transparent;
+}
+
+.navigation-sidebar > row {
+  padding: 0;
+}
+
+listview > row {
+  background: transparent;
+  padding: 0;
+  margin: 0;
+}
+listview > row:selected {
+  background: transparent;
+}
+listview > row:hover {
+  background: transparent;
+}
+
+/* Chat Row */
+
+.chat-row {
+  padding: 12px 16px;
+  border-radius: 12px;
+  margin: 4px 8px;
+  border: 1px solid transparent;
+  background-color: transparent;
+  transition: all 250ms cubic-bezier(0.2, 0.0, 0.0, 1.0);
+}
+
+.chat-row:hover {
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+.chat-row:selected,
+.chat-row:active {
+  background-color: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.03);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* ==========================================================
+   Avatar — мягкие градиенты, тени
+   ========================================================== */
+
+.avatar {
+  border-radius: 50%;
+  background-color: #2A2A2E;
+  color: @text_primary;
+  font-weight: 600;
+  font-size: 16px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+}
+
+.avatar-label {
+  font-weight: 500;
+  font-size: 16px;
+  color: #ffffff;
+}
+
+.avatar-icon {
+  color: #ffffff;
+}
+
+.avatar-fallback {
+  background-color: #2A2A2E;
+  color: white;
+  font-weight: bold;
+  border-radius: 50%;
+  min-width: 52px;
+  min-height: 52px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+}
+
+/* Avatar Gradients (avatar-gradient-0 through avatar-gradient-7) */
+
+.avatar-gradient-0 {
+  background-image: linear-gradient(135deg, #ffcc00, #ff8a00);
+}
+
+.avatar-gradient-1 {
+  background-image: linear-gradient(135deg, #6366f1, #3b82f6);
+}
+
+.avatar-gradient-2 {
+  background-image: linear-gradient(135deg, #14b8a6, #0d9488);
+}
+
+.avatar-gradient-3 {
+  background-image: linear-gradient(135deg, #ff7043, #ff4500);
+}
+
+.avatar-gradient-4 {
+  background-image: linear-gradient(135deg, #10b981, #059669);
+}
+
+.avatar-gradient-5 {
+  background-image: linear-gradient(135deg, #d946ef, #a855f7);
+}
+
+.avatar-gradient-6 {
+  background-image: linear-gradient(135deg, #0ea5e9, #0284c7);
+}
+
+.avatar-gradient-7 {
+  background-image: linear-gradient(135deg, #84cc16, #65a30d);
+}
+
+/* Avatar rounded image support */
+
+.avatar image {
+  border-radius: 50%;
+}
+
+.avatar-image {
+  border-radius: 50%;
+}
+
+/* ==========================================================
+   Online / Away / Offline dots
+   ========================================================== */
+
+.online-dot {
+  background: @status_online;
+  border: 2px solid #171721;
+  border-radius: 50%;
+  box-shadow: 0 0 6px rgba(46, 204, 113, 0.4);
+}
+
+.away-dot {
+  background: @status_away;
+  border: 2px solid #171721;
+  border-radius: 50%;
+  box-shadow: 0 0 6px rgba(241, 196, 15, 0.4);
+}
+
+.offline-dot {
+  background: @status_offline;
+  border: 2px solid #171721;
+  border-radius: 50%;
+}
+
+/* ==========================================================
+   Pinned / Muted indicators
+   ========================================================== */
+
+.pinned-indicator {
+  font-size: 11px;
+  color: @text_muted;
+  padding: 0 4px;
+}
+
+/* Unread Badge */
+
+.unread-badge {
+  background-color: @brand_yellow;
+  color: @text_on_brand;
+  font-size: 10px;
+  font-weight: 800;
+  border-radius: 10px;
+  padding: 1px 5px;
+  min-width: 16px;
+  min-height: 16px;
+}
+
+/* Chat List Row — Title / Preview / Time */
+
+.chat-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: @text_primary;
+}
+
+.chat-preview {
+  font-size: 12px;
+  color: @text_secondary;
+}
+
+.chat-time {
+  font-size: 11px;
+  color: @text_tertiary;
+  min-width: 36px;
+}
+
+/* ==========================================================
+   Chat Area Header
+   ========================================================== */
+
+.chat-header {
+  background-color: rgba(23, 23, 33, 0.88);
+  border-bottom: 1px solid @border_color;
+  padding: 0 24px;
+  min-height: 64px;
+  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.15);
+}
+
+.chat-header-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #FFFFFF;
+}
+
+.chat-status {
+  font-size: 13px;
+  font-weight: 500;
+  color: @accent_blue;
+}
+
+/* ==========================================================
+   Messages Area
+   ========================================================== */
+
+.messages-list {
+  background-color: transparent;
+  padding: 20px 32px;
+}
+
+.chat-scrolled-window {
+  background-color: @bg_chat;
+  background-image: radial-gradient(circle at 50% 50%, rgba(52, 152, 219, 0.04) 0%, transparent 85%);
+}
+
+/* ==========================================================
+   Message Bubble — улучшенные тени
+   ========================================================== */
+
+.message-bubble {
+  padding: 11px 16px;
+  margin: 3px 0;
+  color: @text_primary;
+  font-size: 15px;
+  line-height: 1.65;
+  border-radius: 16px;
+}
+
+.message-bubble label {
+  line-height: 1.65;
+}
+
+.bubble-received {
+  background-color: @bubble_received;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 16px 16px 16px 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+.bubble-received:hover {
+  background-color: @bubble_received_hover;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+}
+
+.bubble-sent {
+  background-image: linear-gradient(135deg, #2f80ed, #0056b3);
+  color: #FFFFFF;
+  border-radius: 16px 16px 4px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 3px 10px rgba(0, 86, 179, 0.25);
+}
+
+.bubble-sent:hover {
+  background-image: linear-gradient(135deg, #3897ff, #0066d6);
+  box-shadow: 0 5px 16px rgba(0, 86, 179, 0.35);
+}
+
+/* Message Time Label */
+
+.message-time {
+  font-size: 10px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.35);
+  margin-top: 4px;
+}
+
+.bubble-sent .message-time {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.date-separator {
+  background-color: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 14px;
+  margin: 16px 0;
+  border: 1px solid rgba(255, 255, 255, 0.02);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* ==========================================================
+   Input Area — скрыть при невыбранном чате
+   ========================================================== */
+
+.message-input-area {
+  background-color: transparent;
+  border-top: none;
+  padding: 0;
+  margin: 0;
+}
+
+.message-input-area:disabled {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.message-entry {
+  background-color: transparent;
+  border-radius: 0;
+  border: none;
+  padding: 6px 8px;
+  font-size: 15px;
+  color: @text_primary;
+  min-height: 24px;
+}
+
+.message-entry:focus {
+  background-color: transparent;
+  box-shadow: none;
+  outline: none;
+}
+
+.input-pill {
+  background-color: #161620;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 8px 16px;
+  margin: 12px 24px 20px 24px;
+  min-height: 48px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  transition: all 250ms cubic-bezier(0.2, 0.0, 0.0, 1.0);
+}
+
+.input-pill:focus-within {
+  border-color: rgba(47, 128, 237, 0.40);
+  box-shadow: 0 8px 28px rgba(47, 128, 237, 0.15);
+  background-color: #191924;
+}
+
+/* ==========================================================
+   Input Area Controls — изящные иконки/кнопки
+   ========================================================== */
+
+.action-icon-btn {
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  color: @text_secondary;
+  padding: 0;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.action-icon-btn:hover {
+  background-color: @bg_hover;
+  color: @text_primary;
+}
+
+.action-icon-btn image {
+  -gtk-icon-size: 18px;
+}
+
+.icon-btn {
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  color: rgba(255, 255, 255, 0.5);
+  padding: 8px;
+  transition: color 0.15s ease, background-color 0.15s ease;
+  min-width: 36px;
+  min-height: 36px;
+}
+
+.icon-btn:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: @brand_yellow;
+}
+
+.icon-btn:active {
+  background-color: @bg_active;
+}
+
+.icon-btn image {
+  -gtk-icon-size: 20px;
+}
+
+/* ==========================================================
+   Popover / Context Menu
+   ========================================================== */
+
+popover,
+popover > contents {
+  background-color: @popover_bg;
+  border: 1px solid @popover_border;
+  border-radius: 16px;
+  box-shadow: 0 10px 30px @popover_shadow;
+  padding: 8px;
+  outline: none;
+}
+
+popover > contents > box {
+  padding: 4px;
+}
+
+.context-menu {
+  background-color: @popover_bg;
+  border: 1px solid @popover_border;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  padding: 6px;
+}
+
+/* Chat Context Menu */
+
+.chat-context-menu {
+  background-color: @popover_bg;
+  border-radius: 12px;
+  padding: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.chat-context-menu button {
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+.chat-context-menu button:hover {
+  background-color: @bg_hover;
+}
+
+.chat-context-menu button.danger:hover {
+  background-color: rgba(239, 68, 68, 0.12);
+}
+
+/* ==========================================================
+   Sticker Panel
+   ========================================================== */
+
+.sticker-panel {
+  background-color: @bg_sidebar;
+  border-radius: 16px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
+}
+
+.sticker-panel-content {
+  background-color: transparent;
+}
+
+.sticker-panel-scroll {
+  background-color: transparent;
+}
+
+.sticker-pack-list {
+  background-color: transparent;
+  padding: 4px;
+}
+
+.sticker-pack-item {
+  border-radius: 12px;
+  margin: 4px;
+  padding: 8px;
+  transition: background-color 0.15s ease;
+}
+
+.sticker-pack-item:hover {
+  background-color: @bg_hover;
+}
+
+.sticker-pack-item:selected {
+  background-color: @bg_selected;
+}
+
+.sticker-pack-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: @text_primary;
+}
+
+.sticker-pack-count {
+  font-size: 12px;
+  color: @text_secondary;
+}
+
+.sticker-grid {
+  background-color: transparent;
+}
+
+.sticker-grid-header {
+  padding: 8px 4px;
+}
+
+.sticker-grid-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: @text_primary;
+}
+
+.sticker-grid-count {
+  font-size: 14px;
+  color: @text_secondary;
+}
+
+.sticker-item {
+  border-radius: 12px;
+  margin: 4px;
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+
+.sticker-item:hover {
+  background-color: @bg_hover;
+  transform: scale(1.05);
+}
+
+.sticker-item:active {
+  transform: scale(0.95);
+}
+
+.sticker-item.hover {
+  background-color: @bg_selected;
+}
+
+.sticker-thumb {
+  border-radius: 8px;
+  background-color: rgba(255, 255, 255, 0.06);
+}
+
+.sticker-search-entry {
+  background-color: rgba(0, 0, 0, 0.2);
+  border-radius: 10px;
+  border: 1px solid @border_color;
+  padding: 8px 12px;
+  color: @text_primary;
+  font-size: 14px;
+}
+
+.sticker-search-entry:focus {
+  border-color: @border_active;
+}
+
+/* ==========================================================
+   Reaction Panel
+   ========================================================== */
+
+.reaction-panel {
+  background-color: @popover_bg;
+  border-radius: 16px;
+  box-shadow: 0 10px 30px @popover_shadow;
+  border: 1px solid @popover_border;
+  padding: 8px;
+}
+
+.reaction-row {
+  background-color: transparent;
+}
+
+.reaction-btn {
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  font-size: 20px;
+  padding: 4px;
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+
+.reaction-btn:hover {
+  background-color: @bg_hover;
+  transform: scale(1.2);
+}
+
+.reaction-btn:active,
+.reaction-btn.pressed {
+  transform: scale(1.1);
+  background-color: @bg_active;
+  transition-duration: 0.1s;
+}
+
+.reaction-btn.circular {
+  border-radius: 50%;
+  padding: 0;
+}
+
+.reaction-btn.circular:hover {
+  background-color: @bg_hover;
+}
+
+.reaction-divider {
+  background-color: rgba(255, 255, 255, 0.06);
+  border-radius: 1px;
+  margin: 4px 8px;
+}
+
+/* ==========================================================
+   Poll Creator
+   ========================================================== */
+
+.poll-creator {
+  background-color: @bg_chat;
+  border-radius: 16px;
+  padding: 24px;
+}
+
+.poll-question {
+  font-size: 16px;
+  font-weight: 600;
+  color: @text_primary;
+}
+
+.poll-answer-row {
+  background-color: transparent;
+  border-radius: 8px;
+  padding: 4px;
+}
+
+.poll-answer-row:hover {
+  background-color: @bg_hover;
+}
+
+.poll-progress-bar {
+  background-color: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  min-width: 100px;
+}
+
+.poll-progress-bar trough {
+  background-color: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+}
+
+.poll-progress-bar progress {
+  background-color: @brand_yellow;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.poll-vote-btn {
+  background-color: transparent;
+  border: 1px solid @border_color;
+  border-radius: 8px;
+  padding: 4px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: @text_primary;
+}
+
+.poll-vote-btn:hover {
+  background-color: @bg_hover;
+  border-color: @border_active;
+}
+
+/* ==========================================================
+   Folder Sidebar — glassmorphism
+   ========================================================== */
+
+.folder-sidebar {
+  background-color: @bg_sidebar;
+  border-right: none;
+  background-color: rgba(20, 20, 24, 0.85);
+}
+
+.folder-add-btn {
+  background: transparent;
+  border: none;
+  border-radius: 12px;
+  margin: 8px;
+  color: @text_secondary;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.folder-add-btn:hover {
+  background-color: @bg_hover;
+  color: @text_primary;
+}
+
+.folder-list {
+  background-color: transparent;
+}
+
+.folder-row {
+  border-radius: 12px;
+  padding: 0;
+}
+
+.folder-item {
+  border-radius: 12px;
+  background: transparent;
+  color: @text_secondary;
+}
+
+.folder-item:hover {
+  background-color: @bg_hover;
+  color: @text_primary;
+}
+
+.folder-item:checked {
+  background-color: rgba(255, 255, 255, 0.06);
+  color: @brand_yellow;
+}
+
+.folder-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: @text_secondary;
+}
+
+.folder-badge {
+  background-color: @accent_red;
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 8px;
+  padding: 1px 5px;
+  min-width: 16px;
+}
+
+/* ==========================================================
+   Auth Dialog — premium
+   ========================================================== */
+
+.auth-window {
+  background-color: @bg_sidebar;
+  background-image: radial-gradient(
+      circle at 50% -10%,
+      rgba(255, 204, 0, 0.12) 0%,
+      rgba(255, 138, 0, 0.04) 28%,
+      rgba(20, 20, 24, 0) 55%
+    );
+  border-radius: 24px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.8),
+              inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.auth-logo {
+  margin-top: 4px;
+  margin-bottom: 12px;
+}
+
+.auth-header {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  color: @text_primary;
+  margin-top: 12px;
+  margin-bottom: 6px;
+}
+
+.auth-subtitle {
+  font-size: 14px;
+  color: @text_secondary;
+  margin-bottom: 14px;
+  line-height: 1.45;
+}
+
+.auth-status {
+  font-size: 13px;
+  color: @text_secondary;
+  min-height: 18px;
+}
+
+.auth-entry {
+  background-color: rgba(0, 0, 0, 0.25);
+  border-radius: 12px;
+  border: 1px solid @border_color;
+  padding: 12px 16px;
+  font-size: 14px;
+  color: @text_primary;
+  min-width: 52px;
+  min-height: 44px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+.auth-entry:focus {
+  border-color: @brand_yellow;
+  background-color: rgba(255, 255, 255, 0.02);
+  box-shadow: 0 0 0 3px rgba(255, 204, 0, 0.18);
+}
+
+.auth-expander {
+  color: @text_secondary;
+  font-size: 13px;
+  padding: 4px 2px;
+}
+
+.auth-expander:hover {
+  color: @text_primary;
+}
+
+button.auth-primary {
+  padding: 14px 20px;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 14px;
+  background-image: linear-gradient(135deg, #FFCC00, #FF8A00);
+  color: @text_on_brand;
+  box-shadow: 0 10px 24px rgba(255, 138, 0, 0.22),
+              inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  transition: transform 0.12s ease, box-shadow 0.2s ease, filter 0.2s ease;
+}
+
+button.auth-primary:hover {
+  filter: brightness(1.04);
+  box-shadow: 0 14px 32px rgba(255, 138, 0, 0.3),
+              inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+button.auth-primary:active {
+  transform: translateY(1px);
+  filter: brightness(0.96);
+}
+
+button.auth-primary:disabled {
+  filter: grayscale(0.2) brightness(0.85);
+  box-shadow: none;
+}
+
+.auth-account-btn {
+  background-color: rgba(0, 0, 0, 0.2);
+  border-radius: 12px;
+  border: 1px solid @border_color;
+  padding: 12px 16px;
+  font-size: 15px;
+  color: @text_primary;
+  margin: 4px 0;
+  transition: background-color 0.18s ease, border-color 0.18s ease;
+}
+
+.auth-account-btn:hover {
+  background-color: @bg_hover;
+  border-color: @border_active;
+}
+
+.auth-account-btn.selected {
+  background-color: rgba(255, 204, 0, 0.1);
+  border-color: @brand_yellow;
+  color: @brand_yellow;
+}
+
+/* ==========================================================
+   Empty Chat — стилизованный пустой экран
+   ========================================================== */
+
+.empty-chat {
+  background-color: transparent;
+  border-radius: 24px;
+  padding: 48px 32px;
+  margin: 32px;
+  transition: background-color 0.2s ease;
+}
+
+.empty-chat:hover {
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+.empty-chat-logo {
+  font-size: 64px;
+  font-weight: 700;
+  margin-bottom: 16px;
+  background: linear-gradient(135deg, #FFCC00, #FF8A00);
+  color: @brand_yellow;
+  color: @brand_yellow;
+  color: transparent;
+  letter-spacing: -1px;
+}
+
+.empty-chat-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: @text_primary;
+  margin-bottom: 8px;
+  letter-spacing: -0.3px;
+}
+
+.empty-chat-subtitle {
+  font-size: 15px;
+  color: @text_secondary;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.empty-chat-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.4;
+}
+
+/* ==========================================================
+   Settings
+   ========================================================== */
+
+.settings-section {
+  background-color: transparent;
+  border-radius: 12px;
+  padding: 16px;
+  margin: 8px;
+}
+
+.settings-row {
+  padding: 10px 16px;
+  border-radius: 8px;
+}
+
+.settings-row:hover {
+  background-color: @bg_hover;
+}
+
+.settings-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: @text_primary;
+}
+
+.settings-value {
+  font-size: 13px;
+  color: @text_secondary;
+}
+
+/* Toggle Switch */
+
+switch {
+  border-radius: 16px;
+  padding: 3px;
+  background-color: rgba(255, 255, 255, 0.15);
+  outline: none;
+}
+
+switch:checked {
+  background-color: @brand_yellow;
+}
+
+switch slider {
+  background-color: #ffffff;
+  border-radius: 50%;
+  border: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+/* ==========================================================
+   Skeleton Loading Animation
+   ========================================================== */
+
+@keyframes skeleton-loading {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes message-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+  from {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pop-in {
+  from {
+    transform: scale(0);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.15);
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.04) 25%,
+    rgba(255, 255, 255, 0.08) 50%,
+    rgba(255, 255, 255, 0.04) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s ease-in-out infinite;
+  border-radius: 8px;
+}
+
+.skeleton-row {
+  margin: 4px 6px;
+}
+
+.skeleton-title {
+  margin-top: 8px;
+  border-radius: 4px;
+}
+
+.skeleton-preview {
+  margin-top: 6px;
+  border-radius: 4px;
+}
+
+/* Message fade-in */
+
+.message-fade-in {
+  animation: message-fade-in 0.3s ease-out;
+}
+
+/* Pulse indicator */
+
+.pulse {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* Spinner */
+
+.spinner {
+  animation: spin 1s linear infinite;
+}
+
+/* Pop-in for stickers, badges, etc. */
+
+.pop-in {
+  animation: pop-in 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* ==========================================================
+   Tooltip
+   ========================================================== */
+
+tooltip {
+  background-color: @bg_elevated;
+  color: @text_primary;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+tooltip > label {
+  color: @text_primary;
+}
+
+/* ==========================================================
+   Voice Message Player
+   ========================================================== */
+
+.voice-message-player {
+  background-color: @bg_elevated;
+  border-radius: 16px;
+  padding: 12px 16px;
+  margin: 4px 0;
+}
+
+.voice-waveform {
+  background-color: transparent;
+}
+
+.voice-waveform trough {
+  background-color: rgba(255, 255, 255, 0.06);
+  border-radius: 2px;
+}
+
+.voice-waveform progress {
+  background-color: @brand_yellow;
+  border-radius: 2px;
+}
+
+/* ==========================================================
+   Telemost / Call UI
+   ========================================================== */
+
+.telemost-overlay {
+  background-color: rgba(10, 10, 12, 0.9);
+  border-radius: 16px;
+}
+
+.call-controls {
+  background-color: rgba(0, 0, 0, 0.4);
+  border-radius: 16px;
+  padding: 12px;
+}
+
+.call-btn {
+  border-radius: 50%;
+  background: transparent;
+  color: @text_primary;
+  padding: 0;
+}
+
+.call-btn:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.call-btn.call-active {
+  background-color: @status_online;
+  color: white;
+}
+
+.call-btn.call-end {
+  background-color: @accent_red;
+  color: white;
+}
+
+/* ==========================================================
+   Notifications
+   ========================================================== */
+
+.notification-toast {
+  background-color: @bg_elevated;
+  border: 1px solid @popover_border;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  padding: 12px 16px;
+}
+
+.tray-icon {
+  color: @text_primary;
+}
+
+/* ==========================================================
+   Thread View
+   ========================================================== */
+
+.thread-view {
+  background-color: @bg_chat;
+  border-radius: 16px;
+}
+
+.thread-header {
+  background-color: rgba(10, 10, 12, 0.9);
+  border-bottom: none;
+  background-color: rgba(20, 20, 24, 0.85);
+  padding: 12px 20px;
+}
+
+.thread-breadcrumb {
+  font-size: 13px;
+  color: @text_secondary;
+}
+
+/* ==========================================================
+   Inline Image Preview
+   ========================================================== */
+
+.inline-image {
+  border-radius: 8px;
+  background-color: @bg_elevated;
+  padding: 4px;
+}
+
+.inline-image:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.image-viewer {
+  background-color: rgba(0, 0, 0, 0.85);
+}
+
+.viewer-image {
+  background-color: transparent;
+}
+
+.image-controls {
+  background-color: rgba(30, 30, 35, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.image-controls button {
+  border-radius: 8px;
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.image-controls button:hover {
+  background-color: rgba(255, 255, 255, 0.15);
+}
+
+.image-controls button:active {
+  background-color: rgba(255, 204, 0, 0.2);
+}
+
+/* ==========================================================
+   Inline Video Preview
+   ========================================================== */
+
+.inline-video {
+  border-radius: 8px;
+  background-color: @bg_elevated;
+  padding: 4px;
+}
+
+.inline-video:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.inline-video-thumbnail {
+  background-color: rgba(0, 0, 0, 0.1);
+  border-radius: 6px;
+}
+
+.video-play-btn {
+  background-color: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.video-play-btn:hover {
+  background-color: rgba(255, 255, 255, 0.35);
+}
+
+.inline-video-duration {
+  font-size: 11px;
+  color: @text_tertiary;
+  margin-top: 2px;
+}
+
+/* ==========================================================
+   Saved Messages Panel
+   ========================================================== */
+
+.saved-panel {
+  background-color: @bg_chat;
+  border-right: none;
+  background-color: rgba(20, 20, 24, 0.85);
+  padding: 8px 0;
+}
+
+.saved-message-row {
+  padding: 6px 12px;
+  border-radius: 8px;
+  margin: 2px 6px;
+  transition: background-color 0.15s ease;
+}
+
+.saved-message-row:hover {
+  background-color: @bg_hover;
+}
+
+.saved-message-row:hover .saved-note {
+  color: @text_secondary;
+}
+
+.saved-type-icon {
+  color: @text_tertiary;
+  margin-right: 4px;
+}
+
+.saved-filter-bar {
+  padding: 4px 8px;
+  border-radius: 8px;
+  margin-bottom: 4px;
+}
+
+.saved-filter-btn {
+  font-size: 12px;
+  border-radius: 6px;
+  padding: 4px 10px;
+  margin: 0 2px;
+  background-color: transparent;
+  color: @text_secondary;
+}
+
+.saved-filter-btn:hover {
+  background-color: @bg_hover;
+  color: @text_primary;
+}
+
+.saved-filter-btn.active {
+  background-color: @bg_selected;
+  color: @text_primary;
+}
+
+.saved-filter-btn.active image {
+  color: @brand_yellow;
+}
+
+.saved-note {
+  font-size: 11px;
+  color: @text_secondary;
+  margin-top: 2px;
+  padding: 2px 0;
+}
+
+.saved-date {
+   font-size: 10px;
+   color: @text_tertiary;
+   margin-left: 8px;
+   margin-top: 2px;
+   padding: 2px 0;
+}
+
+/* ==========================================================
+   Bot Panel
+   ========================================================== */
+
+.bot-panel {
+   background-color: @bg_chat;
+   border-right: none;
+   background-color: rgba(20, 20, 24, 0.85);
+   padding: 16px;
+}
+
+.bot-avatar {
+   border-radius: 50%;
+   background: linear-gradient(135deg, #6366F1, #8B5CF6);
+   color: #ffffff;
+   font-weight: 700;
+   font-size: 16px;
+   box-shadow: 0 2px 12px rgba(99, 102, 241, 0.35);
+}
+
+.bot-header {
+   padding: 12px 0;
+   border-bottom: none;
+   background-color: rgba(20, 20, 24, 0.85);
+   margin-bottom: 12px;
+}
+
+.bot-username {
+   font-size: 16px;
+   font-weight: 600;
+   color: @text_primary;
+}
+
+.bot-description {
+   font-size: 13px;
+   color: @text_secondary;
+   margin-top: 4px;
+}
+
+.verified-badge {
+   color: @accent_blue;
+   font-size: 14px;
+}
+
+.bot-badge {
+   background-color: @accent_blue;
+   color: white;
+   font-size: 10px;
+   font-weight: 600;
+   border-radius: 4px;
+   padding: 2px 6px;
+}
+
+/* Command list */
+
+.bot-command {
+   padding: 6px 12px;
+   border-radius: 8px;
+   transition: background-color 0.15s ease;
+}
+
+.bot-command:hover {
+   background-color: @bg_hover;
+}
+
+.bot-command .dim-label {
+   color: @text_secondary;
+}
+
+/* Inline buttons */
+
+.inline-button-grid {
+   background-color: transparent;
+   padding: 8px;
+}
+
+.inline-button {
+   background-color: rgba(255, 255, 255, 0.06);
+   border: 1px solid @border_color;
+   border-radius: 8px;
+   padding: 8px 16px;
+   font-size: 13px;
+   font-weight: 500;
+   color: @text_primary;
+   min-width: 52px;
+   min-height: 52px;
+   transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.inline-button:hover {
+   background-color: @bg_hover;
+   border-color: @border_active;
+}
+
+.inline-button:active {
+   background-color: @bg_active;
+   transition-duration: 0.1s;
+}
+
+/* Reply keyboard */
+
+.reply-keyboard-view {
+   background-color: transparent;
+   padding: 8px;
+   border-top: none;
+   background-color: rgba(20, 20, 24, 0.85);
+   margin-top: 8px;
+}
+
+.reply-keyboard-row {
+   padding: 4px 0;
+}
+
+.keyboard-button {
+   background-color: rgba(255, 255, 255, 0.04);
+   border: 1px solid @border_color;
+   border-radius: 8px;
+   padding: 6px 12px;
+   font-size: 13px;
+   color: @text_primary;
+}
+
+.keyboard-button:hover {
+   background-color: @bg_hover;
+   border-color: @border_active;
+}
+
+.start-button {
+   background-color: @brand_yellow;
+   color: @text_on_brand;
+   font-weight: 700;
+   border-radius: 12px;
+   padding: 10px 24px;
+   margin-top: 12px;
+   box-shadow: 0 4px 12px rgba(255, 204, 0, 0.15);
+}
+
+.start-button:hover {
+   background-color: @brand_yellow_hover;
+   box-shadow: 0 4px 20px rgba(255, 204, 0, 0.35);
+}
+
+.start-button:active {
+   background-color: @brand_yellow_active;
+}
+
+/* Bot message styling */
+
+.bot-message {
+   background-color: rgba(99, 102, 241, 0.08);
+   border-left: 3px solid #6366F1;
+}
+
+.bot-message:hover {
+   background-color: rgba(99, 102, 241, 0.12);
+}
+
+.bot-badge-indicator {
+   background-color: #6366F1;
+   color: white;
+   font-size: 10px;
+   font-weight: 600;
+   padding: 2px 6px;
+   border-radius: 4px;
+   margin-left: 6px;
+}
+
+/* ==========================================================
+   Scheduled Messages Panel
+   ========================================================== */
+
+.scheduled-panel {
+   background-color: @bg_chat;
+   border-top: none;
+   background-color: rgba(20, 20, 24, 0.85);
+   padding: 8px 12px;
+}
+
+.scheduled-message-row {
+   padding: 8px 12px;
+   border-radius: 8px;
+   margin: 2px 4px;
+   transition: background-color 0.15s ease;
+   min-width: 52px;
+   min-height: 52px;
+}
+
+.scheduled-message-row:hover {
+   background-color: @bg_hover;
+}
+
+.scheduled-message-row .scheduled-time {
+   font-size: 11px;
+   color: @text_secondary;
+   min-width: 60px;
+}
+
+.scheduled-message-row .icon-btn label {
+   font-size: 14px;
+   color: @text_secondary;
+}
+
+.scheduled-message-row .icon-btn:hover label {
+   color: @text_primary;
+}
+
+.scheduled-message-row.pending .icon-btn label {
+   color: @accent_blue;
+}
+
+.scheduled-message-row.sending .icon-btn label {
+   color: @warning;
+}
+
+.scheduled-message-row.sent .icon-btn label {
+   color: @accent_green;
+}
+
+.scheduled-message-row.failed .icon-btn label {
+   color: @accent_red;
+}
+
+.quick-presets-row,
+.today-presets-row {
+   padding: 4px 0;
+}
+
+.quick-preset {
+   font-size: 12px;
+   padding: 4px 10px;
+   border-radius: 6px;
+   background-color: rgba(255, 255, 255, 0.04);
+   color: @text_secondary;
+   border: 1px solid transparent;
+   min-width: 60px;
+}
+
+.quick-preset:hover {
+   background-color: @bg_hover;
+   color: @text_primary;
+   border-color: @border_active;
+}
+
+.quick-preset:active {
+   background-color: @bg_active;
+   border-color: @border_active;
+}
+
+.quick-preset.active {
+   background-color: rgba(255, 204, 0, 0.15);
+   color: @brand_yellow;
+   border-color: rgba(255, 204, 0, 0.3);
+}
+
+.scheduled-date {
+   font-size: 13px;
+   font-weight: 500;
+   color: @text_primary;
+}
+
+.scheduled-time {
+   font-size: 13px;
+   color: @text_secondary;
+}
+
+.send-at-popover {
+   background-color: @bg_chat;
+   border-radius: 16px;
+   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+   border: 1px solid @popover_border;
+   padding: 16px;
+}
+
+.send-at-popover calendar {
+   background-color: transparent;
+   color: @text_primary;
+   border: none;
+}
+
+.send-at-popover calendar header {
+   background-color: transparent;
+   color: @text_primary;
+}
+
+.send-at-popover calendar day.selected {
+   background-color: @brand_yellow;
+   color: @text_on_brand;
+   border-radius: 50%;
+}
+
+.send-at-popover calendar highlight {
+   background-color: rgba(255, 204, 0, 0.2);
+   color: @text_on_brand;
+}
+
+.send-schedule-btn {
+   background-color: transparent;
+   border: none;
+   border-radius: 50%;
+   color: @text_secondary;
+   padding: 4px;
+}
+
+.send-schedule-btn:hover {
+   background-color: @bg_hover;
+   color: @text_primary;
+}
+
+.send-schedule-btn:active {
+   background-color: @bg_active;
+}
+
+.send-schedule-btn image {
+   -gtk-icon-size: 16px;
+}
+
+.send-schedule-btn.active {
+   color: @brand_yellow;
+   background-color: rgba(255, 204, 0, 0.1);
+}
+
+/* ==========================================================
+   Group Panel
+   ========================================================== */
+
+.group-panel {
+   background-color: @bg_chat;
+   border-right: none;
+   background-color: rgba(20, 20, 24, 0.85);
+}
+
+.group-header {
+   background-color: rgba(10, 10, 12, 0.9);
+   border-bottom: none;
+   background-color: rgba(20, 20, 24, 0.85);
+   padding: 16px;
+}
+
+.group-avatar {
+   border-radius: 50%;
+   background: linear-gradient(135deg, #EC4899, #F472B6);
+   color: #ffffff;
+   font-weight: 700;
+   font-size: 16px;
+   box-shadow: 0 2px 12px rgba(236, 72, 153, 0.35);
+}
+
+.group-title {
+   font-size: 20px;
+   font-weight: 700;
+   color: @text_primary;
+   margin-bottom: 4px;
+}
+
+.group-description {
+   font-size: 14px;
+   color: @text_secondary;
+   line-height: 1.5;
+}
+
+.group-member-row {
+   padding: 8px 12px;
+   border-radius: 8px;
+   margin: 2px 0;
+   transition: background-color 0.15s ease;
+}
+
+.group-member-row:hover {
+   background-color: @bg_hover;
+}
+
+.group-member-role {
+   font-size: 11px;
+   color: @text_tertiary;
+   font-weight: 500;
+}
+
+.group-online-status {
+   border-radius: 50%;
+   background: @status_online;
+   margin-left: 8px;
+}
+
+.group-settings {
+   background-color: @bg_elevated;
+   border-radius: 12px;
+   padding: 16px;
+   margin: 16px;
+}
+
+.group-invite-link {
+   background-color: rgba(255, 255, 255, 0.04);
+   border: 1px solid @border_color;
+   border-radius: 8px;
+   padding: 12px;
+   font-family: monospace;
+   font-size: 13px;
+   color: @text_primary;
+}
+
+.create-group-dialog {
+   background-color: @bg_chat;
+   border-radius: 16px;
+   padding: 24px;
+}
+
+.chat-type-icon {
+   font-size: 14px;
+   color: @text_tertiary;
+   padding: 0 4px;
+}
+
+.group-icon {
+   color: #EC4899;
+}
+
+.channel-icon {
+   color: #F97316;
+}
+
+.member-list {
+   background-color: transparent;
+}
+
+/* ==========================================================
+   Account Dropdown
+   ========================================================== */
+
+.account-dropdown-menu {
+     background-color: @popover_bg;
+     border: 1px solid @popover_border;
+     border-radius: 12px;
+     padding: 6px;
+     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.account-dropdown-menu button {
+     background-color: transparent;
+     color: @text_primary;
+     padding: 8px 16px;
+     border-radius: 8px;
+     font-weight: 500;
+}
+
+.account-dropdown-menu button:hover {
+     background-color: @bg_hover;
+}
+
+/* ==========================================================
+   Minimalist Flat UI Enhancements & Yandex Blue URLs
+   ========================================================== */
+
+/* Premium Active Chat Selected Row Style with Left Blue Indicator */
+listview > row:selected .chat-row {
+  background-color: rgba(52, 152, 219, 0.08); /* 8% accent blue tint */
+  border-left: 3px solid @accent_blue;
+  border-radius: 0 14px 14px 0;
+  margin-left: 0; /* snap left edge for clean indicator boundary */
+}
+
+listview > row:selected .chat-row .chat-title {
+  color: @text_primary;
+}
+
+listview > row:selected .chat-row .chat-preview {
+  color: @text_secondary;
+}
+
+listview > row:selected .chat-row .chat-time {
+  color: @text_secondary;
+}
+
+/* Simplified Solid Send Button */
+.send-btn-premium {
+  background-image: linear-gradient(135deg, #3498db, #1d76b8);
+  color: #ffffff;
+  border-radius: 50%;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+  margin-left: 8px;
+  transition: all 180ms cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(29, 118, 184, 0.3);
+}
+
+.send-btn-premium:hover {
+  background-image: linear-gradient(135deg, #4fb0ff, #2481cc);
+  box-shadow: 0 4px 12px rgba(29, 118, 184, 0.45);
+}
+
+.send-btn-premium:active {
+  background-image: linear-gradient(135deg, #1d76b8, #1a5e95);
+  box-shadow: none;
+}
+
+.send-btn-premium image {
+  -gtk-icon-size: 16px;
+  color: #ffffff;
+}
+
+/* Input pill subtle hover adjustments and control icons */
+.input-pill .icon-btn {
+  color: rgba(255, 255, 255, 0.55);
+  transition: all 180ms cubic-bezier(0.4, 0, 0.2, 1);
+  min-width: 32px;
+  min-height: 32px;
+  padding: 6px;
+  border-radius: 50%;
+  margin: 0 2px;
+}
+
+.input-pill .icon-btn image {
+  -gtk-icon-size: 16px;
+}
+
+.input-pill .icon-btn:hover {
+  color: @accent_blue;
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+/* Subtle Yandex search branding on header search button */
+.header-search-btn {
+  color: #ffcc00;
+}
+
+.header-search-btn:hover {
+  background-color: rgba(255, 204, 0, 0.1);
+  color: #ffd633;
+}
+
+/* Consistent hover/active states for text entries */
+entry:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+entry:focus {
+  border-color: @accent_blue;
+  background-color: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 0 0 1px rgba(47, 140, 255, 0.20);
+}
+
+entry > text > placeholder,
+entry.placeholder,
+.message-entry > text > placeholder,
+.message-entry.placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+/* Global readable Yandex-blue hyperlinks */
+link,
+link:link,
+link:visited,
+label.markup a,
+a {
+  color: #33A1FF;
+}
+
+link:hover,
+a:hover {
+  color: #4FB0FF;
+}
+
+link:active,
+a:active {
+  color: #1E88E5;
+}
+
+/* Search Bar Focus Indicator Left Icon */
+.search-bar > image.left {
+  color: rgba(255, 255, 255, 0.38);
+}
+.search-bar:focus > image.left {
+  color: @accent_blue;
+}
+
+/* Typing Indicator Animation */
+.typing-dots {
+  color: @text_secondary;
+  font-size: 13px;
+  animation: typing-fade 1.5s infinite;
+}
+
+@keyframes typing-fade {
+  0% { opacity: 0.3; }
+  50% { opacity: 1.0; }
+  100% { opacity: 0.3; }
+}
+
+.typing-dot-1 { animation-delay: 0s; }
+.typing-dot-2 { animation-delay: 0.3s; }
+.typing-dot-3 { animation-delay: 0.6s; }
+
+.status-label {
+  font-size: 13px;
+  color: @text_secondary;
+}
+
+/* ==========================================================
+   Sidebar Compact Mode, Stickers & Emoji-Only Messages
+   ========================================================== */
+
+.sidebar-stack.compact .chat-row .chat-title,
+.sidebar-stack.compact .chat-row .chat-preview,
+.sidebar-stack.compact .chat-row .chat-time,
+.sidebar-stack.compact .chat-row .unread-badge,
+.sidebar-stack.compact .chat-row label {
+  opacity: 0;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.bubble-sticker {
+  background: transparent;
+  background-color: transparent;
+  box-shadow: none;
+  border: none;
+  padding: 0;
+}
+
+.sticker-message-image {
+  background: transparent;
+}
+
+.bubble-emoji-only {
+  background: transparent;
+  background-color: transparent;
+  box-shadow: none;
+  border: none;
+}
+
+.bubble-emoji-only label {
+  font-size: 40px;
+  line-height: 48px;
+}
+
+/* ==========================================================
+   Custom Input Area with Autoresize (GtkTextView)
+   ========================================================== */
+
+.message-entry-view {
+  background-color: transparent;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  padding: 6px 8px;
+  font-size: 15px;
+  color: @text_primary;
+}
+
+.message-entry-view:focus {
+  background-color: transparent;
+  border: none;
+  outline: none;
+  box-shadow: none;
+}
+
+.message-entry-view text {
+  background-color: transparent;
+  border: none;
+  outline: none;
+  box-shadow: none;
+}
+
+.placeholder-label {
+  color: rgba(255, 255, 255, 0.35);
+  font-size: 15px;
+  padding-left: 8px;
+}

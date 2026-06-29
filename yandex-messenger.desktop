@@ -1,0 +1,17 @@
+[Desktop Entry]
+Name=Yandex Messenger
+Comment=Native Yandex Messenger (Telemost) for Linux
+Exec=yandex-messenger
+Icon=yandex-messenger
+Terminal=false
+Type=Application
+Categories=Network;InstantMessaging;Chat;
+MimeType=x-scheme-handler/ychat;
+StartupNotify=true
+StartupWMClass=yandex-messenger
+Keywords=messenger;chat;telemost;video;audio;
+Actions=NewWindow;
+
+[Desktop Action NewWindow]
+Name=Открыть новое окно
+Exec=yandex-messenger

@@ -1,0 +1,6 @@
+target/release/yandex-messenger usr/bin/
+yandex-messenger.desktop usr/share/applications/
+icons/hicolor/scalable/apps/yandex-messenger.svg usr/share/icons/hicolor/scalable/apps/
+yandex-messenger.1 usr/share/man/man1/
+README.md usr/share/doc/yandex-messenger-native/
+CHANGELOG.md usr/share/doc/yandex-messenger-native/

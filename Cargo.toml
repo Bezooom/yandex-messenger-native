@@ -1,0 +1,85 @@
+[package]
+name = "yandex-messenger-native"
+version = "2.162.0"
+edition = "2021"
+description = "Native Yandex Messenger (Telemost) for Linux"
+authors = ["BeZoom"]
+license = "MIT"
+
+[[bin]]
+name = "yandex-messenger"
+path = "src/main.rs"
+
+[dependencies]
+# GTK4 UI (Ubuntu 24.04+)
+gtk = { version = "0.7", package = "gtk4", features = ["v4_12"] }
+libadwaita = { version = "0.5", package = "libadwaita" }
+gio = "0.18"
+glib = "0.18"
+webkit6 = { version = "0.2", optional = true }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+futures = "0.3"
+tokio-tungstenite = { version = "0.21", features = ["rustls-tls-native-roots"] }
+
+# HTTP
+reqwest = { version = "0.12", features = ["json", "multipart", "rustls-tls"] }
+bytes = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_urlencoded = "0.7"
+
+# Pin indexmap to avoid hashbrown 0.17.0 (edition2024)
+indexmap = ">=1, <2.5"
+
+# Auth
+url = "2"
+urlencoding = "2"
+uuid = { version = "1.10", features = ["v4"] }
+getrandom = "0.2"
+base64 = "0.22"
+
+# Utils
+anyhow = "1"
+log = "0.4"
+env_logger = "0.11"
+dirs = "5"
+chrono = { version = "0.4", features = ["serde"] }
+regex = "1"
+rand = "0.8"
+tiny_http = "0.12"
+
+# GStreamer (voice recording/playback) — опционально
+gstreamer = { version = "0.22", optional = true }
+gstreamer-app = { version = "0.22", optional = true }
+gstreamer-audio = { version = "0.22", optional = true }
+gstreamer-base = { version = "0.22", optional = true }
+gstreamer-video = { version = "0.22", optional = true }
+gstreamer-pbutils = { version = "0.22", optional = true }
+
+# SQLite
+rusqlite = { version = "0.31", features = ["bundled"] }
+image = "0.25.10"
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true
+
+[features]
+default = ["in_app_webview"]
+in_app_webview = ["dep:webkit6"]
+gstreamer = ["dep:gstreamer", "dep:gstreamer-app", "dep:gstreamer-audio", "dep:gstreamer-base", "dep:gstreamer-video", "dep:gstreamer-pbutils"]
+
+[package.metadata.deb]
+maintainer = "BeZoom"
+copyright = "2026, BeZoom"
+extended-description = "Native Yandex Messenger (Telemost) port for Linux with GTK4."
+depends = "$auto"
+section = "net"
+priority = "optional"
+assets = [
+    ["target/release/yandex-messenger", "usr/bin/", "755"],
+    ["assets/yandex-messenger.desktop", "usr/share/applications/", "644"]
+]

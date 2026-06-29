@@ -1,0 +1,19 @@
+Source: yandex-messenger-native
+Section: net
+Priority: optional
+Maintainer: BeZoom <bezoom@example.com>
+Build-Depends: debhelper (>= 13), cargo, pkg-config, libgtk-4-dev, libsqlite3-dev, libssl-dev, libnotify-dev
+Standards-Version: 4.6.0
+Rules-Requires-Root: no
+
+Package: yandex-messenger-native
+Architecture: amd64
+Depends: ${shlibs:Depends}, ${misc:Depends}, libgtk-4-1, libsqlite3-0, libssl3, libnotify4
+Description: Native Yandex Messenger for Linux
+ A native GTK4 + Rust implementation of Yandex Messenger (Telemost)
+ for Linux desktop. Features:
+  - Real-time messaging via WebSocket
+  - Audio/video calls (Telemost) via WebKit2GTK
+  - File sharing and voice messages
+  - Desktop notifications
+  - System tray integration
