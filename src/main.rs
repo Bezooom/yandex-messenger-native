@@ -1,9 +1,9 @@
 use std::sync::{Arc, Mutex};
 
+use adw::prelude::*;
 use gtk::prelude::*;
 use gtk::Orientation;
 use libadwaita as adw;
-use adw::prelude::*;
 
 use crate::api::auth::AuthManager;
 use crate::core::AppController;
@@ -118,7 +118,11 @@ fn load_theme_css() {
     }
 }
 
-fn create_app_layout(app: &adw::Application, win: &adw::ApplicationWindow, controller: Arc<AppController>) -> gtk::Box {
+fn create_app_layout(
+    app: &adw::Application,
+    win: &adw::ApplicationWindow,
+    controller: Arc<AppController>,
+) -> gtk::Box {
     let overlay = gtk::Overlay::new();
 
     // ── Root: Horizontal split (draggable split pane) ──
@@ -152,9 +156,9 @@ fn create_app_layout(app: &adw::Application, win: &adw::ApplicationWindow, contr
     });
 
     // ── Sidebar (chat list) ──
-    let chat_list = Arc::new(Mutex::new(
-        ui::ChatListPanel::new(controller.auth().clone()),
-    ));
+    let chat_list = Arc::new(Mutex::new(ui::ChatListPanel::new(
+        controller.auth().clone(),
+    )));
 
     let saved_panel = Arc::new(ui::saved_panel::SavedPanel::new(controller.auth().clone()));
 
@@ -261,112 +265,128 @@ fn create_app_layout(app: &adw::Application, win: &adw::ApplicationWindow, contr
 
     let ctrl_voice = controller.clone();
     let cv_for_voice = chat_view.clone();
-    chat_view.on_voice_send(move |chat_id: String, audio_data: Vec<u8>, duration: f64, waveform: Vec<f32>| {
-        let ctrl = ctrl_voice.clone();
-        let cv = cv_for_voice.clone();
-        glib::spawn_future_local(async move {
-            match ctrl.send_voice_message(&chat_id, &audio_data, duration, waveform).await {
-                Ok(msg) => {
-                    cv.add_message(msg);
+    chat_view.on_voice_send(
+        move |chat_id: String, audio_data: Vec<u8>, duration: f64, waveform: Vec<f32>| {
+            let ctrl = ctrl_voice.clone();
+            let cv = cv_for_voice.clone();
+            glib::spawn_future_local(async move {
+                match ctrl
+                    .send_voice_message(&chat_id, &audio_data, duration, waveform)
+                    .await
+                {
+                    Ok(msg) => {
+                        cv.add_message(msg);
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to send voice message: {}", e);
+                        cv.show_error(&e.to_string());
+                    }
                 }
-                Err(e) => {
-                    eprintln!("Failed to send voice message: {}", e);
-                    cv.show_error(&e.to_string());
-                }
-            }
-        });
-    });
+            });
+        },
+    );
 
     // ── Wire: Chat selection → load messages ──
     let ctrl_select = controller.clone();
     let cv_for_select = chat_view.clone();
     let ctrl_ws_for_select = controller.clone();
-    chat_list.lock().unwrap().connect_chat_selected(move |chat| {
-        let chat_id = chat.id.clone();
-        cv_for_select.set_chat(chat);
-        
-        let ctrl_cached = ctrl_select.clone();
-        let cv_cached = cv_for_select.clone();
-        let chat_id_cached = chat_id.clone();
-        glib::spawn_future_local(async move {
-            let cached = ctrl_cached.get_cached_messages_async(chat_id_cached.clone()).await;
-            let current_id = cv_cached.current_chat_id();
-            if current_id == Some(chat_id_cached) {
-                if !cached.is_empty() {
-                    cv_cached.set_messages(cached);
-                } else {
-                    cv_cached.set_messages(Vec::new());
-                }
-            }
-        });
-        
-        // Set the current chat for WebSocket subscription
-        let ctrl_ws = ctrl_ws_for_select.clone();
-        let chat_id_clone = chat_id.clone();
-        glib::spawn_future_local(async move {
-            ctrl_ws.ws().set_current_chat(Some(chat_id_clone)).await;
-        });
+    chat_list
+        .lock()
+        .unwrap()
+        .connect_chat_selected(move |chat| {
+            let chat_id = chat.id.clone();
+            cv_for_select.set_chat(chat);
 
-        let ctrl = ctrl_select.clone();
-        let cv = cv_for_select.clone();
-        let chat_id_future = chat_id.clone();
-        glib::spawn_future_local(async move {
-            match ctrl.select_chat(&chat_id_future).await {
-                Ok(messages) => {
-                    let current_chat_id = cv.current_chat_id();
-                    if current_chat_id == Some(chat_id_future.clone()) {
-                        cv.set_messages(messages);
+            let ctrl_cached = ctrl_select.clone();
+            let cv_cached = cv_for_select.clone();
+            let chat_id_cached = chat_id.clone();
+            glib::spawn_future_local(async move {
+                let cached = ctrl_cached
+                    .get_cached_messages_async(chat_id_cached.clone())
+                    .await;
+                let current_id = cv_cached.current_chat_id();
+                if current_id == Some(chat_id_cached) {
+                    if !cached.is_empty() {
+                        cv_cached.set_messages(cached);
+                    } else {
+                        cv_cached.set_messages(Vec::new());
                     }
                 }
-                Err(e) => {
-                    eprintln!("Failed to load messages for chat {}: {}", chat_id_future, e);
-                }
-            }
+            });
 
-            // Load scheduled messages
-            match ctrl.get_scheduled_messages(&chat_id_future).await {
-                Ok(sched_msgs) => {
-                    let current_chat_id = cv.current_chat_id();
-                    if current_chat_id == Some(chat_id_future) {
-                        cv.update_scheduled_messages(sched_msgs);
+            // Set the current chat for WebSocket subscription
+            let ctrl_ws = ctrl_ws_for_select.clone();
+            let chat_id_clone = chat_id.clone();
+            glib::spawn_future_local(async move {
+                ctrl_ws.ws().set_current_chat(Some(chat_id_clone)).await;
+            });
+
+            let ctrl = ctrl_select.clone();
+            let cv = cv_for_select.clone();
+            let chat_id_future = chat_id.clone();
+            glib::spawn_future_local(async move {
+                match ctrl.select_chat(&chat_id_future).await {
+                    Ok(messages) => {
+                        let current_chat_id = cv.current_chat_id();
+                        if current_chat_id == Some(chat_id_future.clone()) {
+                            cv.set_messages(messages);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to load messages for chat {}: {}", chat_id_future, e);
                     }
                 }
-                Err(e) => {
-                    eprintln!("Failed to load scheduled messages for chat {}: {}", chat_id_future, e);
+
+                // Load scheduled messages
+                match ctrl.get_scheduled_messages(&chat_id_future).await {
+                    Ok(sched_msgs) => {
+                        let current_chat_id = cv.current_chat_id();
+                        if current_chat_id == Some(chat_id_future) {
+                            cv.update_scheduled_messages(sched_msgs);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "Failed to load scheduled messages for chat {}: {}",
+                            chat_id_future, e
+                        );
+                    }
                 }
-            }
+            });
         });
-    });
 
     // ── Wire: Multi-Account Switching ──
     let auth_switch = controller.auth().clone();
     let ctrl_switch = controller.clone();
     let cl_for_switch = chat_list.clone();
     let cv_for_switch = chat_view.clone();
-    chat_list.lock().unwrap().connect_switch_account(move |account_id| {
-        let auth = auth_switch.clone();
-        let ctrl = ctrl_switch.clone();
-        let cl = cl_for_switch.clone();
-        let cv = cv_for_switch.clone();
-        glib::spawn_future_local(async move {
-            match auth.switch_account(&account_id).await {
-                Ok(_) => {
-                    if let Ok(token) = auth.get_token().await {
-                        ctrl.set_token(&token.access_token);
-                        ctrl.ws().force_reconnect().await;
-                        cv.set_empty();
-                        if let Ok(chats) = ctrl.load_chats().await {
-                            cl.lock().unwrap().set_chats(chats);
+    chat_list
+        .lock()
+        .unwrap()
+        .connect_switch_account(move |account_id| {
+            let auth = auth_switch.clone();
+            let ctrl = ctrl_switch.clone();
+            let cl = cl_for_switch.clone();
+            let cv = cv_for_switch.clone();
+            glib::spawn_future_local(async move {
+                match auth.switch_account(&account_id).await {
+                    Ok(_) => {
+                        if let Ok(token) = auth.get_token().await {
+                            ctrl.set_token(&token.access_token);
+                            ctrl.ws().force_reconnect().await;
+                            cv.set_empty();
+                            if let Ok(chats) = ctrl.load_chats().await {
+                                cl.lock().unwrap().set_chats(chats);
+                            }
+                            cl.lock().unwrap().refresh_header(&auth);
                         }
-                        cl.lock().unwrap().refresh_header(&auth);
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to switch account: {}", e);
                     }
                 }
-                Err(e) => {
-                    eprintln!("Failed to switch account: {}", e);
-                }
-            }
+            });
         });
-    });
 
     // ── Wire: Add Account & Logout ──
     let auth_add = controller.auth().clone();
@@ -379,8 +399,9 @@ fn create_app_layout(app: &adw::Application, win: &adw::ApplicationWindow, contr
         let ctrl = ctrl_add.clone();
         let cl = cl_for_add.clone();
         let cv = cv_for_add.clone();
-        
-        let auth_dialog = AuthDialog::new(&win_add, auth.clone(), tokio::runtime::Handle::current());
+
+        let auth_dialog =
+            AuthDialog::new(&win_add, auth.clone(), tokio::runtime::Handle::current());
         if let Ok(_) = auth_dialog.authenticate_with_selection() {
             glib::spawn_future_local(async move {
                 if let Some(_active_id) = auth.get_current_account_id().await {
@@ -414,7 +435,8 @@ fn create_app_layout(app: &adw::Application, win: &adw::ApplicationWindow, contr
                 Ok(_) => {
                     let accounts = auth.list_accounts().await;
                     if accounts.is_empty() {
-                        let auth_dialog = AuthDialog::new(&win, auth.clone(), tokio::runtime::Handle::current());
+                        let auth_dialog =
+                            AuthDialog::new(&win, auth.clone(), tokio::runtime::Handle::current());
                         if let Ok(_) = auth_dialog.authenticate_with_selection() {
                             if let Ok(token) = auth.get_token().await {
                                 ctrl.set_token(&token.access_token);
@@ -457,18 +479,18 @@ fn create_app_layout(app: &adw::Application, win: &adw::ApplicationWindow, contr
         let auth = auth_create.clone();
         let ctrl = ctrl_create.clone();
         let cl = cl_for_create.clone();
-        
+
         let dialog = ui::create_group_dialog::CreateGroupDialog::new(auth);
         dialog.set_transient_for(&win_create);
-        
+
         let dialog_clone = std::rc::Rc::new(dialog);
         let dialog_for_confirm = dialog_clone.clone();
         let dialog_for_cancel = dialog_clone.clone();
-        
+
         dialog_clone.connect_cancel_clicked(move || {
             dialog_for_cancel.hide();
         });
-        
+
         dialog_clone.connect_create_clicked(move || {
             let dg = dialog_for_confirm.clone();
             let ctrl = ctrl.clone();
@@ -477,14 +499,14 @@ fn create_app_layout(app: &adw::Application, win: &adw::ApplicationWindow, contr
             let description = dg.get_description();
             let is_public = dg.is_public();
             let is_channel = dg.is_channel();
-            
+
             glib::spawn_future_local(async move {
                 let res = if is_channel {
                     ctrl.create_channel(&title, description, is_public).await
                 } else {
                     ctrl.create_group(&title, Vec::new(), is_public).await
                 };
-                
+
                 match res {
                     Ok(_) => {
                         dg.hide();
@@ -498,7 +520,7 @@ fn create_app_layout(app: &adw::Application, win: &adw::ApplicationWindow, contr
                 }
             });
         });
-        
+
         dialog_clone.show();
     });
 
@@ -569,7 +591,10 @@ fn create_app_layout(app: &adw::Application, win: &adw::ApplicationWindow, contr
                 }
             }
             Err(e) => {
-                eprintln!("Failed to load sticker packs: {}. Using fallback mock packs.", e);
+                eprintln!(
+                    "Failed to load sticker packs: {}. Using fallback mock packs.",
+                    e
+                );
                 cv_for_stickers.update_sticker_packs(get_default_mock_packs());
             }
         }
@@ -604,36 +629,51 @@ fn create_app_layout(app: &adw::Application, win: &adw::ApplicationWindow, contr
             });
         };
         ctrl_ws.ws().on_state_change(ws_state_cb).await;
-        
+
         // Subscribe to incoming messages
-        let (tx_msg, mut rx_msg) = tokio::sync::mpsc::unbounded_channel::<crate::models::WSMessage>();
-        
+        let (tx_msg, mut rx_msg) =
+            tokio::sync::mpsc::unbounded_channel::<crate::models::WSMessage>();
+
         let ws_msg_cb = move |ws_msg: &crate::models::WSMessage| {
             let _ = tx_msg.send(ws_msg.clone());
         };
         ctrl_ws.ws().on_message(ws_msg_cb).await;
-        
+
         let cv_for_rx = cv_for_ws.clone();
         let cl_for_rx = cl_for_ws.clone();
         let ctrl_for_rx = ctrl_ws.clone();
-        
+
         glib::spawn_future_local(async move {
             while let Some(ws_msg) = rx_msg.recv().await {
                 let cv = cv_for_rx.clone();
                 let cl = cl_for_rx.clone();
                 let ctrl = ctrl_for_rx.clone();
-                let method = ws_msg.message.get("method")
+                let method = ws_msg
+                    .message
+                    .get("method")
                     .and_then(|m| m.as_str())
                     .unwrap_or("");
-                
+
                 match method {
                     "new_message" => {
                         if let Some(messages_val) = ws_msg.message.get("messages") {
-                            if let Ok(messages) = serde_json::from_value::<Vec<crate::models::Message>>(messages_val.clone()) {
+                            if let Ok(messages) = serde_json::from_value::<
+                                Vec<crate::models::Message>,
+                            >(messages_val.clone())
+                            {
                                 for msg in &messages {
                                     let mut sender = "Yandex User".to_string();
-                                    if let Some(chat) = ctrl.state().lock().await.chats.iter().find(|c| c.id == msg.chat_id) {
-                                        if let Some(p) = chat.participants.iter().find(|p| p.id == msg.from_id) {
+                                    if let Some(chat) = ctrl
+                                        .state()
+                                        .lock()
+                                        .await
+                                        .chats
+                                        .iter()
+                                        .find(|c| c.id == msg.chat_id)
+                                    {
+                                        if let Some(p) =
+                                            chat.participants.iter().find(|p| p.id == msg.from_id)
+                                        {
                                             if let Some(ref name) = p.name {
                                                 sender = name.clone();
                                             }
@@ -642,7 +682,7 @@ fn create_app_layout(app: &adw::Application, win: &adw::ApplicationWindow, contr
                                     let text = msg.text.as_deref().unwrap_or("").to_string();
                                     ui::notifications::send_notification(&sender, &text);
                                 }
-                                
+
                                 if let Some(chat_id) = ctrl.get_selected_chat_id().await {
                                     for msg in messages {
                                         cv.add_message(msg);
@@ -650,21 +690,32 @@ fn create_app_layout(app: &adw::Application, win: &adw::ApplicationWindow, contr
                                     // Update unread count
                                     let chats = ctrl.state().lock().await.chats.clone();
                                     if let Some(chat) = chats.iter().find(|c| c.id == chat_id) {
-                                        cl.lock().unwrap().update_unread(&chat.id, chat.unread_count);
+                                        cl.lock()
+                                            .unwrap()
+                                            .update_unread(&chat.id, chat.unread_count);
                                     }
                                 }
                             }
                         }
                     }
                     "unread_update" => {
-                        if let Some(chat_id) = ws_msg.message.get("chat_id").and_then(|c| c.as_str()) {
-                            if let Some(unread) = ws_msg.message.get("unread_count").and_then(|u| u.as_u64()) {
+                        if let Some(chat_id) =
+                            ws_msg.message.get("chat_id").and_then(|c| c.as_str())
+                        {
+                            if let Some(unread) =
+                                ws_msg.message.get("unread_count").and_then(|u| u.as_u64())
+                            {
                                 cl.lock().unwrap().update_unread(chat_id, unread as u32);
                             }
                         }
                     }
                     "typing_enhanced" => {
-                        if let Some(user) = ws_msg.message.get("user").and_then(|u| u.get("display_name")).and_then(|n| n.as_str()) {
+                        if let Some(user) = ws_msg
+                            .message
+                            .get("user")
+                            .and_then(|u| u.get("display_name"))
+                            .and_then(|n| n.as_str())
+                        {
                             cv.set_typing(user);
                         }
                     }
@@ -677,7 +728,7 @@ fn create_app_layout(app: &adw::Application, win: &adw::ApplicationWindow, contr
                 }
             }
         });
-        
+
         // Start WebSocket connection with auto-reconnect in a background thread
         let ctrl_ws_spawn = ctrl_ws.clone();
         tokio::spawn(async move {
@@ -698,16 +749,16 @@ fn create_app_layout(app: &adw::Application, win: &adw::ApplicationWindow, contr
     let iv_for_open = image_viewer.clone();
     chat_view.on_image_open(move |url, filename, all_images| {
         let current_idx = all_images.iter().position(|(u, _)| u == &url).unwrap_or(0);
-        
+
         iv_for_open.show(&url, &filename);
-        
+
         let iv_for_nav = iv_for_open.clone();
         iv_for_open.set_image_sequence(all_images.len(), current_idx, move |new_idx| {
             if let Some((new_url, new_filename)) = all_images.get(new_idx) {
                 iv_for_nav.show(new_url, new_filename);
             }
         });
-        
+
         iv_for_open.container.set_visible(true);
     });
 
@@ -721,95 +772,105 @@ fn create_app_layout(app: &adw::Application, win: &adw::ApplicationWindow, contr
 
 fn get_default_mock_packs() -> Vec<crate::models::StickerPack> {
     use crate::models::{Sticker, StickerPack};
-    vec![
-        StickerPack {
-            pack_id: "yandex_cat".to_string(),
-            title: "Котик YM".to_string(),
-            stickers: vec![
-                Sticker {
-                    sticker_id: "yc1".to_string(),
-                    pack_id: "yandex_cat".to_string(),
-                    file_url: "https://telegram.org.ru/uploads/posts/2017-10/1507404434_0.png".to_string(),
-                    thumb_url: "https://telegram.org.ru/uploads/posts/2017-10/1507404434_0.png".to_string(),
-                    width: 512,
-                    height: 512,
-                    emoji: "👋".to_string(),
-                    file_size: 10240,
-                    is_animated: false,
-                    is_text_sticker: false,
-                    text: None,
-                },
-                Sticker {
-                    sticker_id: "yc2".to_string(),
-                    pack_id: "yandex_cat".to_string(),
-                    file_url: "https://telegram.org.ru/uploads/posts/2017-10/1507404434_1.png".to_string(),
-                    thumb_url: "https://telegram.org.ru/uploads/posts/2017-10/1507404434_1.png".to_string(),
-                    width: 512,
-                    height: 512,
-                    emoji: "😊".to_string(),
-                    file_size: 10240,
-                    is_animated: false,
-                    is_text_sticker: false,
-                    text: None,
-                },
-                Sticker {
-                    sticker_id: "yc3".to_string(),
-                    pack_id: "yandex_cat".to_string(),
-                    file_url: "https://telegram.org.ru/uploads/posts/2017-10/1507404434_2.png".to_string(),
-                    thumb_url: "https://telegram.org.ru/uploads/posts/2017-10/1507404434_2.png".to_string(),
-                    width: 512,
-                    height: 512,
-                    emoji: "😂".to_string(),
-                    file_size: 10240,
-                    is_animated: false,
-                    is_text_sticker: false,
-                    text: None,
-                },
-                Sticker {
-                    sticker_id: "yc4".to_string(),
-                    pack_id: "yandex_cat".to_string(),
-                    file_url: "https://telegram.org.ru/uploads/posts/2017-10/1507404434_3.png".to_string(),
-                    thumb_url: "https://telegram.org.ru/uploads/posts/2017-10/1507404434_3.png".to_string(),
-                    width: 512,
-                    height: 512,
-                    emoji: "😮".to_string(),
-                    file_size: 10240,
-                    is_animated: false,
-                    is_text_sticker: false,
-                    text: None,
-                },
-                Sticker {
-                    sticker_id: "yc5".to_string(),
-                    pack_id: "yandex_cat".to_string(),
-                    file_url: "https://telegram.org.ru/uploads/posts/2017-10/1507404434_4.png".to_string(),
-                    thumb_url: "https://telegram.org.ru/uploads/posts/2017-10/1507404434_4.png".to_string(),
-                    width: 512,
-                    height: 512,
-                    emoji: "😡".to_string(),
-                    file_size: 10240,
-                    is_animated: false,
-                    is_text_sticker: false,
-                    text: None,
-                },
-                Sticker {
-                    sticker_id: "yc6".to_string(),
-                    pack_id: "yandex_cat".to_string(),
-                    file_url: "https://telegram.org.ru/uploads/posts/2017-10/1507404434_5.png".to_string(),
-                    thumb_url: "https://telegram.org.ru/uploads/posts/2017-10/1507404434_5.png".to_string(),
-                    width: 512,
-                    height: 512,
-                    emoji: "😭".to_string(),
-                    file_size: 10240,
-                    is_animated: false,
-                    is_text_sticker: false,
-                    text: None,
-                },
-            ],
-            is_installed: true,
-            is_featured: true,
-            category: "Котики".to_string(),
-            thumb_url: "https://telegram.org.ru/uploads/posts/2017-10/1507404434_0.png".to_string(),
-            sticker_count: 6,
-        }
-    ]
+    vec![StickerPack {
+        pack_id: "yandex_cat".to_string(),
+        title: "Котик YM".to_string(),
+        stickers: vec![
+            Sticker {
+                sticker_id: "yc1".to_string(),
+                pack_id: "yandex_cat".to_string(),
+                file_url: "https://telegram.org.ru/uploads/posts/2017-10/1507404434_0.png"
+                    .to_string(),
+                thumb_url: "https://telegram.org.ru/uploads/posts/2017-10/1507404434_0.png"
+                    .to_string(),
+                width: 512,
+                height: 512,
+                emoji: "👋".to_string(),
+                file_size: 10240,
+                is_animated: false,
+                is_text_sticker: false,
+                text: None,
+            },
+            Sticker {
+                sticker_id: "yc2".to_string(),
+                pack_id: "yandex_cat".to_string(),
+                file_url: "https://telegram.org.ru/uploads/posts/2017-10/1507404434_1.png"
+                    .to_string(),
+                thumb_url: "https://telegram.org.ru/uploads/posts/2017-10/1507404434_1.png"
+                    .to_string(),
+                width: 512,
+                height: 512,
+                emoji: "😊".to_string(),
+                file_size: 10240,
+                is_animated: false,
+                is_text_sticker: false,
+                text: None,
+            },
+            Sticker {
+                sticker_id: "yc3".to_string(),
+                pack_id: "yandex_cat".to_string(),
+                file_url: "https://telegram.org.ru/uploads/posts/2017-10/1507404434_2.png"
+                    .to_string(),
+                thumb_url: "https://telegram.org.ru/uploads/posts/2017-10/1507404434_2.png"
+                    .to_string(),
+                width: 512,
+                height: 512,
+                emoji: "😂".to_string(),
+                file_size: 10240,
+                is_animated: false,
+                is_text_sticker: false,
+                text: None,
+            },
+            Sticker {
+                sticker_id: "yc4".to_string(),
+                pack_id: "yandex_cat".to_string(),
+                file_url: "https://telegram.org.ru/uploads/posts/2017-10/1507404434_3.png"
+                    .to_string(),
+                thumb_url: "https://telegram.org.ru/uploads/posts/2017-10/1507404434_3.png"
+                    .to_string(),
+                width: 512,
+                height: 512,
+                emoji: "😮".to_string(),
+                file_size: 10240,
+                is_animated: false,
+                is_text_sticker: false,
+                text: None,
+            },
+            Sticker {
+                sticker_id: "yc5".to_string(),
+                pack_id: "yandex_cat".to_string(),
+                file_url: "https://telegram.org.ru/uploads/posts/2017-10/1507404434_4.png"
+                    .to_string(),
+                thumb_url: "https://telegram.org.ru/uploads/posts/2017-10/1507404434_4.png"
+                    .to_string(),
+                width: 512,
+                height: 512,
+                emoji: "😡".to_string(),
+                file_size: 10240,
+                is_animated: false,
+                is_text_sticker: false,
+                text: None,
+            },
+            Sticker {
+                sticker_id: "yc6".to_string(),
+                pack_id: "yandex_cat".to_string(),
+                file_url: "https://telegram.org.ru/uploads/posts/2017-10/1507404434_5.png"
+                    .to_string(),
+                thumb_url: "https://telegram.org.ru/uploads/posts/2017-10/1507404434_5.png"
+                    .to_string(),
+                width: 512,
+                height: 512,
+                emoji: "😭".to_string(),
+                file_size: 10240,
+                is_animated: false,
+                is_text_sticker: false,
+                text: None,
+            },
+        ],
+        is_installed: true,
+        is_featured: true,
+        category: "Котики".to_string(),
+        thumb_url: "https://telegram.org.ru/uploads/posts/2017-10/1507404434_0.png".to_string(),
+        sticker_count: 6,
+    }]
 }

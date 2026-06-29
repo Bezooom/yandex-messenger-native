@@ -1,9 +1,7 @@
 #![allow(dead_code)]
 
 use gtk::prelude::*;
-use gtk::{
-    Align, Box as GtkBox, Button, Orientation, Popover,
-};
+use gtk::{Align, Box as GtkBox, Button, Orientation, Popover};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -12,11 +10,11 @@ use crate::models::{ExtendedReactionsConfig, Reaction};
 /// Quick reaction emojis that appear as the first row of buttons.
 const DEFAULT_QUICK_EMOJIS: &[&str] = &[
     "\u{2764}\u{FE0F}", // ❤️  red heart
-    "\u{1F44D}",       // 👍 thumbs up
-    "\u{1F602}",       // 😂 laughing
-    "\u{1F914}",       // 🤔 thinking
-    "\u{1F622}",       // 😢 sad
-    "\u{1F525}",       // 🔥 fire
+    "\u{1F44D}",        // 👍 thumbs up
+    "\u{1F602}",        // 😂 laughing
+    "\u{1F914}",        // 🤔 thinking
+    "\u{1F622}",        // 😢 sad
+    "\u{1F525}",        // 🔥 fire
 ];
 
 /// ReactionPanel — a popup panel showing available reactions for a message.
@@ -105,10 +103,7 @@ impl ReactionPanel {
             }
         } else {
             // Show "+" button to expand
-            let more_btn = Button::builder()
-                .label("+")
-                .sensitive(false)
-                .build();
+            let more_btn = Button::builder().label("+").sensitive(false).build();
             more_btn.set_css_classes(&["reaction-btn", "circular"]);
             more_btn.set_size_request(32, 32);
             extended_row.append(&more_btn);
@@ -123,9 +118,7 @@ impl ReactionPanel {
 
     /// Create a single reaction emoji button with circular styling.
     fn create_reaction_button(&self, emoji: &str) -> Button {
-        let btn = Button::builder()
-            .label(emoji)
-            .build();
+        let btn = Button::builder().label(emoji).build();
 
         btn.set_css_classes(&["reaction-btn", "circular"]);
         btn.set_size_request(36, 36);
@@ -133,7 +126,7 @@ impl ReactionPanel {
 
         let message_id = self.message_id.clone();
         let emoji = emoji.to_string();
-        
+
         let on_click = Rc::clone(&self.on_reaction_click);
         let on_remove = Rc::clone(&self.on_remove_reaction);
 

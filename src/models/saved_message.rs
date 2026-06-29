@@ -11,7 +11,7 @@ pub struct SavedMessage {
     pub source_message: String, // The original message ID
     pub saved_at: DateTime<Utc>,
     pub note: Option<String>,
-    pub media_type: Option<String>,  // "text", "image", "link", "file"
+    pub media_type: Option<String>, // "text", "image", "link", "file"
     pub preview: Option<String>,
 }
 

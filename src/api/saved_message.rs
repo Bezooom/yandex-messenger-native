@@ -44,7 +44,7 @@ impl SavedMessageStore {
         let store = self.messages.lock().await;
         let mut msgs = store.clone();
         msgs.sort_by(|a, b| b.saved_at.cmp(&a.saved_at));
-        
+
         let total = msgs.len();
         let start = offset.min(total);
         let end = (start + limit).min(total);
@@ -89,8 +89,16 @@ impl SavedMessageStore {
         let mut results: Vec<SavedMessage> = store
             .iter()
             .filter(|m| {
-                m.preview.as_deref().unwrap_or("").to_lowercase().contains(&q_lower)
-                    || m.note.as_deref().unwrap_or("").to_lowercase().contains(&q_lower)
+                m.preview
+                    .as_deref()
+                    .unwrap_or("")
+                    .to_lowercase()
+                    .contains(&q_lower)
+                    || m.note
+                        .as_deref()
+                        .unwrap_or("")
+                        .to_lowercase()
+                        .contains(&q_lower)
                     || m.source_message.contains(&q_lower)
             })
             .cloned()
@@ -165,7 +173,11 @@ impl SavedMessagesApi {
     }
 
     /// Search saved messages
-    pub async fn search_saved(&self, query: &str, limit: usize) -> Result<Vec<SavedMessage>, String> {
+    pub async fn search_saved(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<SavedMessage>, String> {
         Ok(self.store.search(query, limit).await)
     }
 

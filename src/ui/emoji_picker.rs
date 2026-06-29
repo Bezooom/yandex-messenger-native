@@ -1,7 +1,7 @@
 use gtk::prelude::*;
 use gtk::{Box as GtkBox, Button, Orientation, ScrolledWindow, Widget};
-use std::rc::Rc;
 use std::cell::RefCell;
+use std::rc::Rc;
 
 pub struct EmojiPicker {
     pub container: GtkBox,
@@ -17,7 +17,7 @@ impl EmojiPicker {
             .min_content_height(48)
             .min_content_width(320)
             .build();
-        
+
         let hbox = GtkBox::new(Orientation::Horizontal, 4);
         hbox.set_margin_start(8);
         hbox.set_margin_end(8);
@@ -25,14 +25,12 @@ impl EmojiPicker {
         hbox.set_margin_bottom(4);
 
         let emojis = ["😀", "😂", "❤️", "👍", "🙏", "😭", "😢", "🥺", "🔥", "😊"];
-        
-        let on_emoji_selected: Rc<RefCell<Option<Box<dyn Fn(String)>>>> = Rc::new(RefCell::new(None));
+
+        let on_emoji_selected: Rc<RefCell<Option<Box<dyn Fn(String)>>>> =
+            Rc::new(RefCell::new(None));
 
         for emoji in emojis {
-            let btn = Button::builder()
-                .label(emoji)
-                .has_frame(false)
-                .build();
+            let btn = Button::builder().label(emoji).has_frame(false).build();
             btn.add_css_class("flat");
 
             let emoji_str = emoji.to_string();

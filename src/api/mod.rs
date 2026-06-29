@@ -1,27 +1,26 @@
 #![allow(dead_code)]
 
 pub mod auth;
-pub mod folder;
-pub mod translation;
-pub mod saved_message;
 pub mod bot;
-pub mod scheduled_message;
+pub mod folder;
 pub mod group;
+pub mod saved_message;
+pub mod scheduled_message;
+pub mod translation;
 
 use reqwest::Client;
 use serde_json::Value;
-use std::sync::Arc;
-use tokio::sync::{Mutex, oneshot};
 use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::{oneshot, Mutex};
 
 use crate::api::auth::AuthManager;
 use crate::config;
 use crate::models;
 
-use tokio_tungstenite::tungstenite::Message;
+use futures::{SinkExt, StreamExt};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
-use futures::{StreamExt, SinkExt};
-
+use tokio_tungstenite::tungstenite::Message;
 
 /// WebSocket state
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -43,7 +42,9 @@ pub struct WebSocketClient {
     callbacks: Arc<Mutex<Vec<MessageCallback>>>,
     state_callbacks: Arc<Mutex<Vec<StateCallback>>>,
     seq_counter: Arc<Mutex<u64>>,
-    tx: Arc<Mutex<Option<tokio::sync::mpsc::UnboundedSender<tokio_tungstenite::tungstenite::Message>>>>,
+    tx: Arc<
+        Mutex<Option<tokio::sync::mpsc::UnboundedSender<tokio_tungstenite::tungstenite::Message>>>,
+    >,
     pending_requests: Arc<Mutex<HashMap<u64, oneshot::Sender<Result<serde_json::Value, String>>>>>,
     /// Current chat being subscribed to
     current_chat_id: Arc<Mutex<Option<String>>>,
@@ -98,19 +99,19 @@ impl WebSocketClient {
 
         let content = std::fs::read_to_string(&session_file).ok()?;
         let data: serde_json::Value = serde_json::from_str(&content).ok()?;
-        
+
         let cookies_map = data.get("cookies")?.as_object()?;
-        
+
         let mut cookie_str = String::new();
         let mut uid = String::new();
-        
+
         for (k, v) in cookies_map {
             let val_str = v.as_str()?;
             if !cookie_str.is_empty() {
                 cookie_str.push_str("; ");
             }
             cookie_str.push_str(&format!("{}={}", k, val_str));
-            
+
             if k == "Session_id" {
                 if let Some(pos) = val_str.find('|') {
                     let sub = &val_str[pos + 1..];
@@ -120,7 +121,7 @@ impl WebSocketClient {
                 }
             }
         }
-        
+
         if cookie_str.is_empty() || uid.is_empty() {
             None
         } else {
@@ -144,7 +145,7 @@ impl WebSocketClient {
             bytes.push(0xce);
             bytes.extend_from_slice(&(seq as u32).to_be_bytes());
         }
-        
+
         let len = method.len();
         if len < 32 {
             bytes.push(0xa0 + len as u8);
@@ -174,29 +175,46 @@ impl WebSocketClient {
         if array_header != 0x92 && array_header != 0x93 && array_header != 0x94 {
             return None;
         }
-        
+
         let offset = 2;
         let type_byte = bin[offset];
         if type_byte <= 0x7f {
             Some((type_byte as u64, offset + 1))
         } else if type_byte == 0xcc {
-            if bin.len() < offset + 2 { return None; }
+            if bin.len() < offset + 2 {
+                return None;
+            }
             Some((bin[offset + 1] as u64, offset + 2))
         } else if type_byte == 0xcd {
-            if bin.len() < offset + 3 { return None; }
+            if bin.len() < offset + 3 {
+                return None;
+            }
             let val = u16::from_be_bytes([bin[offset + 1], bin[offset + 2]]);
             Some((val as u64, offset + 3))
         } else if type_byte == 0xce {
-            if bin.len() < offset + 5 { return None; }
+            if bin.len() < offset + 5 {
+                return None;
+            }
             let val = u32::from_be_bytes([
-                bin[offset + 1], bin[offset + 2], bin[offset + 3], bin[offset + 4]
+                bin[offset + 1],
+                bin[offset + 2],
+                bin[offset + 3],
+                bin[offset + 4],
             ]);
             Some((val as u64, offset + 5))
         } else if type_byte == 0xcf {
-            if bin.len() < offset + 9 { return None; }
+            if bin.len() < offset + 9 {
+                return None;
+            }
             let val = u64::from_be_bytes([
-                bin[offset + 1], bin[offset + 2], bin[offset + 3], bin[offset + 4],
-                bin[offset + 5], bin[offset + 6], bin[offset + 7], bin[offset + 8]
+                bin[offset + 1],
+                bin[offset + 2],
+                bin[offset + 3],
+                bin[offset + 4],
+                bin[offset + 5],
+                bin[offset + 6],
+                bin[offset + 7],
+                bin[offset + 8],
             ]);
             Some((val, offset + 9))
         } else {
@@ -260,15 +278,17 @@ impl WebSocketClient {
                         client.run_forever().await;
                         // Reconnect loop
                         attempts += 1;
-                        log::info!("WebSocket disconnected, reconnecting in {}s (attempt {})", 
-                            interval_ms / 1000, attempts);
+                        log::info!(
+                            "WebSocket disconnected, reconnecting in {}s (attempt {})",
+                            interval_ms / 1000,
+                            attempts
+                        );
                         tokio::time::sleep(std::time::Duration::from_millis(interval_ms)).await;
                         interval_ms = (interval_ms * 2).min(32_000);
                     }
                     Err(e) => {
                         attempts += 1;
-                        log::warn!("WebSocket connection failed (attempt {}): {}", 
-                            attempts, e);
+                        log::warn!("WebSocket connection failed (attempt {}): {}", attempts, e);
                         tokio::time::sleep(std::time::Duration::from_millis(interval_ms)).await;
                         interval_ms = (interval_ms * 2).min(32_000);
                     }
@@ -279,30 +299,33 @@ impl WebSocketClient {
 
     /// Perform a single WebSocket connection attempt
     async fn do_connect(&self) -> Result<(), String> {
-        let (cookies_str, uid) = Self::get_session_cookies_and_uid()
-            .ok_or_else(|| "Failed to load session cookies/UID from session.json. Please run login script.".to_string())?;
+        let (cookies_str, uid) = Self::get_session_cookies_and_uid().ok_or_else(|| {
+            "Failed to load session cookies/UID from session.json. Please run login script."
+                .to_string()
+        })?;
 
-        let xiva_session = format!("{}-{}-{}-{}", 
-            &uuid::Uuid::new_v4().simple().to_string()[..4], 
+        let xiva_session = format!(
+            "{}-{}-{}-{}",
             &uuid::Uuid::new_v4().simple().to_string()[..4],
-            &uuid::Uuid::new_v4().simple().to_string()[..4], 
+            &uuid::Uuid::new_v4().simple().to_string()[..4],
+            &uuid::Uuid::new_v4().simple().to_string()[..4],
             &uuid::Uuid::new_v4().simple().to_string()[..4]
         );
-        
+
         let ws_url = format!(
             "wss://push.yandex.ru/v2/subscribe/websocket?service=messenger-prod%3Aversion5*common%2Bversion5*main&session={}&client=web_main&user={}",
             xiva_session, uid
         );
-        
+
         let mut request = ws_url.into_client_request().map_err(|e| e.to_string())?;
         request.headers_mut().insert(
             "Cookie",
             tokio_tungstenite::tungstenite::http::HeaderValue::from_str(&cookies_str)
-                .map_err(|e| e.to_string())?
+                .map_err(|e| e.to_string())?,
         );
         request.headers_mut().insert(
             "Origin",
-            tokio_tungstenite::tungstenite::http::HeaderValue::from_static("https://yandex.ru")
+            tokio_tungstenite::tungstenite::http::HeaderValue::from_static("https://yandex.ru"),
         );
         request.headers_mut().insert(
             "User-Agent",
@@ -311,7 +334,7 @@ impl WebSocketClient {
 
         let (ws_stream, _response) = tokio::time::timeout(
             std::time::Duration::from_secs(15),
-            tokio_tungstenite::connect_async(request)
+            tokio_tungstenite::connect_async(request),
         )
         .await
         .map_err(|_| "WebSocket connection timed out".to_string())?
@@ -336,7 +359,9 @@ impl WebSocketClient {
 
         // Write loop & heartbeat
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(crate::config::WS_HEARTBEAT_INTERVAL));
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(
+                crate::config::WS_HEARTBEAT_INTERVAL,
+            ));
             loop {
                 tokio::select! {
                     msg = rx.recv() => {
@@ -368,7 +393,8 @@ impl WebSocketClient {
                         if text.contains("\"operation\":\"ping\"") {
                             let tx_guard = tx_for_ping.lock().await;
                             if let Some(ref sender) = *tx_guard {
-                                let _ = sender.send(Message::Text("{\"operation\":\"pong\"}".into()));
+                                let _ =
+                                    sender.send(Message::Text("{\"operation\":\"pong\"}".into()));
                             }
                         }
 
@@ -390,7 +416,8 @@ impl WebSocketClient {
                             }
                         }
 
-                        if let Ok(ws_msg) = serde_json::from_str::<crate::models::WSMessage>(&text) {
+                        if let Ok(ws_msg) = serde_json::from_str::<crate::models::WSMessage>(&text)
+                        {
                             let cbs = callbacks.lock().await;
                             for cb in cbs.iter() {
                                 cb(&ws_msg);
@@ -421,15 +448,19 @@ impl WebSocketClient {
                                         } else {
                                             None
                                         };
-                                        
+
                                         if let Some(json_str) = trailing_json {
-                                            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&json_str) {
+                                            if let Ok(val) =
+                                                serde_json::from_str::<serde_json::Value>(&json_str)
+                                            {
                                                 let _ = sender.send(Ok(val));
                                             } else {
-                                                let _ = sender.send(Ok(serde_json::json!({"status": "ok"})));
+                                                let _ = sender
+                                                    .send(Ok(serde_json::json!({"status": "ok"})));
                                             }
                                         } else {
-                                            let _ = sender.send(Ok(serde_json::json!({"status": "ok"})));
+                                            let _ = sender
+                                                .send(Ok(serde_json::json!({"status": "ok"})));
                                         }
                                     }
                                 }
@@ -447,34 +478,54 @@ impl WebSocketClient {
                         } else if first_byte == 0x03 {
                             // Passive push delivery
                             if let Some(json_str) = Self::extract_json_payload(&bin) {
-                                if let Ok(parsed_json) = serde_json::from_str::<serde_json::Value>(&json_str) {
+                                if let Ok(parsed_json) =
+                                    serde_json::from_str::<serde_json::Value>(&json_str)
+                                {
                                     let mut method = "";
                                     let mut mapped_msg = serde_json::json!({});
-                                    
+
                                     if let Some(client_msg) = parsed_json.get("ClientMessage") {
                                         if let Some(plain) = client_msg.get("Plain") {
-                                            let chat_id = plain.get("ChatId").and_then(|v| v.as_str()).unwrap_or("");
+                                            let chat_id = plain
+                                                .get("ChatId")
+                                                .and_then(|v| v.as_str())
+                                                .unwrap_or("");
                                             let text_obj = plain.get("Text");
-                                            let text = text_obj.and_then(|t| t.get("MessageText")).and_then(|t| t.as_str()).unwrap_or("");
-                                            let payload_id = plain.get("PayloadId").and_then(|p| p.as_str()).unwrap_or("");
-                                            let from_guid = parsed_json.get("ServerMessageInfo")
+                                            let text = text_obj
+                                                .and_then(|t| t.get("MessageText"))
+                                                .and_then(|t| t.as_str())
+                                                .unwrap_or("");
+                                            let payload_id = plain
+                                                .get("PayloadId")
+                                                .and_then(|p| p.as_str())
+                                                .unwrap_or("");
+                                            let from_guid = parsed_json
+                                                .get("ServerMessageInfo")
                                                 .and_then(|smi| smi.get("From"))
                                                 .and_then(|f| f.get("Guid"))
                                                 .and_then(|g| g.as_str())
                                                 .or_else(|| {
-                                                    parsed_json.get("ServerMessageInfo")
+                                                    parsed_json
+                                                        .get("ServerMessageInfo")
                                                         .and_then(|smi| smi.get("FromGuid"))
                                                         .and_then(|fg| fg.as_str())
                                                 })
                                                 .unwrap_or("system");
-                                            let timestamp = parsed_json.get("ServerMessageInfo")
+                                            let timestamp = parsed_json
+                                                .get("ServerMessageInfo")
                                                 .and_then(|smi| smi.get("Timestamp"))
                                                 .and_then(|t| t.as_i64())
-                                                .unwrap_or_else(|| chrono::Utc::now().timestamp_millis());
-                                            
+                                                .unwrap_or_else(|| {
+                                                    chrono::Utc::now().timestamp_millis()
+                                                });
+
                                             if !chat_id.is_empty() && !text.is_empty() {
                                                 method = "new_message";
-                                                let msg_id_val: String = if !payload_id.is_empty() { payload_id.to_string() } else { uuid::Uuid::new_v4().simple().to_string() };
+                                                let msg_id_val: String = if !payload_id.is_empty() {
+                                                    payload_id.to_string()
+                                                } else {
+                                                    uuid::Uuid::new_v4().simple().to_string()
+                                                };
                                                 mapped_msg = serde_json::json!({
                                                     "method": "new_message",
                                                     "messages": [{
@@ -490,15 +541,29 @@ impl WebSocketClient {
                                             }
                                         }
                                     } else if parsed_json.get("ServerMessage").is_some() {
-                                        let chat_id = Self::find_json_field(&parsed_json, "ChatId").unwrap_or_default();
-                                        let text = Self::find_json_field(&parsed_json, "Text").unwrap_or_default();
-                                        let from_guid = Self::find_json_field(&parsed_json, "FromGuid").unwrap_or_else(|| "system".to_string());
-                                        let message_id = Self::find_json_field(&parsed_json, "MessageId").or_else(|| Self::find_json_field(&parsed_json, "PayloadId")).unwrap_or_else(|| uuid::Uuid::new_v4().simple().to_string());
-                                        let timestamp = parsed_json.get("ServerMessageInfo")
+                                        let chat_id = Self::find_json_field(&parsed_json, "ChatId")
+                                            .unwrap_or_default();
+                                        let text = Self::find_json_field(&parsed_json, "Text")
+                                            .unwrap_or_default();
+                                        let from_guid =
+                                            Self::find_json_field(&parsed_json, "FromGuid")
+                                                .unwrap_or_else(|| "system".to_string());
+                                        let message_id =
+                                            Self::find_json_field(&parsed_json, "MessageId")
+                                                .or_else(|| {
+                                                    Self::find_json_field(&parsed_json, "PayloadId")
+                                                })
+                                                .unwrap_or_else(|| {
+                                                    uuid::Uuid::new_v4().simple().to_string()
+                                                });
+                                        let timestamp = parsed_json
+                                            .get("ServerMessageInfo")
                                             .and_then(|smi| smi.get("Timestamp"))
                                             .and_then(|t| t.as_i64())
-                                            .unwrap_or_else(|| chrono::Utc::now().timestamp_millis());
-                                        
+                                            .unwrap_or_else(|| {
+                                                chrono::Utc::now().timestamp_millis()
+                                            });
+
                                         if !chat_id.is_empty() && !text.is_empty() {
                                             method = "new_message";
                                             mapped_msg = serde_json::json!({
@@ -515,11 +580,11 @@ impl WebSocketClient {
                                             });
                                         }
                                     }
-                                    
+
                                     if !method.is_empty() {
                                         let ws_msg = crate::models::WSMessage {
                                             seq: 0,
-                                            message: mapped_msg
+                                            message: mapped_msg,
                                         };
                                         let cbs = callbacks.lock().await;
                                         for cb in cbs.iter() {
@@ -565,21 +630,24 @@ impl WebSocketClient {
         // We need to reconnect the read loop — we'll do this by periodically checking
         // if we're still connected and re-subscribing
         let mut last_state = WSState::Connected;
-        
+
         loop {
             // Check if still connected
             let current_state = {
                 let s = state.lock().await;
                 s.clone()
             };
-            
+
             if current_state != WSState::Connected {
                 break;
             }
 
             // Re-subscribe if state changed
             if current_state != last_state {
-                log::info!("WebSocket state changed to {:?}, re-subscribing", current_state);
+                log::info!(
+                    "WebSocket state changed to {:?}, re-subscribing",
+                    current_state
+                );
                 last_state = current_state;
                 if let Some(chat_id) = self.current_chat_id.lock().await.clone() {
                     let _ = self.subscribe(&chat_id).await;
@@ -619,16 +687,19 @@ impl WebSocketClient {
         *state = WSState::Disconnected;
     }
 
-
     /// Send a message via WebSocket (using the Yandex binary protocol)
-    pub async fn send_message(&self, method: &str, params: serde_json::Value) -> Result<u64, String> {
+    pub async fn send_message(
+        &self,
+        method: &str,
+        params: serde_json::Value,
+    ) -> Result<u64, String> {
         let mut counter = self.seq_counter.lock().await;
         let seq = *counter;
         *counter += 1;
         drop(counter);
 
         let msgpack_header = Self::serialize_push_header_with_method(seq, method);
-        
+
         let mut bin_header = Vec::new();
         bin_header.push(0x05);
         bin_header.extend_from_slice(&0u64.to_be_bytes()); // 0 timestamp
@@ -657,31 +728,47 @@ impl WebSocketClient {
     }
 
     /// Send a message via WebSocket and wait for a response
-    pub async fn send_request(&self, method: &str, params: serde_json::Value) -> Result<serde_json::Value, String> {
+    pub async fn send_request(
+        &self,
+        method: &str,
+        params: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
         let (tx_resp, rx_resp) = oneshot::channel();
-        
+
         let seq = self.send_message(method, params).await?;
-        
+
         {
             let mut pending = self.pending_requests.lock().await;
             pending.insert(seq, tx_resp);
         }
-        
+
         tokio::time::timeout(std::time::Duration::from_secs(10), rx_resp)
             .await
             .map_err(|_| "WebSocket request timed out".to_string())?
             .map_err(|_| "WebSocket request channel closed".to_string())?
     }
 
-    pub async fn get_chat_list(&self, _offset: usize, _limit: usize) -> Result<Vec<models::Chat>, String> {
-        let response = self.send_request("bootstrap", serde_json::json!({
-            "flags": {
-                "with_deleted": true,
-                "compact": false
-            }
-        })).await?;
+    pub async fn get_chat_list(
+        &self,
+        _offset: usize,
+        _limit: usize,
+    ) -> Result<Vec<models::Chat>, String> {
+        let response = self
+            .send_request(
+                "bootstrap",
+                serde_json::json!({
+                    "flags": {
+                        "with_deleted": true,
+                        "compact": false
+                    }
+                }),
+            )
+            .await?;
 
-        log::info!("Bootstrap response: {}", serde_json::to_string_pretty(&response).unwrap_or_default());
+        log::info!(
+            "Bootstrap response: {}",
+            serde_json::to_string_pretty(&response).unwrap_or_default()
+        );
 
         // Extract chats from the response
         if let Some(chats_val) = response.get("chats") {
@@ -689,7 +776,7 @@ impl WebSocketClient {
                 .map_err(|e| format!("Failed to parse chats: {}", e))?;
             return Ok(chats);
         }
-        
+
         Err("No chats found in bootstrap response".to_string())
     }
 
@@ -709,19 +796,22 @@ impl WebSocketClient {
         }
 
         let response = self.send_request("get_history", params).await?;
-        
-        log::info!("History response: {}", serde_json::to_string_pretty(&response).unwrap_or_default());
+
+        log::info!(
+            "History response: {}",
+            serde_json::to_string_pretty(&response).unwrap_or_default()
+        );
 
         if let Some(messages_val) = response.get("messages") {
             let messages: Vec<models::Message> = serde_json::from_value(messages_val.clone())
                 .map_err(|e| format!("Failed to parse messages: {}", e))?;
             return Ok(messages);
         }
-        
+
         Err("No messages found in history response".to_string())
     }
 
-     fn get_yuid_from_session() -> Option<String> {
+    fn get_yuid_from_session() -> Option<String> {
         let config_dir = dirs::config_dir()
             .map(|d| d.join("yandex-messenger-native"))
             .unwrap_or_default();
@@ -734,13 +824,17 @@ impl WebSocketClient {
         let content = std::fs::read_to_string(&session_file).ok()?;
         let data: serde_json::Value = serde_json::from_str(&content).ok()?;
         let cookies_map = data.get("cookies")?.as_object()?;
-        cookies_map.get("yandexuid").or_else(|| cookies_map.get("uid")).and_then(|v| v.as_str()).map(|s| s.to_string())
+        cookies_map
+            .get("yandexuid")
+            .or_else(|| cookies_map.get("uid"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
     }
 
     fn make_ack_packet(seq: u64) -> Vec<u8> {
         let mut bytes = Vec::new();
         bytes.push(0x02); // Packet type 2
-        // MsgPack array of 2 elements [seq, 0]
+                          // MsgPack array of 2 elements [seq, 0]
         bytes.push(0x92);
         // Serialize seq
         if seq < 128 {
@@ -766,13 +860,14 @@ impl WebSocketClient {
         reply_to: Option<&str>,
     ) -> Result<models::Message, String> {
         let payload_id = uuid::Uuid::new_v4().simple().to_string();
-        
+
         let mut counter = self.seq_counter.lock().await;
         let seq = *counter;
         *counter += 1;
         drop(counter);
 
-        let yuid = Self::get_yuid_from_session().unwrap_or_else(|| "1057346851777820885".to_string());
+        let yuid =
+            Self::get_yuid_from_session().unwrap_or_else(|| "1057346851777820885".to_string());
         let custom_payload_json = serde_json::json!({
             "service": {
                 "serviceName": "WEB",
@@ -781,19 +876,20 @@ impl WebSocketClient {
                 "isHistory": true,
                 "ui": "desktop",
                 "ua": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "id": format!("{}-{}-{}-{}", 
-                    &uuid::Uuid::new_v4().simple().to_string()[..4], 
+                "id": format!("{}-{}-{}-{}",
                     &uuid::Uuid::new_v4().simple().to_string()[..4],
-                    &uuid::Uuid::new_v4().simple().to_string()[..4], 
+                    &uuid::Uuid::new_v4().simple().to_string()[..4],
+                    &uuid::Uuid::new_v4().simple().to_string()[..4],
                     &uuid::Uuid::new_v4().simple().to_string()[..4]
                 ),
                 "version": "3.18.0"
             }
         });
-        
+
         let custom_payload_str = serde_json::to_string(&custom_payload_json).unwrap_or_default();
         use base64::Engine;
-        let custom_payload_b64 = base64::engine::general_purpose::STANDARD.encode(custom_payload_str);
+        let custom_payload_b64 =
+            base64::engine::general_purpose::STANDARD.encode(custom_payload_str);
 
         let mut plain = serde_json::json!({
             "ChatId": chat_id,
@@ -803,7 +899,7 @@ impl WebSocketClient {
             "PayloadId": payload_id,
             "CustomPayload": custom_payload_b64
         });
-        
+
         if let Some(rtid) = reply_to {
             plain["ReplyTo"] = serde_json::json!(rtid);
         }
@@ -821,7 +917,7 @@ impl WebSocketClient {
         drop(state);
 
         let msgpack_header = Self::serialize_push_header(seq);
-        
+
         let mut bin_header = Vec::new();
         bin_header.push(0x05);
         bin_header.extend_from_slice(&0u64.to_be_bytes()); // Fixed: Use 0 timestamp to match relative time format expected by Yandex
@@ -884,17 +980,29 @@ impl WebSocketClient {
 
     /// Подписаться на обновления thread-а
     pub async fn subscribe_thread(&self, thread_id: &str) -> Result<u64, String> {
-        self.send_message("subscribe_thread", serde_json::json!({ "threadId": thread_id })).await
+        self.send_message(
+            "subscribe_thread",
+            serde_json::json!({ "threadId": thread_id }),
+        )
+        .await
     }
 
     /// Подписаться на обновления reactions
     pub async fn subscribe_reaction_updates(&self, message_id: &str) -> Result<u64, String> {
-        self.send_message("subscribe_reaction_updates", serde_json::json!({ "messageId": message_id })).await
+        self.send_message(
+            "subscribe_reaction_updates",
+            serde_json::json!({ "messageId": message_id }),
+        )
+        .await
     }
 
     /// Подписаться на typing-индикатор (enhanced)
     pub async fn subscribe_typing_enhanced(&self, chat_id: &str) -> Result<u64, String> {
-        self.send_message("subscribe_typing_enhanced", serde_json::json!({ "chatId": chat_id })).await
+        self.send_message(
+            "subscribe_typing_enhanced",
+            serde_json::json!({ "chatId": chat_id }),
+        )
+        .await
     }
 
     // ============================================================
@@ -903,15 +1011,27 @@ impl WebSocketClient {
 
     /// Подписаться на обновления опроса
     pub async fn subscribe_poll_updates(&self, poll_id: &str) -> Result<u64, String> {
-        self.send_message("subscribe_poll_updates", serde_json::json!({ "pollId": poll_id })).await
+        self.send_message(
+            "subscribe_poll_updates",
+            serde_json::json!({ "pollId": poll_id }),
+        )
+        .await
     }
 
     /// Отправить голос через WS
-    pub async fn send_poll_vote_ws(&self, poll_id: &str, answer_ids: Vec<String>) -> Result<u64, String> {
-        self.send_message("send_poll_vote", serde_json::json!({
-            "pollId": poll_id,
-            "answerIds": answer_ids
-        })).await
+    pub async fn send_poll_vote_ws(
+        &self,
+        poll_id: &str,
+        answer_ids: Vec<String>,
+    ) -> Result<u64, String> {
+        self.send_message(
+            "send_poll_vote",
+            serde_json::json!({
+                "pollId": poll_id,
+                "answerIds": answer_ids
+            }),
+        )
+        .await
     }
 
     // ============================================================
@@ -920,27 +1040,44 @@ impl WebSocketClient {
 
     /// Отправить реакцию через WebSocket
     pub async fn send_add_reaction(&self, message_id: &str, emoji: &str) -> Result<u64, String> {
-        self.send_message("add_reaction", serde_json::json!({
-            "messageId": message_id,
-            "emoji": emoji
-        })).await
+        self.send_message(
+            "add_reaction",
+            serde_json::json!({
+                "messageId": message_id,
+                "emoji": emoji
+            }),
+        )
+        .await
     }
 
     /// Убрать реакцию через WebSocket
     pub async fn send_remove_reaction(&self, message_id: &str, emoji: &str) -> Result<u64, String> {
-        self.send_message("remove_reaction", serde_json::json!({
-            "messageId": message_id,
-            "emoji": emoji
-        })).await
+        self.send_message(
+            "remove_reaction",
+            serde_json::json!({
+                "messageId": message_id,
+                "emoji": emoji
+            }),
+        )
+        .await
     }
 
     /// Отправить сообщение в thread через WebSocket
-    pub async fn send_thread_message_ws(&self, thread_id: &str, chat_id: &str, text: &str) -> Result<u64, String> {
-        self.send_message("send_thread_message", serde_json::json!({
-            "threadId": thread_id,
-            "chatId": chat_id,
-            "text": text
-        })).await
+    pub async fn send_thread_message_ws(
+        &self,
+        thread_id: &str,
+        chat_id: &str,
+        text: &str,
+    ) -> Result<u64, String> {
+        self.send_message(
+            "send_thread_message",
+            serde_json::json!({
+                "threadId": thread_id,
+                "chatId": chat_id,
+                "text": text
+            }),
+        )
+        .await
     }
 
     async fn notify_state(&self, state: WSState) {
@@ -977,7 +1114,7 @@ impl HttpClient {
         if session_cookies.is_some() {
             log::info!("Loaded session cookies for session API access");
         }
-        
+
         Self {
             auth,
             client: reqwest::Client::builder()
@@ -1034,7 +1171,9 @@ impl HttpClient {
         }
 
         // Build cookie header string
-        let cookie_str: String = data.cookies.iter()
+        let cookie_str: String = data
+            .cookies
+            .iter()
             .map(|(k, v)| format!("{}={}", k, v))
             .collect::<Vec<_>>()
             .join("; ");
@@ -1048,7 +1187,12 @@ impl HttpClient {
     }
 
     pub fn get_token_header(&self) -> String {
-        self.token.lock().unwrap().as_deref().unwrap_or("").to_string()
+        self.token
+            .lock()
+            .unwrap()
+            .as_deref()
+            .unwrap_or("")
+            .to_string()
     }
 
     pub fn get_token_raw(&self) -> String {
@@ -1078,7 +1222,8 @@ impl HttpClient {
     /// Helper: GET request, returns response body as string
     async fn get(&self, url: &str) -> Result<String, String> {
         let auth_header = self.get_token_header();
-        let response = self.client
+        let response = self
+            .client
             .get(url)
             .header("Authorization", &auth_header)
             .send()
@@ -1094,7 +1239,8 @@ impl HttpClient {
     /// Helper: POST request with JSON body, returns response body as string
     async fn post(&self, url: &str, body: serde_json::Value) -> Result<String, String> {
         let auth_header = self.get_token_header();
-        let response = self.client
+        let response = self
+            .client
             .post(url)
             .header("Authorization", &auth_header)
             .header("Content-Type", "application/json")
@@ -1111,18 +1257,23 @@ impl HttpClient {
 
     /// Helper: RPC request to Yandex Messenger backend (yamb)
     /// Uses multipart/form-data with a 'request' field as the real web client does.
-    pub async fn rpc_request(&self, method: &str, params: serde_json::Value) -> Result<serde_json::Value, String> {
+    pub async fn rpc_request(
+        &self,
+        method: &str,
+        params: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
         let body = serde_json::json!({
             "method": method,
             "params": params
         });
-        let body_str = serde_json::to_string(&body).map_err(|e| format!("JSON serialize failed: {}", e))?;
+        let body_str =
+            serde_json::to_string(&body).map_err(|e| format!("JSON serialize failed: {}", e))?;
 
-        let form = reqwest::multipart::Form::new()
-            .text("request", body_str);
+        let form = reqwest::multipart::Form::new().text("request", body_str);
 
         let auth_header = self.get_token_header();
-        let response = self.client
+        let response = self
+            .client
             .post(&self.base_url)
             .header("Authorization", &auth_header)
             .header("Origin", "https://yandex.ru")
@@ -1134,21 +1285,38 @@ impl HttpClient {
 
         let status = response.status();
         log::info!("RPC {} response: HTTP {}", method, status);
-        
-        let text = response.text().await.map_err(|e| format!("RPC response read failed: {}", e))?;
-        
+
+        let text = response
+            .text()
+            .await
+            .map_err(|e| format!("RPC response read failed: {}", e))?;
+
         if text.is_empty() {
             log::error!("RPC {} empty response (HTTP {})", method, status);
             return Err(format!("RPC empty response (HTTP {})", status));
         }
-        
-        log::info!("RPC {} response body length: {} chars (first 500: {})", method, text.len(), &text[..text.len().min(500)]);
-        
+
+        log::info!(
+            "RPC {} response body length: {} chars (first 500: {})",
+            method,
+            text.len(),
+            &text[..text.len().min(500)]
+        );
+
         let json: serde_json::Value = match serde_json::from_str(&text) {
             Ok(v) => v,
             Err(e) => {
-                log::error!("RPC {} JSON parse failed: {} (body: {})", method, e, &text[..text.len().min(500)]);
-                return Err(format!("RPC JSON parse failed: {} (body: {})", e, &text[..text.len().min(500)]));
+                log::error!(
+                    "RPC {} JSON parse failed: {} (body: {})",
+                    method,
+                    e,
+                    &text[..text.len().min(500)]
+                );
+                return Err(format!(
+                    "RPC JSON parse failed: {} (body: {})",
+                    e,
+                    &text[..text.len().min(500)]
+                ));
             }
         };
 
@@ -1157,24 +1325,41 @@ impl HttpClient {
             return Err(format!("RPC error: {:?}", json.get("data")));
         }
 
-        log::info!("RPC {} parsed OK, top-level keys: {:?}", method, json.get("data").map(|d| d.as_object().map(|o| { let keys: Vec<&str> = o.keys().map(|k| k.as_str()).collect(); keys }).unwrap_or_default()));
+        log::info!(
+            "RPC {} parsed OK, top-level keys: {:?}",
+            method,
+            json.get("data").map(|d| d
+                .as_object()
+                .map(|o| {
+                    let keys: Vec<&str> = o.keys().map(|k| k.as_str()).collect();
+                    keys
+                })
+                .unwrap_or_default())
+        );
 
         Ok(json["data"].clone())
     }
 
     /// Session-based RPC request — uses Passport session cookies + CSRF token.
     /// Required for methods like 'messages' that return 418 with OAuth auth.
-    pub async fn session_rpc_request(&self, method: &str, params: serde_json::Value) -> Result<serde_json::Value, String> {
-        let cookies = self.session_cookies.as_ref()
-            .ok_or_else(|| "No session cookies available. Run: python3 scripts/login_browser.py".to_string())?;
+    pub async fn session_rpc_request(
+        &self,
+        method: &str,
+        params: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
+        let cookies = self.session_cookies.as_ref().ok_or_else(|| {
+            "No session cookies available. Run: python3 scripts/login_browser.py".to_string()
+        })?;
 
         let body = serde_json::json!({
             "method": method,
             "params": params
         });
-        let body_str = serde_json::to_string(&body).map_err(|e| format!("JSON serialize failed: {}", e))?;
+        let body_str =
+            serde_json::to_string(&body).map_err(|e| format!("JSON serialize failed: {}", e))?;
 
-        let mut req = self.client
+        let mut req = self
+            .client
             .post(&self.base_url)
             .header("Cookie", cookies.as_str())
             .header("Origin", "https://yandex.ru")
@@ -1192,18 +1377,31 @@ impl HttpClient {
         }
 
         let form = reqwest::multipart::Form::new().text("request", body_str.clone());
-        let response = req.try_clone().unwrap().multipart(form).send().await
+        let response = req
+            .try_clone()
+            .unwrap()
+            .multipart(form)
+            .send()
+            .await
             .map_err(|e| format!("Session RPC request failed: {}", e))?;
 
         let status = response.status();
-        let text = response.text().await.map_err(|e| format!("Session RPC response read failed: {}", e))?;
+        let text = response
+            .text()
+            .await
+            .map_err(|e| format!("Session RPC response read failed: {}", e))?;
 
         if text.is_empty() {
             return Err(format!("Session RPC empty response (HTTP {})", status));
         }
 
-        let mut json: serde_json::Value = serde_json::from_str(&text)
-            .map_err(|e| format!("Session RPC parse failed: {} (body: {})", e, &text[..text.len().min(200)]))?;
+        let mut json: serde_json::Value = serde_json::from_str(&text).map_err(|e| {
+            format!(
+                "Session RPC parse failed: {} (body: {})",
+                e,
+                &text[..text.len().min(200)]
+            )
+        })?;
 
         if json.get("status").and_then(|s| s.as_str()) == Some("error") {
             if let Some(data) = json.get("data") {
@@ -1215,18 +1413,25 @@ impl HttpClient {
                             *guard = Some(new_csrf.clone());
                         }
 
-                        let retry_req = self.client
+                        let retry_req = self
+                            .client
                             .post(&self.base_url)
                             .header("Cookie", cookies.as_str())
                             .header("Origin", "https://yandex.ru")
                             .header("Referer", "https://yandex.ru/chat")
                             .header("X-Csrf-Token", new_csrf.as_str());
-                        
+
                         let form2 = reqwest::multipart::Form::new().text("request", body_str);
-                        let retry_resp = retry_req.multipart(form2).send().await
+                        let retry_resp = retry_req
+                            .multipart(form2)
+                            .send()
+                            .await
                             .map_err(|e| format!("Session RPC retry failed: {}", e))?;
-                        
-                        let retry_text = retry_resp.text().await.map_err(|e| format!("Retry read failed: {}", e))?;
+
+                        let retry_text = retry_resp
+                            .text()
+                            .await
+                            .map_err(|e| format!("Retry read failed: {}", e))?;
                         json = serde_json::from_str(&retry_text)
                             .map_err(|e| format!("Retry parse failed: {}", e))?;
                     }
@@ -1245,7 +1450,8 @@ impl HttpClient {
     async fn refresh_csrf_token(&self) -> Option<String> {
         let cookies = self.session_cookies.as_ref()?;
         let url = "https://yandex.ru/messenger/api/registry/csrf-token/".to_string();
-        let resp = self.client
+        let resp = self
+            .client
             .get(&url)
             .header("Cookie", cookies.as_str())
             .header("Origin", "https://yandex.ru")
@@ -1255,14 +1461,17 @@ impl HttpClient {
         let text = resp.text().await.ok()?;
         log::info!("CSRF token response: {}", text);
         let json: serde_json::Value = serde_json::from_str(&text).ok()?;
-        json.get("token").and_then(|t| t.as_str()).map(|s| s.to_string())
+        json.get("token")
+            .and_then(|t| t.as_str())
+            .map(|s| s.to_string())
     }
 
     /// Get CSRF token
     pub async fn get_csrf_token(&self) -> Result<String, String> {
         let url = "https://yandex.ru/messenger/api/registry/csrf-token/".to_string();
         let auth_header = self.get_token_header();
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .header("Authorization", &auth_header)
             .send()
@@ -1278,13 +1487,14 @@ impl HttpClient {
             .as_str()
             .map(|s| s.to_string())
             .ok_or_else(|| "CSRF token not found".to_string())
-     }
+    }
 
     /// Fetch user profile
     pub async fn get_user_profile(&self) -> Result<models::User, String> {
         let url = format!("{}api/get_profile", self.base_url);
         let auth_header = self.get_token_header();
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .header("Authorization", &auth_header)
             .send()
@@ -1296,28 +1506,43 @@ impl HttpClient {
             .await
             .map_err(|e| format!("Profile parse failed: {}", e))?;
 
-        serde_json::from_value(json)
-            .map_err(|e| format!("Profile deserialization failed: {}", e))
+        serde_json::from_value(json).map_err(|e| format!("Profile deserialization failed: {}", e))
     }
 
     /// Get chat list
-    pub async fn get_chat_list(&self, _offset: usize, _limit: usize) -> Result<Vec<models::Chat>, String> {
-        let data = self.rpc_request("bootstrap", serde_json::json!({
-            "flags": {
-                "with_deleted": true,
-                "compact": false
-            }
-        })).await?;
+    pub async fn get_chat_list(
+        &self,
+        _offset: usize,
+        _limit: usize,
+    ) -> Result<Vec<models::Chat>, String> {
+        let data = self
+            .rpc_request(
+                "bootstrap",
+                serde_json::json!({
+                    "flags": {
+                        "with_deleted": true,
+                        "compact": false
+                    }
+                }),
+            )
+            .await?;
 
         if let Ok(json_str) = serde_json::to_string_pretty(&data) {
-            let _ = std::fs::write("/home/bezoom/storage/Projects/Messenger/bootstrap_debug.json", json_str);
+            let _ = std::fs::write(
+                "/home/bezoom/storage/Projects/Messenger/bootstrap_debug.json",
+                json_str,
+            );
         }
 
         let mut out_chats = Vec::new();
-        
+
         let mut user_names = std::collections::HashMap::new();
         let mut user_avatars = std::collections::HashMap::new();
-        let current_user_id = data.get("user").and_then(|u| u.get("guid")).and_then(|v| v.as_str()).unwrap_or("");
+        let current_user_id = data
+            .get("user")
+            .and_then(|u| u.get("guid"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         if !current_user_id.is_empty() {
             self.auth.set_user_id(current_user_id);
         }
@@ -1343,21 +1568,29 @@ impl HttpClient {
             }
             for m in messages_val {
                 let mut chat_id = "";
-                if let Some(info) = m.get("server_message_info") { // Sometimes it's snake_case
+                if let Some(info) = m.get("server_message_info") {
+                    // Sometimes it's snake_case
                     chat_id = info.get("chat_id").and_then(|v| v.as_str()).unwrap_or("");
                 } else if let Some(info) = m.get("ServerMessageInfo") {
                     chat_id = info.get("ChatId").and_then(|v| v.as_str()).unwrap_or("");
                 }
-                
+
                 let mut text = None;
                 if let Some(client_msg) = m.get("message") {
-                    text = client_msg.get("text").and_then(|t| t.as_str()).map(|s| s.to_string());
+                    text = client_msg
+                        .get("text")
+                        .and_then(|t| t.as_str())
+                        .map(|s| s.to_string());
                 } else if let Some(client_msg) = m.get("ClientMessage") {
                     if let Some(plain) = client_msg.get("Plain") {
-                        text = plain.get("Text").and_then(|t| t.get("MessageText")).and_then(|t| t.as_str()).map(|s| s.to_string());
+                        text = plain
+                            .get("Text")
+                            .and_then(|t| t.get("MessageText"))
+                            .and_then(|t| t.as_str())
+                            .map(|s| s.to_string());
                     }
                 }
-                
+
                 if let Some(txt) = text {
                     recent_messages.insert(chat_id.to_string(), txt);
                 }
@@ -1367,9 +1600,19 @@ impl HttpClient {
         // Parse chats
         if let Some(chats_val) = data.get("chats").and_then(|v| v.as_array()) {
             for c in chats_val {
-                let id = c.get("chat_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let mut title = c.get("name").and_then(|v| v.as_str()).map(|s| s.to_string());
-                let mut avatar_id = c.get("avatar_id").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let id = c
+                    .get("chat_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let mut title = c
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let mut avatar_id = c
+                    .get("avatar_id")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
                 let mut chat_type = models::ChatType::Group;
 
                 // Handle private chats
@@ -1379,7 +1622,11 @@ impl HttpClient {
                     let clean_id = id.rsplit('/').next().unwrap_or(&id);
                     let parts: Vec<&str> = clean_id.split('_').collect();
                     if parts.len() == 2 {
-                        let other_id = if parts[0] == current_user_id { parts[1] } else { parts[0] };
+                        let other_id = if parts[0] == current_user_id {
+                            parts[1]
+                        } else {
+                            parts[0]
+                        };
                         if let Some(name) = user_names.get(other_id) {
                             title = Some(name.clone());
                         }
@@ -1398,11 +1645,15 @@ impl HttpClient {
                         text = Some(txt.to_string());
                     } else if let Some(client_msg) = lm.get("ClientMessage") {
                         if let Some(plain) = client_msg.get("Plain") {
-                            text = plain.get("Text").and_then(|t| t.get("MessageText")).and_then(|t| t.as_str()).map(|s| s.to_string());
+                            text = plain
+                                .get("Text")
+                                .and_then(|t| t.get("MessageText"))
+                                .and_then(|t| t.as_str())
+                                .map(|s| s.to_string());
                         }
                     }
                 }
-                
+
                 if text.is_none() {
                     if let Some(recent_text) = recent_messages.get(&id) {
                         text = Some(recent_text.clone());
@@ -1411,7 +1662,7 @@ impl HttpClient {
                         // Chat list will check if text is None and display "Нет сообщений".
                     }
                 }
-                
+
                 if let Some(final_text) = text {
                     last_message = Some(models::Message {
                         id: "".to_string(),
@@ -1450,7 +1701,9 @@ impl HttpClient {
                     unread_count: 0,
                     last_message,
                     pinned: c.get("pinned").and_then(|v| v.as_bool()).unwrap_or(false)
-                        || c.get("is_pinned").and_then(|v| v.as_bool()).unwrap_or(false)
+                        || c.get("is_pinned")
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false)
                         || c.get("pin").and_then(|v| v.as_bool()).unwrap_or(false),
                     archived: false,
                     muted: false,
@@ -1467,7 +1720,10 @@ impl HttpClient {
                 let chat_id = chat.id.clone();
                 let self_ref = self; // Since self is a reference (&HttpClient), copying it into async move is fine!
                 fetch_futs.push(async move {
-                    let msgs = self_ref.get_messages(&chat_id, None, 0, 1).await.unwrap_or_default();
+                    let msgs = self_ref
+                        .get_messages(&chat_id, None, 0, 1)
+                        .await
+                        .unwrap_or_default();
                     (chat_id, msgs)
                 });
             }
@@ -1482,9 +1738,12 @@ impl HttpClient {
             }
         }
 
-        log::info!("Parsed {} chats (first chat: {:?}, last chat: {:?})", out_chats.len(),
+        log::info!(
+            "Parsed {} chats (first chat: {:?}, last chat: {:?})",
+            out_chats.len(),
             out_chats.first().map(|c| (c.id.clone(), c.title.clone())),
-            out_chats.last().map(|c| (c.id.clone(), c.title.clone())));
+            out_chats.last().map(|c| (c.id.clone(), c.title.clone()))
+        );
 
         if out_chats.is_empty() {
             Err("No chats found in bootstrap data".to_string())
@@ -1496,14 +1755,15 @@ impl HttpClient {
     /// Get chat messages via the search API.
     /// The 'messages' RPC method is blocked by Yandex (HTTP 418) for all auth types.
     /// Search with common word queries is the only working retrieval method.
-pub async fn get_messages(
+    pub async fn get_messages(
         &self,
         chat_id: &str,
         msg_id: Option<&str>,
         offset: usize,
         limit: usize,
     ) -> Result<Vec<models::Message>, String> {
-        self.get_messages_internal(chat_id, msg_id, offset, limit, false).await
+        self.get_messages_internal(chat_id, msg_id, offset, limit, false)
+            .await
     }
 
     pub async fn get_messages_fresh(
@@ -1513,7 +1773,8 @@ pub async fn get_messages(
         offset: usize,
         limit: usize,
     ) -> Result<Vec<models::Message>, String> {
-        self.get_messages_internal(chat_id, msg_id, offset, limit, true).await
+        self.get_messages_internal(chat_id, msg_id, offset, limit, true)
+            .await
     }
 
     async fn get_messages_internal(
@@ -1527,7 +1788,7 @@ pub async fn get_messages(
         let cache_dir = dirs::config_dir()
             .map(|d| d.join("yandex-messenger-native").join("cache"))
             .unwrap_or_else(|| std::path::PathBuf::from("/tmp/yandex-messenger-cache"));
-            
+
         std::fs::create_dir_all(&cache_dir).ok();
         let cache_file = cache_dir.join(format!("messages_{}.json", chat_id.replace("/", "_")));
 
@@ -1620,43 +1881,45 @@ pub async fn get_messages(
         }
 
         // Format 3: Flat message format
-        let from_guid = item.get("from")
+        let from_guid = item
+            .get("from")
             .or_else(|| item.get("from_guid"))
             .or_else(|| item.get("sender"))
             .and_then(|v| v.as_str())
             .unwrap_or("unknown")
             .to_string();
 
-        let timestamp = item.get("timestamp")
+        let timestamp = item
+            .get("timestamp")
             .or_else(|| item.get("ts"))
             .or_else(|| item.get("created_at"))
             .and_then(|v| v.as_i64())
             .unwrap_or(0);
 
         let secs = if timestamp > 1_000_000_000_000 {
-            timestamp / 1_000_000  // Microseconds
+            timestamp / 1_000_000 // Microseconds
         } else {
-            timestamp  // Seconds
+            timestamp // Seconds
         };
-        let created = chrono::DateTime::from_timestamp(secs, 0)
-            .unwrap_or_else(|| chrono::Utc::now());
+        let created =
+            chrono::DateTime::from_timestamp(secs, 0).unwrap_or_else(|| chrono::Utc::now());
 
-        let text = item.get("text")
+        let text = item
+            .get("text")
             .or_else(|| item.get("message_text"))
             .or_else(|| item.get("body"))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        let msg_id = item.get("message_id")
+        let msg_id = item
+            .get("message_id")
             .or_else(|| item.get("id"))
             .or_else(|| item.get("payload_id"))
             .and_then(|v| v.as_str())
             .unwrap_or("unknown")
             .to_string();
 
-        let seq_no = item.get("seq_no")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
+        let seq_no = item.get("seq_no").and_then(|v| v.as_u64()).unwrap_or(0);
 
         Some(models::Message {
             id: format!("{}_{}", seq_no, msg_id),
@@ -1686,15 +1949,21 @@ pub async fn get_messages(
     }
 
     /// Fallback: fetch messages using the search API (OAuth-compatible).
-    async fn get_messages_via_search(
-        &self,
-        chat_id: &str,
-    ) -> Result<Vec<models::Message>, String> {
+    async fn get_messages_via_search(&self, chat_id: &str) -> Result<Vec<models::Message>, String> {
         // Use a smaller set of more effective search queries to avoid rate limits and unnecessary noise
         let queries = [
-            "привет", "как дела", "до свидания", "спасибо", "хорошо", "ок", "да", "нет", "встреча", "завтра",
+            "привет",
+            "как дела",
+            "до свидания",
+            "спасибо",
+            "хорошо",
+            "ок",
+            "да",
+            "нет",
+            "встреча",
+            "завтра",
         ];
-        
+
         let mut search_futures = Vec::new();
         for &query in &queries {
             let params = serde_json::json!({
@@ -1702,20 +1971,19 @@ pub async fn get_messages(
                 "chat_id": chat_id,
                 "query": query
             });
-            search_futures.push(async move {
-                (query, self.rpc_request("search", params).await)
-            });
+            search_futures.push(async move { (query, self.rpc_request("search", params).await) });
         }
-        
+
         let results = futures::future::join_all(search_futures).await;
-        
+
         let mut all_messages: Vec<models::Message> = Vec::new();
         let mut seen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
-        
+
         for (query, res) in results {
             match res {
                 Ok(data) => {
-                    if let Some(items) = data.get("messages")
+                    if let Some(items) = data
+                        .get("messages")
                         .and_then(|m| m.get("items"))
                         .and_then(|i| i.as_array())
                     {
@@ -1733,15 +2001,19 @@ pub async fn get_messages(
                 }
             }
         }
-        
+
         all_messages.sort_by_key(|m| m.created);
-        
+
         if all_messages.is_empty() {
             log::info!("No messages found via search for chat {}", chat_id);
         } else {
-            log::info!("Found {} messages via search for chat {}", all_messages.len(), chat_id);
+            log::info!(
+                "Found {} messages via search for chat {}",
+                all_messages.len(),
+                chat_id
+            );
         }
-        
+
         Ok(all_messages)
     }
 
@@ -1752,32 +2024,37 @@ pub async fn get_messages(
         let client_msg = data.get("ClientMessage")?;
         let plain = client_msg.get("Plain")?;
 
-        let from_guid = server_info.get("From")
+        let from_guid = server_info
+            .get("From")
             .and_then(|f| f.get("Guid"))
             .and_then(|g| g.as_str())
             .unwrap_or("unknown")
             .to_string();
 
-        let timestamp = server_info.get("Timestamp")
+        let timestamp = server_info
+            .get("Timestamp")
             .and_then(|t| t.as_i64())
             .unwrap_or(0);
         // Timestamp is in microseconds
         let secs = timestamp / 1_000_000;
         let nanos = ((timestamp % 1_000_000) * 1000) as u32;
-        let created = chrono::DateTime::from_timestamp(secs, nanos)
-            .unwrap_or_else(|| chrono::Utc::now());
+        let created =
+            chrono::DateTime::from_timestamp(secs, nanos).unwrap_or_else(|| chrono::Utc::now());
 
-        let text = plain.get("Text")
+        let text = plain
+            .get("Text")
             .and_then(|t| t.get("MessageText"))
             .and_then(|t| t.as_str())
             .map(|s| s.to_string());
 
-        let payload_id = plain.get("PayloadId")
+        let payload_id = plain
+            .get("PayloadId")
             .and_then(|p| p.as_str())
             .unwrap_or("unknown")
             .to_string();
 
-        let seq_no = server_info.get("SeqNo")
+        let seq_no = server_info
+            .get("SeqNo")
             .and_then(|s| s.as_u64())
             .unwrap_or(0);
 
@@ -1797,7 +2074,11 @@ pub async fn get_messages(
             thread_id: None,
             has_thread: false,
             pinned: false,
-            edited: server_info.get("Version").and_then(|v| v.as_u64()).unwrap_or(1) > 1,
+            edited: server_info
+                .get("Version")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(1)
+                > 1,
             edited_at: None,
             sent: true,
             delivered: true,
@@ -1839,7 +2120,11 @@ pub async fn get_messages(
     }
 
     fn guess_mime_type(filename: &str) -> &'static str {
-        let ext = filename.split('.').last().map(|s| s.to_ascii_lowercase()).unwrap_or_default();
+        let ext = filename
+            .split('.')
+            .last()
+            .map(|s| s.to_ascii_lowercase())
+            .unwrap_or_default();
         match ext.as_str() {
             "jpg" | "jpeg" => "image/jpeg",
             "png" => "image/png",
@@ -1872,7 +2157,8 @@ pub async fn get_messages(
 
         // Use session_rpc_request or rpc_request for upload_file
         let upload_data = if self.has_session() {
-            self.session_rpc_request("upload_file", upload_params.clone()).await
+            self.session_rpc_request("upload_file", upload_params.clone())
+                .await
         } else {
             self.rpc_request("upload_file", upload_params).await
         };
@@ -1885,7 +2171,8 @@ pub async fn get_messages(
                 }
                 if let Some(upload_url) = data.get("uploadUrl").and_then(|u| u.as_str()) {
                     // Upload file to upload_url
-                    let response = self.client
+                    let response = self
+                        .client
                         .put(upload_url)
                         .header("Content-Type", Self::guess_mime_type(filename))
                         .body(file_data.to_vec())
@@ -1894,11 +2181,18 @@ pub async fn get_messages(
                         .map_err(|e| format!("Upload to url failed: {}", e))?;
 
                     if !response.status().is_success() {
-                        return Err(format!("Upload to url failed with status: {}", response.status()));
+                        return Err(format!(
+                            "Upload to url failed with status: {}",
+                            response.status()
+                        ));
                     }
 
                     // After upload, some APIs require a confirm step or return fileId in response
-                    if let Some(file_id) = response.headers().get("x-file-id").and_then(|v| v.to_str().ok()) {
+                    if let Some(file_id) = response
+                        .headers()
+                        .get("x-file-id")
+                        .and_then(|v| v.to_str().ok())
+                    {
                         return Ok(file_id.to_string());
                     }
                     if let Ok(json) = response.json::<Value>().await {
@@ -1922,7 +2216,8 @@ pub async fn get_messages(
                 );
 
                 let auth_header = self.get_token_header();
-                let response = self.client
+                let response = self
+                    .client
                     .put(&upload_url)
                     .header("Authorization", &auth_header)
                     .header("Content-Type", Self::guess_mime_type(filename))
@@ -1952,7 +2247,8 @@ pub async fn get_messages(
     pub async fn download_file(&self, file_id: &str) -> Result<Vec<u8>, String> {
         let url = format!("{}/file_shortterm/{}", config::FILE_PUBLIC_HOST, file_id);
         let auth_header = self.get_token_header();
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .header("Authorization", &auth_header)
             .send()
@@ -1969,7 +2265,11 @@ pub async fn get_messages(
     /// Get avatar URL
     pub fn avatar_url(&self, avatar_id: &str, size: u32) -> String {
         let normalized_id = avatar_id.replace("user_avatar/", "");
-        let size_str = if size <= 100 { "islands-middle" } else { "islands-200" };
+        let size_str = if size <= 100 {
+            "islands-middle"
+        } else {
+            "islands-200"
+        };
         format!(
             "https://avatars.mds.yandex.net/get-{}/{}",
             normalized_id, size_str
@@ -2000,7 +2300,8 @@ pub async fn get_messages(
         let url = format!("{}api/upload_voice", self.base_url);
         let auth_header = self.get_token_header();
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .header("Authorization", &auth_header)
             .header("Content-Type", "application/octet-stream")
@@ -2008,14 +2309,21 @@ pub async fn get_messages(
             .query(&[
                 ("chatId", chat_id),
                 ("duration", &duration.to_string()),
-                ("waveform", &serde_json::to_string(&waveform).map_err(|e| format!("Waveform serialize failed: {}", e))?),
+                (
+                    "waveform",
+                    &serde_json::to_string(&waveform)
+                        .map_err(|e| format!("Waveform serialize failed: {}", e))?,
+                ),
             ])
             .send()
             .await
             .map_err(|e| format!("Upload voice failed: {}", e))?;
 
         if !response.status().is_success() {
-            return Err(format!("Upload voice failed with status: {}", response.status()));
+            return Err(format!(
+                "Upload voice failed with status: {}",
+                response.status()
+            ));
         }
 
         let json: Value = response
@@ -2039,17 +2347,15 @@ pub async fn get_messages(
     }
 
     /// Получить транскрипцию голосового сообщения
-    pub async fn get_transcription(
-        &self,
-        message_id: &str,
-    ) -> Result<Option<String>, String> {
+    pub async fn get_transcription(&self, message_id: &str) -> Result<Option<String>, String> {
         let url = format!(
             "{}api/get_transcription?messageId={}",
             self.base_url, message_id
         );
         let auth_header = self.get_token_header();
 
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .header("Authorization", &auth_header)
             .send()
@@ -2061,7 +2367,10 @@ pub async fn get_messages(
         }
 
         if !response.status().is_success() {
-            return Err(format!("Get transcription failed with status: {}", response.status()));
+            return Err(format!(
+                "Get transcription failed with status: {}",
+                response.status()
+            ));
         }
 
         let json: Value = response
@@ -2102,12 +2411,10 @@ pub async fn get_messages(
         if token.is_empty() {
             return Err("No authentication token".to_string());
         }
-        let url = format!(
-            "{}/api/v1/stt",
-            crate::config::SPEECHKIT_API_URL
-        );
+        let url = format!("{}/api/v1/stt", crate::config::SPEECHKIT_API_URL);
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .header("Authorization", &format!("OAuth {}", token))
             .header("Content-Type", "audio/webm;codecs=opus")
@@ -2119,10 +2426,7 @@ pub async fn get_messages(
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            return Err(format!(
-                "SpeechKit error (HTTP {}): {}",
-                status, body
-            ));
+            return Err(format!("SpeechKit error (HTTP {}): {}", status, body));
         }
 
         let json: Value = response
@@ -2159,7 +2463,8 @@ pub async fn get_messages(
         });
 
         let url = format!("{}api/start_voice_transcription", self.base_url);
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .header("Authorization", &format!("OAuth {}", token))
             .header("Content-Type", "application/json")
@@ -2209,7 +2514,8 @@ pub async fn get_messages(
             self.base_url, task_id
         );
 
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .header("Authorization", &format!("OAuth {}", token))
             .send()
@@ -2217,7 +2523,9 @@ pub async fn get_messages(
             .map_err(|e| format!("Get transcription status failed: {}", e))?;
 
         if response.status() == 404 {
-            return Ok(crate::models::voice_message::TranscribeStatus::Error("Not found".to_string()));
+            return Ok(crate::models::voice_message::TranscribeStatus::Error(
+                "Not found".to_string(),
+            ));
         }
 
         let json: Value = response
@@ -2225,22 +2533,28 @@ pub async fn get_messages(
             .await
             .map_err(|e| format!("Transcription status parse failed: {}", e))?;
 
-        let status = json.get("status").and_then(|s| s.as_str()).unwrap_or("pending");
+        let status = json
+            .get("status")
+            .and_then(|s| s.as_str())
+            .unwrap_or("pending");
 
         match status {
             "ready" => {
-                 if let Some(_text) = json.get("result").and_then(|t| t.as_str()) {
+                if let Some(_text) = json.get("result").and_then(|t| t.as_str()) {
                     Ok(crate::models::voice_message::TranscribeStatus::Completed)
                 } else {
                     Ok(crate::models::voice_message::TranscribeStatus::Completed)
                 }
             }
             "failed" => {
-                let err_msg = json.get("error")
+                let err_msg = json
+                    .get("error")
                     .and_then(|e| e.as_str())
                     .map(|e| e.to_string())
                     .unwrap_or_else(|| "Unknown error".to_string());
-                Ok(crate::models::voice_message::TranscribeStatus::Error(err_msg))
+                Ok(crate::models::voice_message::TranscribeStatus::Error(
+                    err_msg,
+                ))
             }
             _ => Ok(crate::models::voice_message::TranscribeStatus::InProgress),
         }
@@ -2336,10 +2650,7 @@ impl HttpClient {
     }
 
     /// Get thread summary (private, requires token)
-    async fn get_thread_summary(
-        &self,
-        thread_id: &str,
-    ) -> Result<models::Thread, String> {
+    async fn get_thread_summary(&self, thread_id: &str) -> Result<models::Thread, String> {
         let auth_header = self.get_token_header();
         if auth_header.is_empty() {
             return Err("No authentication token".to_string());
@@ -2426,11 +2737,7 @@ impl HttpClient {
     }
 
     /// Remove a reaction from a message (private, requires token)
-    async fn remove_reaction(
-        &self,
-        message_id: &str,
-        emoji: &str,
-    ) -> Result<(), String> {
+    async fn remove_reaction(&self, message_id: &str, emoji: &str) -> Result<(), String> {
         let auth_header = self.get_token_header();
         if auth_header.is_empty() {
             return Err("No authentication token".to_string());
@@ -2452,7 +2759,10 @@ impl HttpClient {
             .map_err(|e| format!("Remove reaction failed: {}", e))?;
 
         if !response.status().is_success() {
-            return Err(format!("Remove reaction failed with status: {}", response.status()));
+            return Err(format!(
+                "Remove reaction failed with status: {}",
+                response.status()
+            ));
         }
 
         Ok(())
@@ -2467,7 +2777,10 @@ impl HttpClient {
         if auth_header.is_empty() {
             return Err("No authentication token".to_string());
         }
-        let url = format!("{}api/message_reactions?messageId={}", self.base_url, message_id);
+        let url = format!(
+            "{}api/message_reactions?messageId={}",
+            self.base_url, message_id
+        );
         let response = self
             .client
             .get(&url)
@@ -2484,7 +2797,8 @@ impl HttpClient {
         if let Ok(reactions) = serde_json::from_value::<Vec<models::Reaction>>(json.clone()) {
             return Ok(reactions);
         }
-        if let Ok(wrapper) = serde_json::from_value::<ListResponse<models::Reaction>>(json.clone()) {
+        if let Ok(wrapper) = serde_json::from_value::<ListResponse<models::Reaction>>(json.clone())
+        {
             if let Some(reactions) = wrapper.items {
                 return Ok(reactions);
             }
@@ -2598,15 +2912,11 @@ impl HttpClient {
             .await
             .map_err(|e| format!("Vote poll parse failed: {}", e))?;
 
-        serde_json::from_value(json)
-            .map_err(|e| format!("Vote poll deserialization failed: {}", e))
+        serde_json::from_value(json).map_err(|e| format!("Vote poll deserialization failed: {}", e))
     }
 
     /// Получить результаты опроса
-    pub async fn get_poll_results(
-        &self,
-        poll_id: &str,
-    ) -> Result<crate::models::Poll, String> {
+    pub async fn get_poll_results(&self, poll_id: &str) -> Result<crate::models::Poll, String> {
         let auth_header = self.get_token_header();
         if auth_header.is_empty() {
             return Err("No authentication token".to_string());
@@ -2635,7 +2945,10 @@ impl HttpClient {
     // ============================================================
 
     /// Получить каталог стикеров
-    pub async fn get_sticker_catalog(&self, cursor: Option<&str>) -> Result<crate::models::StickerPackList, String> {
+    pub async fn get_sticker_catalog(
+        &self,
+        cursor: Option<&str>,
+    ) -> Result<crate::models::StickerPackList, String> {
         let params = if let Some(c) = cursor {
             format!("?cursor={}", c)
         } else {
@@ -2645,7 +2958,8 @@ impl HttpClient {
         let body = self.get(&url).await?;
         let json: serde_json::Value = serde_json::from_str(&body)
             .map_err(|e| format!("Sticker catalog parse failed: {}", e))?;
-        let data = json.get("data")
+        let data = json
+            .get("data")
             .and_then(|v| v.as_object())
             .and_then(|o| o.get("catalog"))
             .ok_or("No data in sticker catalog response")?;
@@ -2655,12 +2969,16 @@ impl HttpClient {
     }
 
     /// Поиск стикеров по запросу
-    pub async fn search_stickers(&self, query: &str) -> Result<crate::models::StickerPackList, String> {
+    pub async fn search_stickers(
+        &self,
+        query: &str,
+    ) -> Result<crate::models::StickerPackList, String> {
         let url = format!("{}api/search_stickers?query={}", self.base_url, query);
         let body = self.get(&url).await?;
         let json: serde_json::Value = serde_json::from_str(&body)
             .map_err(|e| format!("Search stickers parse failed: {}", e))?;
-        let data = json.get("data")
+        let data = json
+            .get("data")
             .and_then(|v| v.as_object())
             .and_then(|o| o.get("catalog"))
             .ok_or("No data in search stickers response")?;
@@ -2672,7 +2990,8 @@ impl HttpClient {
     /// Установить пакет стикеров
     pub async fn install_sticker_pack(&self, pack_id: &str) -> Result<(), String> {
         let url = format!("{}api/install_sticker_pack", self.base_url);
-        self.post(&url, serde_json::json!({ "packId": pack_id })).await?;
+        self.post(&url, serde_json::json!({ "packId": pack_id }))
+            .await?;
         Ok(())
     }
 
@@ -2680,9 +2999,10 @@ impl HttpClient {
     pub async fn get_sticker(&self, sticker_id: &str) -> Result<crate::models::Sticker, String> {
         let url = format!("{}api/get_sticker?stickerId={}", self.base_url, sticker_id);
         let body = self.get(&url).await?;
-        let json: serde_json::Value = serde_json::from_str(&body)
-            .map_err(|e| format!("Get sticker parse failed: {}", e))?;
-        let data = json.get("data")
+        let json: serde_json::Value =
+            serde_json::from_str(&body).map_err(|e| format!("Get sticker parse failed: {}", e))?;
+        let data = json
+            .get("data")
             .and_then(|v| v.as_object())
             .and_then(|o| o.get("sticker"))
             .ok_or("No data in get sticker response")?;
@@ -2707,9 +3027,10 @@ impl HttpClient {
             payload["caption"] = serde_json::json!(cap);
         }
         let body = self.post(&url, payload).await?;
-        let json: serde_json::Value = serde_json::from_str(&body)
-            .map_err(|e| format!("Send sticker parse failed: {}", e))?;
-        let data = json.get("data")
+        let json: serde_json::Value =
+            serde_json::from_str(&body).map_err(|e| format!("Send sticker parse failed: {}", e))?;
+        let data = json
+            .get("data")
             .and_then(|v| v.as_object())
             .and_then(|o| o.get("message"))
             .ok_or("No data in send sticker response")?;
@@ -2728,7 +3049,10 @@ mod tests {
     fn test_config_values() {
         assert_eq!(config::OAUTH_CLIENT_ID, "bef24ec2889b481bb39af0b430099845");
         assert_eq!(config::TELEMOST_URL, "https://telemost.yandex.ru");
-        assert_eq!(config::FILE_PUBLIC_HOST, "https://files.messenger.yandex.net");
+        assert_eq!(
+            config::FILE_PUBLIC_HOST,
+            "https://files.messenger.yandex.net"
+        );
     }
 
     #[tokio::test]
@@ -2744,10 +3068,19 @@ mod tests {
                     println!("=== TEST: Chat: ID={}, Title={:?} ===", chat.id, chat.title);
                 }
                 if let Some(first_chat) = chats.first() {
-                    println!("=== TEST: Trying to send message to: {:?} ===", first_chat.title);
-                    match http.send_message(&first_chat.id, "Test message from Kilo CLI test", None).await {
+                    println!(
+                        "=== TEST: Trying to send message to: {:?} ===",
+                        first_chat.title
+                    );
+                    match http
+                        .send_message(&first_chat.id, "Test message from Kilo CLI test", None)
+                        .await
+                    {
                         Ok(msg) => {
-                            println!("=== TEST: Successfully sent! Message ID: {:?} ===", msg.message_id);
+                            println!(
+                                "=== TEST: Successfully sent! Message ID: {:?} ===",
+                                msg.message_id
+                            );
                         }
                         Err(e) => {
                             println!("=== TEST: Failed to send: {} ===", e);
@@ -2765,18 +3098,23 @@ mod tests {
     async fn test_ws_send() {
         let auth = Arc::new(AuthManager::new().unwrap());
         let ws = WebSocketClient::new(auth.clone());
-        
+
         let ws_clone = Arc::new(ws);
         let ws_spawn = ws_clone.clone();
-        
-        ws_clone.on_message(|msg| {
-            println!("=== TEST WS RECV MESSAGE: {} ===", serde_json::to_string(msg).unwrap());
-        }).await;
-        
+
+        ws_clone
+            .on_message(|msg| {
+                println!(
+                    "=== TEST WS RECV MESSAGE: {} ===",
+                    serde_json::to_string(msg).unwrap()
+                );
+            })
+            .await;
+
         tokio::spawn(async move {
             let _ = ws_spawn.connect().await;
         });
-        
+
         let mut connected = false;
         for _ in 0..50 {
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -2786,11 +3124,11 @@ mod tests {
                 break;
             }
         }
-        
+
         println!("=== TEST WS: Connected: {} ===", connected);
         if connected {
             let chat_id = "0/0/aca75cd7-0c98-409b-ba27-3e27c823e1dd";
-            
+
             // Method 1: JSON-RPC over text frame
             println!("=== TEST WS: Trying Method 1: JSON-RPC ===");
             let payload_id = uuid::Uuid::new_v4().simple().to_string();
@@ -2807,18 +3145,24 @@ mod tests {
                     println!("=== TEST WS: Method 1 (JSON-RPC) Error: {} ===", e);
                 }
             }
-            
+
             // Method 2: Binary frame (send_text_message)
             println!("=== TEST WS: Trying Method 2: Binary ===");
-            match ws_clone.send_text_message(chat_id, "Hello from Kilo WS Binary test", None).await {
+            match ws_clone
+                .send_text_message(chat_id, "Hello from Kilo WS Binary test", None)
+                .await
+            {
                 Ok(msg) => {
-                    println!("=== TEST WS: Method 2 (Binary) Success: {:?} ===", msg.message_id);
+                    println!(
+                        "=== TEST WS: Method 2 (Binary) Success: {:?} ===",
+                        msg.message_id
+                    );
                 }
                 Err(e) => {
                     println!("=== TEST WS: Method 2 (Binary) Error: {} ===", e);
                 }
             }
-            
+
             tokio::time::sleep(std::time::Duration::from_secs(3)).await;
         }
     }

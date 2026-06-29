@@ -2,8 +2,7 @@
 
 use gtk::prelude::*;
 use gtk::{
-    Box as GtkBox, Button, Entry, FlowBox, FlowBoxChild, Label, Orientation,
-    ScrolledWindow,
+    Box as GtkBox, Button, Entry, FlowBox, FlowBoxChild, Label, Orientation, ScrolledWindow,
 };
 
 use std::cell::RefCell;
@@ -90,7 +89,7 @@ impl SavedPanel {
             .css_classes(vec!["action-icon-btn".to_string()])
             .tooltip_text("Назад к чатам")
             .build();
-        
+
         let title = Label::builder()
             .label("Избранное")
             .css_classes(vec!["title".to_string()])
@@ -129,14 +128,11 @@ impl SavedPanel {
             let msgs = messages_clone.clone();
             let filter = filter_clone.clone();
             let entry = search_entry_inner.clone();
-            glib::timeout_add_local_once(
-                std::time::Duration::from_millis(300),
-                move || {
-                    let filter = *filter.borrow();
-                    Self::filter_messages(&msgs, &query, &filter);
-                    entry.set_text(&query);
-                },
-            );
+            glib::timeout_add_local_once(std::time::Duration::from_millis(300), move || {
+                let filter = *filter.borrow();
+                Self::filter_messages(&msgs, &query, &filter);
+                entry.set_text(&query);
+            });
         });
 
         // ── Filter bar ──
@@ -218,7 +214,7 @@ impl SavedPanel {
             let messages = messages.clone();
             let btn_clone = btn.button.clone();
 
-             btn.button.connect_clicked(move |widget| {
+            btn.button.connect_clicked(move |widget| {
                 let _ = widget;
                 let current = *current_filter.borrow();
                 if current != filter {
@@ -310,8 +306,16 @@ impl SavedPanel {
 
                 // Apply search query
                 let query_match = q_lower.is_empty()
-                    || m.preview.as_deref().unwrap_or("").to_lowercase().contains(&q_lower)
-                    || m.note.as_deref().unwrap_or("").to_lowercase().contains(&q_lower);
+                    || m.preview
+                        .as_deref()
+                        .unwrap_or("")
+                        .to_lowercase()
+                        .contains(&q_lower)
+                    || m.note
+                        .as_deref()
+                        .unwrap_or("")
+                        .to_lowercase()
+                        .contains(&q_lower);
 
                 media_match && query_match
             })
@@ -387,7 +391,7 @@ impl SavedPanel {
             Button::builder()
                 .icon_name("object-select-symbolic")
                 .css_classes(vec!["icon-btn".to_string()])
-                .build()
+                .build(),
         );
         unsave_btn.set_visible(false);
         unsave_btn.set_size_request(24, 24);
@@ -410,7 +414,11 @@ impl SavedPanel {
         let click = gtk::GestureClick::new();
         let on_click_clone = on_click.clone();
         click.connect_pressed(move |_gesture, _n_press, _x, _y| {
-            log::info!("Opening saved message: {} from chat {}", msg_id_click, chat_id);
+            log::info!(
+                "Opening saved message: {} from chat {}",
+                msg_id_click,
+                chat_id
+            );
             if let Some(cb) = &*on_click_clone.borrow() {
                 cb(chat_id.clone(), msg_id_click.clone());
             }

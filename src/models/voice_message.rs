@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 pub struct VoiceMessage {
     pub message_id: String,
     pub url: String,
-    pub duration: f64,           // секунды
-    pub waveform: Vec<f32>,      // визуализация звуковой волны (амплитуды 0.0-1.0)
+    pub duration: f64,      // секунды
+    pub waveform: Vec<f32>, // визуализация звуковой волны (амплитуды 0.0-1.0)
     pub transcribed_text: Option<String>,
     pub is_transcribing: bool,
     pub transcribe_error: Option<String>,
@@ -40,7 +40,9 @@ impl VoiceMessage {
 
     /// Проверить, доступна ли транскрипция
     pub fn has_transcription(&self) -> bool {
-        self.transcribed_text.as_ref().map_or(false, |t| !t.is_empty())
+        self.transcribed_text
+            .as_ref()
+            .map_or(false, |t| !t.is_empty())
     }
 
     /// Статус транскрипции для отображения в UI

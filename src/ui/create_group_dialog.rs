@@ -39,11 +39,9 @@ impl CreateGroupDialog {
         // Chat type selection
         let type_box = gtk::Box::new(Orientation::Horizontal, 8);
         let type_label = Label::builder().label("Тип:").build();
-        
+
         let chat_type_model = gtk::StringList::new(&["Группа", "Канал"]);
-        let chat_type_combo = gtk::DropDown::builder()
-            .model(&chat_type_model)
-            .build();
+        let chat_type_combo = gtk::DropDown::builder().model(&chat_type_model).build();
         chat_type_combo.set_selected(0);
 
         type_box.append(&type_label);
@@ -69,10 +67,7 @@ impl CreateGroupDialog {
         privacy_box.append(&is_public_switch);
 
         // Member selection
-        let member_label = Label::builder()
-            .label("Участники:")
-            .xalign(0.0)
-            .build();
+        let member_label = Label::builder().label("Участники:").xalign(0.0).build();
 
         let member_scrolled = ScrolledWindow::builder()
             .min_content_height(150)
@@ -88,14 +83,14 @@ impl CreateGroupDialog {
         for i in 1..=5 {
             let row = ListBoxRow::new();
             let row_box = gtk::Box::new(Orientation::Horizontal, 8);
-            
+
             let check = gtk::CheckButton::new();
             let name_label = Label::builder()
                 .label(&format!("Пользователь {}", i))
                 .xalign(0.0)
                 .hexpand(true)
                 .build();
-            
+
             row_box.append(&check);
             row_box.append(&name_label);
             row.set_child(Some(&row_box));

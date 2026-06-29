@@ -1,9 +1,7 @@
 #![allow(dead_code)]
 
 use gtk::prelude::*;
-use gtk::{
-    Align, Box as GtkBox, Button, Entry, Orientation, Popover, ScrolledWindow,
-};
+use gtk::{Align, Box as GtkBox, Button, Entry, Orientation, Popover, ScrolledWindow};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -59,9 +57,7 @@ impl StickerPanel {
         container.set_vexpand(true);
 
         // ── Search bar ──
-        let search_entry = Entry::builder()
-            .placeholder_text("Поиск стикеров…")
-            .build();
+        let search_entry = Entry::builder().placeholder_text("Поиск стикеров…").build();
         search_entry.set_css_classes(&[CSS_SEARCH_ENTRY]);
         search_entry.set_hexpand(true);
         search_entry.set_margin_start(12);
@@ -164,9 +160,7 @@ impl StickerPanel {
         item.set_cursor_from_name(Some("pointer"));
 
         // Thumb
-        let thumb = gtk::Image::builder()
-            .icon_name("image-missing")
-            .build();
+        let thumb = gtk::Image::builder().icon_name("image-missing").build();
         thumb.set_css_classes(&[CSS_THUMB]);
         thumb.set_size_request(50, 50);
         thumb.set_halign(Align::Start);
@@ -242,9 +236,7 @@ impl StickerPanel {
         title_row.set_margin_bottom(8);
         title_row.set_hexpand(true);
 
-        let pack_title = gtk::Label::builder()
-            .label(&pack.title)
-            .build();
+        let pack_title = gtk::Label::builder().label(&pack.title).build();
         pack_title.set_css_classes(&["sticker-grid-title"]);
         pack_title.set_halign(Align::Start);
         pack_title.set_hexpand(true);
@@ -277,9 +269,7 @@ impl StickerPanel {
         btn.set_halign(Align::Start);
         btn.set_valign(Align::Start);
 
-        let image = gtk::Image::builder()
-            .icon_name("image-missing")
-            .build();
+        let image = gtk::Image::builder().icon_name("image-missing").build();
         image.set_css_classes(&[CSS_THUMB]);
         image.set_pixel_size(80);
         image.set_halign(Align::Center);
@@ -374,9 +364,7 @@ impl StickerPanel {
         title_row.set_margin_bottom(8);
         title_row.set_hexpand(true);
 
-        let pack_title_label = gtk::Label::builder()
-            .label(&pack_title)
-            .build();
+        let pack_title_label = gtk::Label::builder().label(&pack_title).build();
         pack_title_label.set_css_classes(&["sticker-grid-title"]);
         pack_title_label.set_halign(Align::Start);
         pack_title_label.set_hexpand(true);
@@ -456,9 +444,18 @@ mod tests {
     #[test]
     fn test_select_pack() {
         let packs = vec![
-            StickerPack { pack_id: "a".to_string(), ..sample_pack() },
-            StickerPack { pack_id: "b".to_string(), ..sample_pack() },
-            StickerPack { pack_id: "c".to_string(), ..sample_pack() },
+            StickerPack {
+                pack_id: "a".to_string(),
+                ..sample_pack()
+            },
+            StickerPack {
+                pack_id: "b".to_string(),
+                ..sample_pack()
+            },
+            StickerPack {
+                pack_id: "c".to_string(),
+                ..sample_pack()
+            },
         ];
         let panel = StickerPanel::new(packs);
         panel.select_pack(2);
@@ -480,19 +477,22 @@ async fn load_sticker_image(img: &gtk::Image, url: &str) -> Result<(), String> {
         .timeout(std::time::Duration::from_secs(5))
         .build()
         .map_err(|e| format!("Failed to create client: {}", e))?;
-    
+
     let response = client
         .get(url)
         .header("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
         .send()
         .await
         .map_err(|e| format!("Failed to fetch: {}", e))?;
-    
+
     if !response.status().is_success() {
         return Err(format!("Fetch failed: HTTP {}", response.status()));
     }
-    
-    let bytes = response.bytes().await.map_err(|e| format!("Failed to read bytes: {}", e))?;
+
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| format!("Failed to read bytes: {}", e))?;
     let bytes_glib = glib::Bytes::from(&bytes);
     match gtk::gdk::Texture::from_bytes(&bytes_glib) {
         Ok(texture) => {

@@ -84,9 +84,7 @@ impl PollCreator {
         // Buttons
         let button_box = GtkBox::new(Orientation::Horizontal, 12);
         button_box.set_halign(Align::End);
-        let cancel_btn = Button::builder()
-            .label("Отмена")
-            .build();
+        let cancel_btn = Button::builder().label("Отмена").build();
         let create_btn = Button::builder()
             .label("Создать опрос")
             .css_classes(vec!["suggested-action".to_string()])
@@ -106,10 +104,12 @@ impl PollCreator {
         container.append(&quiz_mode);
         container.append(&has_correct_answer);
         container.append(&Separator::new(Orientation::Horizontal));
-        container.append(&Label::builder()
-            .label("Правильный ответ (если викторина)")
-            .halign(Align::Start)
-            .build());
+        container.append(
+            &Label::builder()
+                .label("Правильный ответ (если викторина)")
+                .halign(Align::Start)
+                .build(),
+        );
         container.append(&correct_answer_selector);
         container.append(&Separator::new(Orientation::Horizontal));
         container.append(&button_box);
@@ -236,7 +236,9 @@ impl PollCreator {
         };
 
         if quiz_mode {
-            poll.correct_answer_ids = self.answers.borrow()
+            poll.correct_answer_ids = self
+                .answers
+                .borrow()
                 .iter()
                 .enumerate()
                 .filter(|(_i, (entry, _))| entry.text().is_empty())

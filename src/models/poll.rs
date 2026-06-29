@@ -1,10 +1,10 @@
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Poll {
     pub poll_id: String,
-    pub message_id: String,   // сообщение с опросом
+    pub message_id: String, // сообщение с опросом
     pub chat_id: String,
     pub question: String,
     pub answers: Vec<PollAnswer>,

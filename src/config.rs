@@ -85,10 +85,10 @@ pub const DESKTOP_APP_ID: &str = "ru.yandex.yamb";
 pub const DESKTOP_PROTOCOL: &str = "ychat://";
 
 // Voice message configuration
-pub const MAX_VOICE_DURATION: u32 = 600;        // 10 минут максимум
-pub const VOICE_SAMPLE_RATE: u32 = 16000;        // Hz для записи (16kHz для Opus)
-pub const VOICE_BITRATE: u32 = 64000;            // kbps для Opus кодирования
-pub const VOICE_MAX_FILE_SIZE: u64 = 5_242_880;  // ~5MB макс для голосового сообщения
+pub const MAX_VOICE_DURATION: u32 = 600; // 10 минут максимум
+pub const VOICE_SAMPLE_RATE: u32 = 16000; // Hz для записи (16kHz для Opus)
+pub const VOICE_BITRATE: u32 = 64000; // kbps для Opus кодирования
+pub const VOICE_MAX_FILE_SIZE: u64 = 5_242_880; // ~5MB макс для голосового сообщения
 
 // Yandex SpeechKit for voice transcription
 pub const SPEECHKIT_API_URL: &str = "https://api.speechkit.yandex.net/v1/stt";

@@ -1,4 +1,5 @@
- use crate::api::HttpClient;
+
+use crate::api::HttpClient;
 use crate::models::group::*;
 use crate::models::Chat;
 
@@ -24,7 +25,8 @@ impl HttpClient {
         }
 
         // Fallback: construct Chat from response data
-        let chat_id = data.get("chat_id")
+        let chat_id = data
+            .get("chat_id")
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
@@ -65,7 +67,8 @@ impl HttpClient {
             return Ok(chat);
         }
 
-        let chat_id = data.get("chat_id")
+        let chat_id = data
+            .get("chat_id")
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();

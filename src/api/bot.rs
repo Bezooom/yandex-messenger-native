@@ -2,7 +2,7 @@
 
 use serde_json::Value;
 
-use crate::models::bot::{BotInfo, BotCommand, BotMessage, InlineCallback, BotStartResult};
+use crate::models::bot::{BotCommand, BotInfo, BotMessage, BotStartResult, InlineCallback};
 
 /// Bot API methods
 impl crate::api::HttpClient {
@@ -12,7 +12,8 @@ impl crate::api::HttpClient {
             "botId": bot_id
         });
         let data = self.rpc_request("get_bot", params).await?;
-        let bot: BotInfo = serde_json::from_value(data).map_err(|e| format!("Failed to parse bot info: {}", e))?;
+        let bot: BotInfo =
+            serde_json::from_value(data).map_err(|e| format!("Failed to parse bot info: {}", e))?;
         Ok(bot)
     }
 
@@ -22,7 +23,8 @@ impl crate::api::HttpClient {
             "botId": bot_id
         });
         let data = self.rpc_request("get_bot_commands", params).await?;
-        let commands: Vec<BotCommand> = serde_json::from_value(data).map_err(|e| format!("Failed to parse bot commands: {}", e))?;
+        let commands: Vec<BotCommand> = serde_json::from_value(data)
+            .map_err(|e| format!("Failed to parse bot commands: {}", e))?;
         Ok(commands)
     }
 
@@ -40,7 +42,8 @@ impl crate::api::HttpClient {
             "bot_params": params
         });
         let data = self.rpc_request("send_message", params).await?;
-        let bot_msg: BotMessage = serde_json::from_value(data).map_err(|e| format!("Failed to parse bot message: {}", e))?;
+        let bot_msg: BotMessage = serde_json::from_value(data)
+            .map_err(|e| format!("Failed to parse bot message: {}", e))?;
         Ok(bot_msg)
     }
 
@@ -55,7 +58,8 @@ impl crate::api::HttpClient {
             "callbackData": callback_data
         });
         let data = self.rpc_request("inline_callback", params).await?;
-        let callback: InlineCallback = serde_json::from_value(data).map_err(|e| format!("Failed to parse inline callback: {}", e))?;
+        let callback: InlineCallback = serde_json::from_value(data)
+            .map_err(|e| format!("Failed to parse inline callback: {}", e))?;
         Ok(callback)
     }
 
@@ -70,7 +74,8 @@ impl crate::api::HttpClient {
             "startParam": start_param
         });
         let data = self.rpc_request("start_bot", params).await?;
-        let result: BotStartResult = serde_json::from_value(data).map_err(|e| format!("Failed to parse bot start result: {}", e))?;
+        let result: BotStartResult = serde_json::from_value(data)
+            .map_err(|e| format!("Failed to parse bot start result: {}", e))?;
         Ok(result)
     }
 
@@ -85,7 +90,8 @@ impl crate::api::HttpClient {
             "limit": limit
         });
         let data = self.rpc_request("get_bot_messages", params).await?;
-        let messages: Vec<BotMessage> = serde_json::from_value(data).map_err(|e| format!("Failed to parse bot messages: {}", e))?;
+        let messages: Vec<BotMessage> = serde_json::from_value(data)
+            .map_err(|e| format!("Failed to parse bot messages: {}", e))?;
         Ok(messages)
     }
 
@@ -99,22 +105,35 @@ impl crate::api::HttpClient {
 impl crate::api::WebSocketClient {
     /// Подписаться на обновления бота
     pub async fn subscribe_bot(&self, bot_id: &str) -> Result<u64, String> {
-        self.send_message("subscribe_bot", serde_json::json!({ "botId": bot_id })).await
+        self.send_message("subscribe_bot", serde_json::json!({ "botId": bot_id }))
+            .await
     }
 
     /// Отправить callback боту через WebSocket
-    pub async fn send_bot_callback(&self, bot_id: &str, callback_data: &str) -> Result<u64, String> {
-        self.send_message("bot_callback", serde_json::json!({
-            "botId": bot_id,
-            "callbackData": callback_data
-        })).await
+    pub async fn send_bot_callback(
+        &self,
+        bot_id: &str,
+        callback_data: &str,
+    ) -> Result<u64, String> {
+        self.send_message(
+            "bot_callback",
+            serde_json::json!({
+                "botId": bot_id,
+                "callbackData": callback_data
+            }),
+        )
+        .await
     }
 
     /// Отправить команду боту через WebSocket
     pub async fn send_bot_command_ws(&self, bot_id: &str, command: &str) -> Result<u64, String> {
-        self.send_message("bot_command", serde_json::json!({
-            "botId": bot_id,
-            "command": command
-        })).await
+        self.send_message(
+            "bot_command",
+            serde_json::json!({
+                "botId": bot_id,
+                "command": command
+            }),
+        )
+        .await
     }
 }

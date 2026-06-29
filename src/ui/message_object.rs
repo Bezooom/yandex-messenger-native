@@ -1,7 +1,7 @@
-use gtk::glib;
 use crate::models::Message;
-use std::cell::RefCell;
+use gtk::glib;
 use gtk::subclass::prelude::*;
+use std::cell::RefCell;
 
 glib::wrapper! {
     pub struct MessageObject(ObjectSubclass<imp::MessageObject>);
@@ -22,7 +22,7 @@ impl MessageObject {
 mod imp {
     use super::*;
     use gtk::glib::subclass::prelude::*;
-    
+
     #[derive(Default)]
     pub struct MessageObject {
         pub message: RefCell<Option<Message>>,

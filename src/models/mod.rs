@@ -1,31 +1,31 @@
 #![allow(dead_code)]
 
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-pub mod thread;
-pub mod reaction;
-pub mod voice_message;
-pub mod poll;
-pub mod sticker;
-pub mod folder;
-pub mod saved_message;
-pub mod bot;
-pub mod scheduled_message;
-pub mod group;
 pub mod account;
+pub mod bot;
+pub mod folder;
+pub mod group;
+pub mod poll;
+pub mod reaction;
+pub mod saved_message;
+pub mod scheduled_message;
+pub mod sticker;
+pub mod thread;
+pub mod voice_message;
 
-pub use thread::Thread;
-pub use reaction::ExtendedReactionsConfig;
-pub use voice_message::VoiceMessage;
-pub use poll::{Poll, PollAnswer};
-pub use sticker::{Sticker, StickerPack, StickerPackList};
-pub use folder::ChatFolder;
+pub use account::Account;
 pub use bot::BotInfo;
 pub use bot::BotReplyMarkup;
+pub use folder::ChatFolder;
+pub use poll::{Poll, PollAnswer};
+pub use reaction::ExtendedReactionsConfig;
 pub use scheduled_message::ScheduledMessage;
-pub use account::Account;
+pub use sticker::{Sticker, StickerPack, StickerPackList};
+pub use thread::Thread;
+pub use voice_message::VoiceMessage;
 
 /// Chat type enumeration
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -92,7 +92,9 @@ impl Chat {
     }
 
     pub fn display_name(&self) -> String {
-        self.title.clone().unwrap_or_else(|| "Unknown Chat".to_string())
+        self.title
+            .clone()
+            .unwrap_or_else(|| "Unknown Chat".to_string())
     }
 }
 

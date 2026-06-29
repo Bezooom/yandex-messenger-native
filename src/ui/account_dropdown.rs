@@ -1,8 +1,8 @@
 use gtk::prelude::*;
-use gtk::{Box as GtkBox, Orientation, Button, Popover, Label, Separator};
-use std::sync::Arc;
+use gtk::{Box as GtkBox, Button, Label, Orientation, Popover, Separator};
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::api::auth::AuthManager;
 
@@ -19,9 +19,7 @@ pub struct AccountDropdown {
 
 impl AccountDropdown {
     pub fn new(auth: Arc<AuthManager>) -> Self {
-        let popover = Rc::new(RefCell::new(Popover::builder()
-            .has_arrow(false)
-            .build()));
+        let popover = Rc::new(RefCell::new(Popover::builder().has_arrow(false).build()));
 
         let menu = Rc::new(RefCell::new(GtkBox::new(Orientation::Vertical, 4)));
         menu.borrow_mut().add_css_class("account-dropdown-menu");
@@ -85,7 +83,7 @@ impl AccountDropdown {
                     .take(2)
                     .map(|c| c.to_ascii_uppercase())
                     .collect();
-                
+
                 let avatar_label = Label::builder()
                     .label(&initials)
                     .css_classes(vec!["avatar-label".to_string()])
@@ -96,7 +94,10 @@ impl AccountDropdown {
                 // Hash account ID to choose a background color gradient
                 let mut hash: usize = 5381;
                 for byte in account.id.bytes() {
-                    hash = hash.wrapping_shl(5).wrapping_add(hash).wrapping_add(byte as usize);
+                    hash = hash
+                        .wrapping_shl(5)
+                        .wrapping_add(hash)
+                        .wrapping_add(byte as usize);
                 }
                 avatar.add_css_class(&format!("avatar-gradient-{}", hash % 8));
                 row_box.append(&avatar);
@@ -144,9 +145,7 @@ impl AccountDropdown {
             // "Add Account" Button
             let add_box = GtkBox::new(Orientation::Horizontal, 10);
             add_box.set_margin_start(4);
-            let add_img = gtk::Image::builder()
-                .icon_name("list-add-symbolic")
-                .build();
+            let add_img = gtk::Image::builder().icon_name("list-add-symbolic").build();
             let add_label = Label::builder()
                 .label("Добавить аккаунт")
                 .xalign(0.0)
@@ -174,10 +173,7 @@ impl AccountDropdown {
             let logout_img = gtk::Image::builder()
                 .icon_name("system-log-out-symbolic")
                 .build();
-            let logout_label = Label::builder()
-                .label("Выйти")
-                .xalign(0.0)
-                .build();
+            let logout_label = Label::builder().label("Выйти").xalign(0.0).build();
             logout_box.append(&logout_img);
             logout_box.append(&logout_label);
 
@@ -213,5 +209,4 @@ impl AccountDropdown {
     pub fn connect_add_account<F: Fn() + 'static>(&self, callback: F) {
         *self.add_account_callback.borrow_mut() = Some(Box::new(callback));
     }
-
 }

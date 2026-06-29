@@ -1,21 +1,21 @@
 #![allow(dead_code)]
 
-  use gtk::prelude::*;
 use gtk::glib;
- use gtk::prelude::ListModelExt;
-use gtk::{
-    Box as GtkBox, Button, Entry, Label, Orientation, Popover,
-    ScrolledWindow, Separator, SingleSelection, StringList,
-};
-use std::sync::{Arc, Mutex};
+use gtk::prelude::ListModelExt;
+use gtk::prelude::*;
 use gtk::CssProvider;
+use gtk::{
+    Box as GtkBox, Button, Entry, Label, Orientation, Popover, ScrolledWindow, Separator,
+    SingleSelection, StringList,
+};
 use libadwaita as adw;
+use std::sync::{Arc, Mutex};
 
 use crate::api::auth::AuthManager;
 use crate::models::Chat;
 use crate::ui::account_dropdown::AccountDropdown;
-use std::sync::OnceLock;
 use std::collections::HashMap;
+use std::sync::OnceLock;
 
 static AVATAR_CACHE: OnceLock<Mutex<HashMap<String, gtk::gdk::Texture>>> = OnceLock::new();
 fn get_avatar_cache() -> &'static Mutex<HashMap<String, gtk::gdk::Texture>> {
@@ -45,7 +45,11 @@ struct ChatListModel {
 }
 
 impl ChatListModel {
-    fn new(chats: Arc<Mutex<Vec<Chat>>>, visible: Arc<Mutex<Vec<usize>>>, chat_ids_list: Arc<gtk::StringList>) -> Self {
+    fn new(
+        chats: Arc<Mutex<Vec<Chat>>>,
+        visible: Arc<Mutex<Vec<usize>>>,
+        chat_ids_list: Arc<gtk::StringList>,
+    ) -> Self {
         Self {
             chats,
             visible,
@@ -63,7 +67,10 @@ impl ChatListModel {
         let orig_idx = *vis.get(pos as usize)?;
         let chats = self.chats.lock().unwrap();
         let chat = chats.get(orig_idx).cloned()?;
-        Some(ChatRowData { orig_index: orig_idx, chat })
+        Some(ChatRowData {
+            orig_index: orig_idx,
+            chat,
+        })
     }
 
     fn set_selection(&self, pos: Option<usize>) {
@@ -76,7 +83,9 @@ impl ChatListModel {
         let mut visible: Vec<usize> = Vec::new();
         for (i, chat) in chats.iter().enumerate() {
             let title = chat.display_name().to_lowercase();
-            let last_msg = chat.last_message.as_ref()
+            let last_msg = chat
+                .last_message
+                .as_ref()
                 .map(|m| m.preview().to_lowercase())
                 .unwrap_or_default();
             if q_lower.is_empty() || title.contains(&q_lower) || last_msg.contains(&q_lower) {
@@ -86,14 +95,15 @@ impl ChatListModel {
         *self.visible.lock().unwrap() = visible;
     }
 
-/// Update the StringList model to reflect the current visible state.
+    /// Update the StringList model to reflect the current visible state.
     /// Called after filter() and set_chats() so the ListView knows how many items to render.
     /// IMPORTANT: We must modify the EXISTING StringList in-place (via splice),
     /// NOT replace it, because the SingleSelection holds a reference to the original object.
     fn update_chat_ids_model(&self) {
         let strings: Vec<String> = {
             let visible = self.visible.lock().unwrap();
-            visible.iter()
+            visible
+                .iter()
                 .filter_map(|&idx| {
                     let chats = self.chats.lock().unwrap();
                     chats.get(idx).map(|chat| chat.id.clone())
@@ -104,11 +114,15 @@ impl ChatListModel {
         let list = &self.chat_ids_list;
         let old_count = list.n_items();
         list.splice(0, old_count, &refs);
-        eprintln!("[CHATLIST] Updated model: {} visible chats (was {})", refs.len(), old_count);
+        eprintln!(
+            "[CHATLIST] Updated model: {} visible chats (was {})",
+            refs.len(),
+            old_count
+        );
     }
 }
 
- // ─────────────────────────────────────────────
+// ─────────────────────────────────────────────
 //  ChatListPanel — the main widget
 // ─────────────────────────────────────────────
 
@@ -144,7 +158,11 @@ impl ChatListPanel {
 
         // Create a StringList as the model for the ListView.
         let chat_ids_list = Arc::new(StringList::new(&[]));
-        let model = ChatListModel::new(Arc::clone(&chats), Arc::clone(&visible), Arc::clone(&chat_ids_list));
+        let model = ChatListModel::new(
+            Arc::clone(&chats),
+            Arc::clone(&visible),
+            Arc::clone(&chat_ids_list),
+        );
 
         let logout_callback = Arc::new(Mutex::new(None));
         let logout_callback_clone = logout_callback.clone();
@@ -163,9 +181,9 @@ impl ChatListPanel {
         // ── Search bar ──
         let search_entry = Self::create_search_entry(&model);
 
-         // ── ListView ──
-         let factory = Self::create_item_factory(&model, auth.clone());
-           let list_view = gtk::ListView::new(Some(selection.clone()), Some(factory));
+        // ── ListView ──
+        let factory = Self::create_item_factory(&model, auth.clone());
+        let list_view = gtk::ListView::new(Some(selection.clone()), Some(factory));
         list_view.set_accessible_role(gtk::AccessibleRole::List);
         list_view.set_hexpand(true);
         list_view.set_vexpand(true);
@@ -217,7 +235,7 @@ impl ChatListPanel {
             gtk::gdk::DragAction::MOVE | gtk::gdk::DragAction::COPY,
         );
         let model_clone = model.clone();
-          let selection_clone = selection.clone();
+        let selection_clone = selection.clone();
         drop.connect_drop(move |_, value, _x, _y| {
             if let Ok(src_idx) = value.get::<u32>() {
                 // Use selection model to get the current drop position
@@ -245,7 +263,7 @@ impl ChatListPanel {
         list_view.add_controller(drop);
 
         // ── Assemble ──
-         let chat_container = GtkBox::new(Orientation::Vertical, 0);
+        let chat_container = GtkBox::new(Orientation::Vertical, 0);
         chat_container.set_size_request(260, -1);
         chat_container.set_hexpand(true);
         chat_container.set_vexpand(true);
@@ -255,14 +273,13 @@ impl ChatListPanel {
         chat_container.append(&Separator::new(Orientation::Horizontal));
         chat_container.append(&scrolled);
 
-          let container = GtkBox::new(Orientation::Horizontal, 0);
+        let container = GtkBox::new(Orientation::Horizontal, 0);
         container.set_size_request(260, -1);
         container.set_accessible_role(gtk::AccessibleRole::List);
         container.set_hexpand(true);
         container.set_vexpand(true);
         container.append(&chat_container);
 
- 
         // ── Search debounce ──
         let search_rc: Arc<Mutex<Option<glib::SourceId>>> = Arc::new(Mutex::new(None));
         let model_clone = model.clone();
@@ -339,7 +356,7 @@ impl ChatListPanel {
         let user_name_label = self.user_name_label.clone();
         let user_avatar = self.user_avatar.clone();
         let auth = auth.clone();
-        
+
         glib::spawn_future_local(async move {
             if let Some(id) = auth.get_current_account_id().await {
                 let accounts = auth.list_accounts().await;
@@ -381,7 +398,8 @@ impl ChatListPanel {
                                     user_avatar_clone.remove(&child);
                                 }
                                 for i in 0..8 {
-                                    user_avatar_clone.remove_css_class(&format!("avatar-gradient-{}", i));
+                                    user_avatar_clone
+                                        .remove_css_class(&format!("avatar-gradient-{}", i));
                                 }
                                 let bytes_glib = glib::Bytes::from(&bytes);
                                 if let Ok(texture) = gtk::gdk::Texture::from_bytes(&bytes_glib) {
@@ -398,7 +416,8 @@ impl ChatListPanel {
                                 .css_classes(vec!["avatar-label".to_string()])
                                 .build();
                             user_avatar_clone.append(&label);
-                            user_avatar_clone.add_css_class(&format!("avatar-gradient-{}", hash_clone % 8));
+                            user_avatar_clone
+                                .add_css_class(&format!("avatar-gradient-{}", hash_clone % 8));
                         });
                     } else {
                         let label = Label::builder()
@@ -436,8 +455,8 @@ impl ChatListPanel {
             .placeholder_text("Поиск чатов...")
             .css_classes(vec!["search-bar".to_string()])
             .margin_start(16) // Token: 16
-            .margin_end(16)   // Token: 16
-            .margin_top(12)   // Token: 12
+            .margin_end(16) // Token: 16
+            .margin_top(12) // Token: 12
             .margin_bottom(12) // Token: 12
             .primary_icon_name("system-search-symbolic")
             .primary_icon_activatable(false)
@@ -488,8 +507,8 @@ impl ChatListPanel {
     ) -> (GtkBox, GtkBox, Label, Label) {
         let header = GtkBox::new(Orientation::Horizontal, 8);
         header.set_margin_start(16); // Token: 16
-        header.set_margin_end(16);   // Token: 16
-        header.set_margin_top(16);   // Token: 16
+        header.set_margin_end(16); // Token: 16
+        header.set_margin_top(16); // Token: 16
         header.set_margin_bottom(8); // Token: 8
 
         let user_avatar = GtkBox::new(Orientation::Horizontal, 0);
@@ -592,13 +611,16 @@ impl ChatListPanel {
 
     // ── Item factory ──
 
-     fn create_item_factory(model: &ChatListModel, auth: Arc<AuthManager>) -> gtk::SignalListItemFactory {
-         let model_clone = model.clone();
-         let factory = gtk::SignalListItemFactory::new();
+    fn create_item_factory(
+        model: &ChatListModel,
+        auth: Arc<AuthManager>,
+    ) -> gtk::SignalListItemFactory {
+        let model_clone = model.clone();
+        let factory = gtk::SignalListItemFactory::new();
         let auth_clone = auth.clone();
         factory.connect_setup(move |_factory, list_item| {
             let list_item = list_item.downcast_ref::<gtk::ListItem>().unwrap();
-            
+
             // Row: [Avatar] [Content]
             let row = GtkBox::new(Orientation::Horizontal, 10);
             row.set_css_classes(&["chat-row"]);
@@ -610,9 +632,7 @@ impl ChatListPanel {
 
             // Avatar wrapped in Overlay for precise online status dot
             let avatar_overlay = gtk::Overlay::new();
-            let avatar = adw::Avatar::builder()
-                .size(48)
-                .build();
+            let avatar = adw::Avatar::builder().size(48).build();
             avatar_overlay.set_child(Some(&avatar));
 
             let dot = GtkBox::new(Orientation::Horizontal, 0);
@@ -687,8 +707,12 @@ impl ChatListPanel {
             let pos = list_item.position();
             let item = model_clone.item(pos);
 
-            let Some(row_widget) = list_item.child() else { return };
-            let Ok(row) = row_widget.downcast::<gtk::Box>() else { return };
+            let Some(row_widget) = list_item.child() else {
+                return;
+            };
+            let Ok(row) = row_widget.downcast::<gtk::Box>() else {
+                return;
+            };
 
             // Collect direct children: [avatar_overlay, content_box]
             let mut children = Vec::new();
@@ -708,7 +732,9 @@ impl ChatListPanel {
             }
 
             let Some(cont) = content_widget else { return };
-            let Some(chat_row) = item.as_ref() else { return };
+            let Some(chat_row) = item.as_ref() else {
+                return;
+            };
 
             // top_row children: [title_label, pin_indicator, time_label]
             if let Some(top_row) = cont.first_child() {
@@ -741,7 +767,9 @@ impl ChatListPanel {
                         if let Some(unread_w) = preview_w.next_sibling() {
                             if let Ok(unread) = unread_w.downcast::<Label>() {
                                 if chat_row.chat.unread_count > 0 {
-                                    unread.set_label(&format_unread_count(chat_row.chat.unread_count));
+                                    unread.set_label(&format_unread_count(
+                                        chat_row.chat.unread_count,
+                                    ));
                                     unread.set_visible(true);
                                 } else {
                                     unread.set_visible(false);
@@ -764,7 +792,10 @@ impl ChatListPanel {
         }
 
         let is_online = chat.chat_type == crate::models::ChatType::Private
-            && chat.participants.iter().any(|p| p.status == Some(crate::models::ParticipantStatus::Online));
+            && chat
+                .participants
+                .iter()
+                .any(|p| p.status == Some(crate::models::ParticipantStatus::Online));
 
         let mut next = overlay.first_child();
         while let Some(w) = next {
@@ -802,9 +833,12 @@ impl ChatListPanel {
                 format!("https://files.messenger.yandex.ru/{}?size=small", avatar_id)
             } else {
                 let normalized_id = avatar_id.replace("user_avatar/", "");
-                format!("https://avatars.mds.yandex.net/get-{}/islands-middle", normalized_id)
+                format!(
+                    "https://avatars.mds.yandex.net/get-{}/islands-middle",
+                    normalized_id
+                )
             };
-            
+
             // Keep track of the current chat ID on the avatar using its name property
             avatar.set_widget_name(&chat.id);
             let expected_chat_id = chat.id.clone();
@@ -825,7 +859,10 @@ impl ChatListPanel {
                     if let Ok(texture) = gtk::gdk::Texture::from_bytes(&bytes_glib) {
                         // Put in static cache!
                         let cache = get_avatar_cache();
-                        cache.lock().unwrap().insert(avatar_id_clone, texture.clone());
+                        cache
+                            .lock()
+                            .unwrap()
+                            .insert(avatar_id_clone, texture.clone());
 
                         // Check if the avatar is still bound to the same chat
                         if avatar_clone.widget_name() == expected_chat_id {
@@ -845,33 +882,31 @@ impl ChatListPanel {
         let ctrl = gtk::EventControllerKey::new();
         let sel = selection.clone();
 
-        ctrl.connect_key_pressed(move |_, keyval, _keycode, _state| {
-            match keyval {
-                gtk::gdk::Key::Down => {
-                    let n = sel.n_items();
-                    let cur = sel.selected();
-                    if cur < n {
-                        sel.select_item(cur + 1, false);
-                    }
-                    glib::Propagation::Stop
+        ctrl.connect_key_pressed(move |_, keyval, _keycode, _state| match keyval {
+            gtk::gdk::Key::Down => {
+                let n = sel.n_items();
+                let cur = sel.selected();
+                if cur < n {
+                    sel.select_item(cur + 1, false);
                 }
-                gtk::gdk::Key::Up => {
-                    let cur = sel.selected();
-                    if cur > 0 {
-                        sel.select_item(cur - 1, false);
-                    }
-                    glib::Propagation::Stop
-                }
-                 gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter => {
-                                        sel.select_item(sel.selected(), false);
-                    glib::Propagation::Stop
-                }
-                gtk::gdk::Key::space => {
-                    log::info!("Space preview: row {}", sel.selected());
-                    glib::Propagation::Stop
-                }
-                _ => glib::Propagation::Proceed,
+                glib::Propagation::Stop
             }
+            gtk::gdk::Key::Up => {
+                let cur = sel.selected();
+                if cur > 0 {
+                    sel.select_item(cur - 1, false);
+                }
+                glib::Propagation::Stop
+            }
+            gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter => {
+                sel.select_item(sel.selected(), false);
+                glib::Propagation::Stop
+            }
+            gtk::gdk::Key::space => {
+                log::info!("Space preview: row {}", sel.selected());
+                glib::Propagation::Stop
+            }
+            _ => glib::Propagation::Proceed,
         });
 
         ctrl
@@ -879,7 +914,10 @@ impl ChatListPanel {
 
     // ── Context menu ──
 
-    fn create_context_gesture(selection: &SingleSelection, chats: &Arc<Mutex<Vec<Chat>>>) -> gtk::GestureClick {
+    fn create_context_gesture(
+        selection: &SingleSelection,
+        chats: &Arc<Mutex<Vec<Chat>>>,
+    ) -> gtk::GestureClick {
         let gesture = gtk::GestureClick::new();
         gesture.set_button(3);
         let sel_clone = selection.clone();
@@ -900,9 +938,7 @@ impl ChatListPanel {
         let menu = GtkBox::new(Orientation::Vertical, 4);
         menu.add_css_class("chat-context-menu");
 
-        let popover = Popover::builder()
-            .has_arrow(false)
-            .build();
+        let popover = Popover::builder().has_arrow(false).build();
 
         let actions: Vec<(&str, &str)> = vec![
             ("Отметить как прочитанное", "mark_read"),
@@ -1058,12 +1094,16 @@ impl ChatListPanel {
             if !a.pinned && b.pinned {
                 return std::cmp::Ordering::Greater;
             }
-            let a_time = a.last_message.as_ref()
+            let a_time = a
+                .last_message
+                .as_ref()
                 .map(|m| m.created)
                 .or(a.updated)
                 .or(a.created)
                 .unwrap_or_else(|| chrono::DateTime::<chrono::Utc>::MIN_UTC);
-            let b_time = b.last_message.as_ref()
+            let b_time = b
+                .last_message
+                .as_ref()
                 .map(|m| m.created)
                 .or(b.updated)
                 .or(b.created)
@@ -1086,7 +1126,7 @@ impl ChatListPanel {
         if let Some(chat) = chats.iter_mut().find(|c| c.id == chat_id) {
             chat.unread_count = unread_count;
         }
-        
+
         // Re-sort chats
         chats.sort_by(|a, b| {
             if a.pinned && !b.pinned {
@@ -1095,12 +1135,16 @@ impl ChatListPanel {
             if !a.pinned && b.pinned {
                 return std::cmp::Ordering::Greater;
             }
-            let a_time = a.last_message.as_ref()
+            let a_time = a
+                .last_message
+                .as_ref()
                 .map(|m| m.created)
                 .or(a.updated)
                 .or(a.created)
                 .unwrap_or_else(|| chrono::DateTime::<chrono::Utc>::MIN_UTC);
-            let b_time = b.last_message.as_ref()
+            let b_time = b
+                .last_message
+                .as_ref()
                 .map(|m| m.created)
                 .or(b.updated)
                 .or(b.created)
@@ -1133,22 +1177,24 @@ impl ChatListPanel {
     pub fn connect_chat_selected<F: Fn(Chat) + 'static>(&self, callback: F) {
         let chats = Arc::clone(&self.model.chats);
         let visible = Arc::clone(&self.model.visible);
-        
-        self.selection.connect_notify_local(
-            Some("selected"),
-            move |obj, _| {
+
+        self.selection
+            .connect_notify_local(Some("selected"), move |obj, _| {
                 let selection = obj.downcast_ref::<gtk::SingleSelection>().unwrap();
                 let idx = selection.selected();
                 eprintln!("[CHATLIST] Selection changed to index {}", idx);
                 if idx < visible.lock().unwrap().len() as u32 {
                     let orig_idx = visible.lock().unwrap()[idx as usize];
                     if let Some(chat) = chats.lock().unwrap().get(orig_idx).cloned() {
-                        eprintln!("[CHATLIST] Selected chat: {} ({})", chat.display_name(), chat.id);
+                        eprintln!(
+                            "[CHATLIST] Selected chat: {} ({})",
+                            chat.display_name(),
+                            chat.id
+                        );
                         callback(chat);
                     }
                 }
-            },
-        );
+            });
     }
 
     pub fn container(&self) -> &GtkBox {
@@ -1196,10 +1242,13 @@ fn format_unread_count(count: u32) -> String {
     }
 }
 
- fn hash_color(s: &str) -> usize {
+fn hash_color(s: &str) -> usize {
     let mut hash: u64 = 5381;
     for byte in s.bytes() {
-        hash = hash.wrapping_shl(5).wrapping_add(hash).wrapping_add(byte as u64);
+        hash = hash
+            .wrapping_shl(5)
+            .wrapping_add(hash)
+            .wrapping_add(byte as u64);
     }
     hash as usize
 }
@@ -1211,16 +1260,18 @@ async fn download_avatar_bytes(url: &str, token: Option<&str>) -> Result<bytes::
         .timeout(std::time::Duration::from_secs(5))
         .build()
         .map_err(|e| format!("Failed to create client: {}", e))?;
-    
+
     let mut req = client.get(url);
     if let Some(t) = token {
         req = req.header("Authorization", format!("OAuth {}", t));
     }
-    
+
     // Load session cookies for private files/avatars if the url is on yandex files domain
     if url.contains("files.messenger.yandex.") {
         if let Some(config_dir) = dirs::config_dir() {
-            let session_file = config_dir.join("yandex-messenger-native").join("session.json");
+            let session_file = config_dir
+                .join("yandex-messenger-native")
+                .join("session.json");
             if session_file.exists() {
                 if let Ok(content) = std::fs::read_to_string(&session_file) {
                     if let Ok(data) = serde_json::from_str::<serde_json::Value>(&content) {
@@ -1243,17 +1294,20 @@ async fn download_avatar_bytes(url: &str, token: Option<&str>) -> Result<bytes::
             }
         }
     }
-    
+
     let response = req
         .header("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
         .send()
         .await
         .map_err(|e| format!("Fetch failed: {}", e))?;
-    
+
     if !response.status().is_success() {
         return Err(format!("HTTP error {}", response.status()));
     }
-    
-    let bytes = response.bytes().await.map_err(|e| format!("Read bytes failed: {}", e))?;
+
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| format!("Read bytes failed: {}", e))?;
     Ok(bytes)
 }

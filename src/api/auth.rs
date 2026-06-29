@@ -1,12 +1,12 @@
+use base64::Engine;
+use log::{debug, info};
 use serde::{Deserialize, Serialize};
-use tokio::sync::Mutex;
-use std::sync::{Arc, Mutex as StdMutex};
-use std::path::PathBuf;
 use std::fmt;
 use std::fs;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex as StdMutex};
 use std::time::SystemTime;
-use log::{debug, info};
-use base64::Engine;
+use tokio::sync::Mutex;
 
 use crate::config;
 use crate::models::Account;
@@ -184,8 +184,7 @@ impl AuthManager {
             .ok_or_else(|| "Cannot get config dir".to_string())?
             .join("yandex-messenger-native");
 
-        fs::create_dir_all(&data_dir)
-            .map_err(|e| format!("Cannot create data dir: {}", e))?;
+        fs::create_dir_all(&data_dir).map_err(|e| format!("Cannot create data dir: {}", e))?;
 
         let manager = Self {
             token: Arc::new(Mutex::new(None)),
@@ -203,7 +202,9 @@ impl AuthManager {
 
     /// Load accounts from disk synchronously. Called once from `new()`.
     fn load_accounts_sync(&self) {
-        let accounts_file = self.data_dir.join(crate::models::account::ACCOUNTS_LIST_FILE);
+        let accounts_file = self
+            .data_dir
+            .join(crate::models::account::ACCOUNTS_LIST_FILE);
         let mut loaded: Vec<Account> = Vec::new();
 
         if accounts_file.exists() {
@@ -246,7 +247,13 @@ impl AuthManager {
         }
 
         // Keep the sync current_account_id pointing at the first known account.
-        if self.current_account_id_sync.lock().ok().and_then(|g| g.clone()).is_none() {
+        if self
+            .current_account_id_sync
+            .lock()
+            .ok()
+            .and_then(|g| g.clone())
+            .is_none()
+        {
             if let Some(first) = loaded.first() {
                 if let Ok(mut current) = self.current_account_id_sync.lock() {
                     *current = Some(first.id.clone());
@@ -263,13 +270,15 @@ impl AuthManager {
 
     /// Persist the current accounts list to disk.
     fn persist_accounts(&self, accounts: &[Account]) {
-        let path = self.data_dir.join(crate::models::account::ACCOUNTS_LIST_FILE);
+        let path = self
+            .data_dir
+            .join(crate::models::account::ACCOUNTS_LIST_FILE);
         if let Ok(json) = serde_json::to_string_pretty(accounts) {
             let _ = fs::write(path, json);
         }
     }
 
-     /// Get the path to stored token — account-specific if an account is selected.
+    /// Get the path to stored token — account-specific if an account is selected.
     /// Uses a sync mirror of the current account id so we can be called outside
     /// an async context without panicking on blocking locks.
     fn token_file(&self) -> PathBuf {
@@ -298,7 +307,9 @@ impl AuthManager {
         let path = self.data_dir.join("device_id.txt");
         if let Ok(id) = std::fs::read_to_string(&path) {
             let t = id.trim();
-            if !t.is_empty() { return t.to_string(); }
+            if !t.is_empty() {
+                return t.to_string();
+            }
         }
         let new_id = uuid::Uuid::new_v4().to_string();
         let _ = std::fs::write(&path, &new_id);
@@ -341,7 +352,10 @@ impl AuthManager {
         // Yandex OAuth will use permissions configured for the OAuth app.
 
         if let Some(redirect_uri) = self.effective_redirect_uri() {
-            params.push(format!("redirect_uri={}", urlencoding::encode(&redirect_uri)));
+            params.push(format!(
+                "redirect_uri={}",
+                urlencoding::encode(&redirect_uri)
+            ));
         }
 
         format!("{}?{}", self.effective_authorize_url(), params.join("&"))
@@ -349,8 +363,14 @@ impl AuthManager {
 
     /// Parse access token from redirect URL, validating state if provided.
     /// Returns the parsed token and the validated state (if any).
-    pub fn parse_token_from_url(&self, url: &str, expected_state: Option<&str>) -> Result<OAuthToken, String> {
-        let fragment = url.split('#').nth(1)
+    pub fn parse_token_from_url(
+        &self,
+        url: &str,
+        expected_state: Option<&str>,
+    ) -> Result<OAuthToken, String> {
+        let fragment = url
+            .split('#')
+            .nth(1)
             .ok_or_else(|| "No fragment in URL".to_string())?;
 
         let params: Vec<(&str, &str)> = fragment
@@ -430,11 +450,11 @@ impl AuthManager {
             return Err("Token file not found".to_string());
         }
 
-        let token_json = fs::read_to_string(&path)
-            .map_err(|e| format!("Token read failed: {}", e))?;
+        let token_json =
+            fs::read_to_string(&path).map_err(|e| format!("Token read failed: {}", e))?;
 
-        let token: OAuthToken = serde_json::from_str(&token_json)
-            .map_err(|e| format!("Token parse failed: {}", e))?;
+        let token: OAuthToken =
+            serde_json::from_str(&token_json).map_err(|e| format!("Token parse failed: {}", e))?;
 
         debug!("Token loaded from {}", path.display());
         Ok(token)
@@ -529,13 +549,9 @@ impl AuthManager {
             .ok_or_else(|| "No access_token in refresh response".to_string())?
             .to_string();
 
-        let expires_in = json["expires_in"]
-            .as_u64()
-            .unwrap_or(3600);
+        let expires_in = json["expires_in"].as_u64().unwrap_or(3600);
 
-        let user_id = json["user_id"]
-            .as_str()
-            .map(|s| s.to_string());
+        let user_id = json["user_id"].as_str().map(|s| s.to_string());
 
         let received_at = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -543,7 +559,10 @@ impl AuthManager {
             .unwrap_or(0);
 
         // Fix: check for new refresh_token in response (Yandex may rotate it)
-        let new_refresh_token = json.get("refresh_token").and_then(|v| v.as_str()).map(|v| v.to_string());
+        let new_refresh_token = json
+            .get("refresh_token")
+            .and_then(|v| v.as_str())
+            .map(|v| v.to_string());
         let refresh_token = new_refresh_token.or(Some(refresh_token.to_string()));
 
         Ok(OAuthToken {
@@ -671,7 +690,10 @@ impl AuthManager {
                 "OAuth exchange failed: {} ({}) at {}",
                 err,
                 desc,
-                self.token_urls().first().cloned().unwrap_or_else(|| config::OAUTH_TOKEN_URL.to_string())
+                self.token_urls()
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| config::OAUTH_TOKEN_URL.to_string())
             ));
         }
 
@@ -711,7 +733,11 @@ impl AuthManager {
         })
     }
 
-    async fn exchange_code_via_proxy(&self, proxy_url: &str, code: &str) -> Result<OAuthToken, String> {
+    async fn exchange_code_via_proxy(
+        &self,
+        proxy_url: &str,
+        code: &str,
+    ) -> Result<OAuthToken, String> {
         let client = reqwest::Client::new();
         let endpoint = format!("{}/oauth/exchange", proxy_url.trim_end_matches('/'));
 
@@ -828,7 +854,10 @@ impl AuthManager {
     pub async fn has_refresh_token(&self) -> bool {
         let token = self.token.lock().await;
         token.as_ref().is_some_and(|t| t.refresh_token.is_some())
-            || self.load_token().await.is_ok_and(|t| t.refresh_token.is_some())
+            || self
+                .load_token()
+                .await
+                .is_ok_and(|t| t.refresh_token.is_some())
     }
 
     /// Returns the number of seconds until the token expires, or None if no token.
@@ -887,9 +916,9 @@ impl AuthManager {
         // Load token from disk to get refresh_token
         let token = self.load_token().await?;
 
-        let refresh = token.refresh_token.ok_or_else(|| {
-            "No refresh_token available; user must re-authenticate".to_string()
-        })?;
+        let refresh = token
+            .refresh_token
+            .ok_or_else(|| "No refresh_token available; user must re-authenticate".to_string())?;
 
         let new_token = self.refresh_token(&refresh).await?;
 
@@ -921,11 +950,17 @@ impl AuthManager {
 
         if !response.status().is_success() {
             let status = response.status();
-            let body = response.text().await.unwrap_or_else(|_| "unknown".to_string());
+            let body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "unknown".to_string());
             return Err(format!("User info request failed ({}): {}", status, body));
         }
 
-        let body = response.text().await.map_err(|e| format!("Failed to read response: {}", e))?;
+        let body = response
+            .text()
+            .await
+            .map_err(|e| format!("Failed to read response: {}", e))?;
         let json: serde_json::Value = serde_json::from_str(&body)
             .map_err(|e| format!("Failed to parse user info response: {}", e))?;
 
@@ -934,45 +969,28 @@ impl AuthManager {
             .ok_or_else(|| "No id in user info response".to_string())?
             .to_string();
 
-        let login = json["login"]
-            .as_str()
-            .map(|s| s.to_string());
+        let login = json["login"].as_str().map(|s| s.to_string());
 
         let phone = json["default_phone"]
             .get("number")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        let first_name = json["first_name"]
-            .as_str()
-            .map(|s| s.to_string());
+        let first_name = json["first_name"].as_str().map(|s| s.to_string());
 
-        let last_name = json["last_name"]
-            .as_str()
-            .map(|s| s.to_string());
+        let last_name = json["last_name"].as_str().map(|s| s.to_string());
 
-        let display_name = json["display_name"]
-            .as_str()
-            .map(|s| s.to_string());
+        let display_name = json["display_name"].as_str().map(|s| s.to_string());
 
-        let username = json["login"]
-            .as_str()
-            .map(|s| s.to_string());
+        let username = json["login"].as_str().map(|s| s.to_string());
 
-        let avatar_id = json["default_avatar_id"]
-            .as_str()
-            .map(|s| s.to_string());
+        let avatar_id = json["default_avatar_id"].as_str().map(|s| s.to_string());
 
-        let status_raw = json["status"]
-            .as_str();
+        let status_raw = json["status"].as_str();
 
-        let is_bot = json["is_bot"]
-            .as_bool()
-            .unwrap_or(false);
+        let is_bot = json["is_bot"].as_bool().unwrap_or(false);
 
-        let is_premium = json["is_premium"]
-            .as_bool()
-            .unwrap_or(false);
+        let is_premium = json["is_premium"].as_bool().unwrap_or(false);
 
         Ok(crate::models::User {
             id,
@@ -1017,7 +1035,10 @@ impl AuthManager {
             }
             _ => {
                 let status = response.status();
-                let body = response.text().await.unwrap_or_else(|_| "unknown".to_string());
+                let body = response
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "unknown".to_string());
                 Err(format!("Session validation failed ({}): {}", status, body))
             }
         }
@@ -1048,7 +1069,10 @@ impl AuthManager {
     pub async fn current_account_name(&self) -> Option<String> {
         let id = self.get_current_account_id().await?;
         let accounts = self.accounts.lock().await;
-        accounts.iter().find(|a| a.id == id).map(|a| a.display_label())
+        accounts
+            .iter()
+            .find(|a| a.id == id)
+            .map(|a| a.display_label())
     }
 
     /// Switch to a specific account by ID
@@ -1066,8 +1090,8 @@ impl AuthManager {
             if !token_path.exists() {
                 return Err("Token file not found for account".to_string());
             }
-            let token_json = fs::read_to_string(&token_path)
-                .map_err(|e| format!("Token read failed: {}", e))?;
+            let token_json =
+                fs::read_to_string(&token_path).map_err(|e| format!("Token read failed: {}", e))?;
             let token: OAuthToken = serde_json::from_str(&token_json)
                 .map_err(|e| format!("Token parse failed: {}", e))?;
             *self.token.lock().await = Some(token);
@@ -1078,7 +1102,11 @@ impl AuthManager {
     }
 
     /// Add a new account from a token
-    pub async fn add_account(&self, token: &OAuthToken, user: &crate::models::User) -> Result<String, String> {
+    pub async fn add_account(
+        &self,
+        token: &OAuthToken,
+        user: &crate::models::User,
+    ) -> Result<String, String> {
         // Prefer a stable id based on the Yandex user id so repeated logins
         // don't create duplicate account entries.
         let account_id = token
@@ -1132,10 +1160,10 @@ impl AuthManager {
         if !token_path.exists() {
             return Err("Token file not found".to_string());
         }
-        let token_json = fs::read_to_string(&token_path)
-            .map_err(|e| format!("Token read failed: {}", e))?;
-        let mut token: OAuthToken = serde_json::from_str(&token_json)
-            .map_err(|e| format!("Token parse failed: {}", e))?;
+        let token_json =
+            fs::read_to_string(&token_path).map_err(|e| format!("Token read failed: {}", e))?;
+        let mut token: OAuthToken =
+            serde_json::from_str(&token_json).map_err(|e| format!("Token parse failed: {}", e))?;
         // Update expiry
         token.received_at = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -1143,8 +1171,7 @@ impl AuthManager {
             .unwrap_or(0);
         let updated_json = serde_json::to_string_pretty(&token)
             .map_err(|e| format!("Token serialize failed: {}", e))?;
-        fs::write(&token_path, updated_json)
-            .map_err(|e| format!("Token write failed: {}", e))?;
+        fs::write(&token_path, updated_json).map_err(|e| format!("Token write failed: {}", e))?;
         Ok(())
     }
 

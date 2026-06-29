@@ -2,9 +2,9 @@
 
 use gtk::prelude::*;
 use gtk::{Box as GtkBox, Button, Label, Orientation, ProgressBar};
-use std::time::Instant;
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::time::Instant;
 
 use crate::models::VoiceMessage;
 
@@ -117,7 +117,7 @@ impl VoiceMessagePlayer {
         let top_row = GtkBox::new(Orientation::Horizontal, 6);
         top_row.set_hexpand(true);
 
-           // Play/Pause button
+        // Play/Pause button
         let play_pause_btn = Button::builder()
             .css_classes(vec!["voice-play-btn"])
             .build();
@@ -152,10 +152,7 @@ impl VoiceMessagePlayer {
         waveform_container.set_vexpand(false);
         waveform_container.set_margin_start(42); // align with play button
 
-         let waveform_label = Label::builder()
-            .use_markup(true)
-            .xalign(0.0)
-            .build();
+        let waveform_label = Label::builder().use_markup(true).xalign(0.0).build();
 
         let waveform_markup = generate_waveform_markup(&voice.waveform, 400, 32);
         waveform_label.set_markup(&waveform_markup);
@@ -190,7 +187,7 @@ impl VoiceMessagePlayer {
         transcription_box.set_css_classes(&["transcription-box"]);
         transcription_box.set_visible(voice.is_transcribing || voice.has_transcription());
 
-         let transcription_label = Label::builder()
+        let transcription_label = Label::builder()
             .css_classes(vec!["transcription-text"])
             .wrap(true)
             .selectable(true)
@@ -233,7 +230,7 @@ impl VoiceMessagePlayer {
         }
     }
 
-     /// Update the play/pause button icon based on playing state.
+    /// Update the play/pause button icon based on playing state.
     fn update_play_icon(btn: &Button, playing: bool) {
         if playing {
             btn.set_icon_name("media-playback-pause-symbolic");
@@ -295,7 +292,8 @@ impl VoiceMessagePlayer {
         let elapsed = clamped * self.voice.duration;
         let total_time = format_time(self.voice.duration);
         let elapsed_time = format_time(elapsed);
-        self.time_label.set_label(&format!("{} / {}", elapsed_time, total_time));
+        self.time_label
+            .set_label(&format!("{} / {}", elapsed_time, total_time));
     }
 
     /// Connect callback for play/pause button clicks.
@@ -338,20 +336,31 @@ impl VoiceMessagePlayer {
     ///
     /// Call this when transcription status changes (e.g. after receiving
     /// a WebSocket update).
-    pub fn update_transcription(&self, is_transcribing: bool, text: Option<String>, error: Option<String>) {
-        self.transcription_box.set_visible(is_transcribing || text.as_ref().map_or(false, |t| !t.is_empty()) || error.is_some());
+    pub fn update_transcription(
+        &self,
+        is_transcribing: bool,
+        text: Option<String>,
+        error: Option<String>,
+    ) {
+        self.transcription_box.set_visible(
+            is_transcribing || text.as_ref().map_or(false, |t| !t.is_empty()) || error.is_some(),
+        );
 
         if is_transcribing {
             Self::set_transcription_spinning(&self.transcription_label);
-            self.transcription_label.remove_css_class("transcription-error");
+            self.transcription_label
+                .remove_css_class("transcription-error");
         } else if let Some(ref t) = text {
             if !t.is_empty() {
                 self.transcription_label.set_label(t);
-                self.transcription_label.remove_css_class("transcription-error");
+                self.transcription_label
+                    .remove_css_class("transcription-error");
             }
         } else if let Some(ref err) = error {
-            self.transcription_label.set_label(&format!("Error: {}", err));
-            self.transcription_label.add_css_class("transcription-error");
+            self.transcription_label
+                .set_label(&format!("Error: {}", err));
+            self.transcription_label
+                .add_css_class("transcription-error");
         }
     }
 
@@ -365,7 +374,7 @@ impl VoiceMessagePlayer {
         *self.chat_id.borrow_mut() = Some(chat_id);
     }
 
-     /// Clone self for use in callbacks (Rc-style pattern).
+    /// Clone self for use in callbacks (Rc-style pattern).
     fn clone_ref(&self) -> Self {
         VoiceMessagePlayer {
             container: self.container.clone(),

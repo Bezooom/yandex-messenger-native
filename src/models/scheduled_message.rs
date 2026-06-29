@@ -99,7 +99,12 @@ impl MessageSchedule {
         ]
     }
 
-    fn to_datetime(date: chrono::NaiveDate, hour: i32, minute: i32, now: &DateTime<Utc>) -> DateTime<Utc> {
+    fn to_datetime(
+        date: chrono::NaiveDate,
+        hour: i32,
+        minute: i32,
+        now: &DateTime<Utc>,
+    ) -> DateTime<Utc> {
         let dt = date.and_hms_opt(hour as u32, minute as u32, 0).unwrap();
         let result = dt.and_utc();
         // Если время уже прошло, добавляем день

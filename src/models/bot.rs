@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 /// Бот, с которым можно общаться
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -27,9 +27,7 @@ impl BotInfo {
             }
             return name.clone();
         }
-        self.username
-            .clone()
-            .unwrap_or_else(|| "Бот".to_string())
+        self.username.clone().unwrap_or_else(|| "Бот".to_string())
     }
 }
 

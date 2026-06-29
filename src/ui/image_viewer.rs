@@ -1,9 +1,7 @@
 #![allow(dead_code)]
 
 use gtk::prelude::*;
-use gtk::{
-    Box as GtkBox, Button, Orientation, Popover, ScrolledWindow,
-};
+use gtk::{Box as GtkBox, Button, Orientation, Popover, ScrolledWindow};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -108,18 +106,18 @@ impl ImageViewer {
     pub fn download(&self) -> Option<std::path::PathBuf> {
         let filename = self.current_filename.borrow().clone();
         let url = self.current_url.borrow().clone();
-        
+
         // Use the filename or generate one from URL
         let file_name = if filename.is_empty() {
             url.rsplit('/').next().unwrap_or("image.jpg")
         } else {
             &filename
         };
-        
+
         let save_path = dirs::download_dir()
             .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join("Downloads"))
             .join(file_name);
-        
+
         // Spawn async download
         let url_clone = url.clone();
         let save_path_clone = save_path.clone();
@@ -140,7 +138,7 @@ impl ImageViewer {
                 }
             }
         });
-        
+
         Some(save_path)
     }
 
@@ -173,7 +171,12 @@ impl ImageViewer {
     }
 
     /// Set swipe navigation state
-    pub fn set_image_sequence(&self, count: usize, current_idx: usize, on_navigate: impl Fn(usize) + 'static) {
+    pub fn set_image_sequence(
+        &self,
+        count: usize,
+        current_idx: usize,
+        on_navigate: impl Fn(usize) + 'static,
+    ) {
         *self.image_count.borrow_mut() = count;
         *self.image_index.borrow_mut() = current_idx;
         *self.on_navigate.borrow_mut() = Some(Rc::new(on_navigate));
@@ -191,16 +194,12 @@ impl ImageViewer {
         let image_count = &self.image_count;
         let on_navigate = &self.on_navigate;
 
-        let popover = Popover::builder()
-            .has_arrow(false)
-            .build();
+        let popover = Popover::builder().has_arrow(false).build();
 
         let box_ = GtkBox::new(Orientation::Horizontal, 4);
         box_.set_css_classes(&["image-controls"]);
 
-        let zoom_in = Button::builder()
-            .icon_name("zoom-in-symbolic")
-            .build();
+        let zoom_in = Button::builder().icon_name("zoom-in-symbolic").build();
         let ctrl = Rc::new(ImageViewer {
             container: container.clone(),
             image: image.clone(),
@@ -217,9 +216,7 @@ impl ImageViewer {
             ctrl2.zoom_in();
         });
 
-        let zoom_out = Button::builder()
-            .icon_name("zoom-out-symbolic")
-            .build();
+        let zoom_out = Button::builder().icon_name("zoom-out-symbolic").build();
         let ctrl = Rc::new(ImageViewer {
             container: container.clone(),
             image: image.clone(),
@@ -278,9 +275,7 @@ impl ImageViewer {
             }
         });
 
-        let prev = Button::builder()
-            .icon_name("go-previous-symbolic")
-            .build();
+        let prev = Button::builder().icon_name("go-previous-symbolic").build();
         let ctrl = Rc::new(ImageViewer {
             container: container.clone(),
             image: image.clone(),
@@ -297,9 +292,7 @@ impl ImageViewer {
             ctrl2.prev_image();
         });
 
-        let next = Button::builder()
-            .icon_name("go-next-symbolic")
-            .build();
+        let next = Button::builder().icon_name("go-next-symbolic").build();
         let ctrl = Rc::new(ImageViewer {
             container: container.clone(),
             image: image.clone(),
@@ -316,9 +309,7 @@ impl ImageViewer {
             ctrl2.next_image();
         });
 
-        let close = Button::builder()
-            .icon_name("window-close-symbolic")
-            .build();
+        let close = Button::builder().icon_name("window-close-symbolic").build();
         let ctrl = Rc::new(ImageViewer {
             container: container.clone(),
             image: image.clone(),

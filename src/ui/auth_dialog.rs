@@ -1,9 +1,9 @@
 use gtk::prelude::*;
-use gtk::{Entry, Label, ResponseType, Window, Box as GtkBox, Orientation, Button};
-use std::sync::Arc;
+use gtk::{Box as GtkBox, Button, Entry, Label, Orientation, ResponseType, Window};
 use std::sync::mpsc;
+use std::sync::Arc;
+use tiny_http::{Response, Server};
 use tokio::runtime::Handle;
-use tiny_http::{Server, Response};
 
 #[cfg(feature = "in_app_webview")]
 use webkit6::prelude::*;
@@ -53,7 +53,6 @@ impl AuthDialog {
         }
     }
 
-
     /// Complete the auth flow using a raw code / access token produced by the user.
     /// Exchanges the code for a real token when needed, persists it and registers
     /// the resulting account so the multi-account UI stays in sync.
@@ -96,7 +95,10 @@ impl AuthDialog {
             Err(e) => {
                 log::warn!("Failed to fetch user info after login: {}", e);
                 let placeholder = crate::models::User {
-                    id: token.user_id.clone().unwrap_or_else(|| "unknown".to_string()),
+                    id: token
+                        .user_id
+                        .clone()
+                        .unwrap_or_else(|| "unknown".to_string()),
                     phone: None,
                     email: None,
                     first_name: None,
@@ -125,7 +127,7 @@ impl AuthDialog {
             .default_width(420)
             .css_classes(["auth-window"])
             .build();
-        
+
         let content = GtkBox::new(Orientation::Vertical, 0);
         dialog.set_child(Some(&content));
         content.set_spacing(16);
@@ -153,11 +155,12 @@ impl AuthDialog {
         let browser_btn = gtk::Button::with_label("Войти через Яндекс");
         browser_btn.add_css_class("primary-action");
         browser_btn.set_margin_bottom(8);
-        
+
         let auth_url = self.auth_manager.auth_code_url();
         let auth_url_owned = auth_url.to_string();
         browser_btn.connect_clicked(move |_| {
-            let _ = gio::AppInfo::launch_default_for_uri(&auth_url_owned, gio::AppLaunchContext::NONE);
+            let _ =
+                gio::AppInfo::launch_default_for_uri(&auth_url_owned, gio::AppLaunchContext::NONE);
         });
         content.append(&browser_btn);
 
@@ -217,7 +220,10 @@ impl AuthDialog {
 
         dialog.present();
         main_loop.run();
-        let response = response_cell.borrow().clone().unwrap_or(ResponseType::Cancel);
+        let response = response_cell
+            .borrow()
+            .clone()
+            .unwrap_or(ResponseType::Cancel);
         let value = entry.text().to_string();
         dialog.close();
 
@@ -236,7 +242,12 @@ impl AuthDialog {
         let auth_url = self.auth_manager.auth_code_url();
         let (client_id, redirect_uri, proxy_url) = self.auth_manager.auth_runtime_info();
 
-        let code = self.obtain_auth_code(&auth_url, &client_id, redirect_uri.as_deref(), proxy_url.as_deref())?;
+        let code = self.obtain_auth_code(
+            &auth_url,
+            &client_id,
+            redirect_uri.as_deref(),
+            proxy_url.as_deref(),
+        )?;
         self.finalize_token(&code)
     }
 
@@ -248,7 +259,7 @@ impl AuthDialog {
             .default_width(420)
             .css_classes(["auth-window"])
             .build();
-        
+
         let content = GtkBox::new(Orientation::Vertical, 0);
         dialog.set_child(Some(&content));
         content.set_spacing(16);
@@ -267,10 +278,10 @@ impl AuthDialog {
         // Account list
         let list_box = GtkBox::new(Orientation::Vertical, 4);
         list_box.set_margin_bottom(16);
-        
+
         let outcome = std::rc::Rc::new(std::cell::RefCell::new(None::<SelectionResult>));
         let main_loop = glib::MainLoop::new(None, false);
-        
+
         // Create account buttons
         for (i, account) in accounts.iter().enumerate() {
             let btn = Button::builder()
@@ -286,7 +297,7 @@ impl AuthDialog {
             });
             list_box.append(&btn);
         }
-        
+
         content.append(&list_box);
 
         // Add new account button
@@ -309,7 +320,7 @@ impl AuthDialog {
             *outcome_clone.borrow_mut() = Some(SelectionResult::Cancelled);
             loop_clone.quit();
         });
-        
+
         let button_box = GtkBox::new(Orientation::Horizontal, 12);
         button_box.set_halign(gtk::Align::Center);
         button_box.append(&cancel_btn);
@@ -329,7 +340,10 @@ impl AuthDialog {
         main_loop.run();
         dialog.close();
 
-        let result = outcome.borrow().clone().unwrap_or(SelectionResult::Cancelled);
+        let result = outcome
+            .borrow()
+            .clone()
+            .unwrap_or(SelectionResult::Cancelled);
         match result {
             SelectionResult::Account(idx) => {
                 if idx < accounts.len() {
@@ -338,27 +352,29 @@ impl AuthDialog {
                     // Switch to selected account
                     self.block_on(self.auth_manager.switch_account(&selected_account.id))
                         .map_err(|e| format!("Switch account failed: {}", e))?;
-                    
+
                     Ok(OAuthToken {
                         access_token: selected_account.access_token.clone(),
                         refresh_token: selected_account.refresh_token.clone(),
                         expires_in: selected_account.expires_at.saturating_sub(
-                            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()
+                            std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap()
+                                .as_secs(),
                         ) as u64,
                         token_type: "Bearer".to_string(),
                         user_id: selected_account.display_name.clone(),
-                        received_at: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+                        received_at: std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs(),
                     })
                 } else {
                     Err("Invalid account selection".to_string())
                 }
             }
-            SelectionResult::AddNew => {
-                self.show_auth_dialog()
-            }
-            SelectionResult::Cancelled => {
-                Err("Auth cancelled".to_string())
-            }
+            SelectionResult::AddNew => self.show_auth_dialog(),
+            SelectionResult::Cancelled => Err("Auth cancelled".to_string()),
         }
     }
 
@@ -494,7 +510,9 @@ impl AuthDialog {
 
             // Instruction text
             let instruction = Label::builder()
-                .label("После входа в браузере скопируйте Access Token\nи вставьте его в поле ниже:")
+                .label(
+                    "После входа в браузере скопируйте Access Token\nи вставьте его в поле ниже:",
+                )
                 .css_classes(["auth-subtitle"])
                 .xalign(0.5)
                 .wrap(true)
@@ -548,7 +566,10 @@ impl AuthDialog {
             let status_weak = status_label.clone();
             let rx_cell_c = callback_rx.clone();
             login_btn.connect_clicked(move |btn| {
-                eprintln!("[AUTH] Login button clicked, opening URL: {}", auth_url_owned);
+                eprintln!(
+                    "[AUTH] Login button clicked, opening URL: {}",
+                    auth_url_owned
+                );
 
                 // Try to start local callback listener (non-fatal if it fails)
                 match Self::spawn_callback_listener(&auth_url_owned) {
@@ -640,7 +661,7 @@ impl AuthDialog {
             let main_loop_poll = main_loop.clone();
             let outcome_poll = outcome.clone();
             let callback_rx_poll = callback_rx.clone();
-            
+
             glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
                 let mut rx_ref = callback_rx_poll.borrow_mut();
                 if let Some(rx) = rx_ref.as_ref() {
@@ -677,7 +698,8 @@ impl AuthDialog {
     /// Returns the OAuth URL to open and the receiver to poll.
     #[allow(dead_code)]
     fn spawn_callback_listener(auth_url: &str) -> Result<(String, mpsc::Receiver<String>), String> {
-        let server = Server::http("127.0.0.1:0").map_err(|e| format!("Cannot start server: {}", e))?;
+        let server =
+            Server::http("127.0.0.1:0").map_err(|e| format!("Cannot start server: {}", e))?;
         let _port = match server.server_addr() {
             tiny_http::ListenAddr::IP(addr) => addr.port(),
             tiny_http::ListenAddr::Unix(_) => 0,
@@ -697,7 +719,9 @@ impl AuthDialog {
             // which is not sent to the server. We serve an HTML page that
             // reads location.hash in the browser and POSTs the value back.
             loop {
-                let Ok(mut request) = server.recv() else { break };
+                let Ok(mut request) = server.recv() else {
+                    break;
+                };
                 let url = request.url().to_string();
                 let method = request.method().as_str().to_string();
 
@@ -729,8 +753,11 @@ impl AuthDialog {
                 if let Some(code) = captured {
                     let success_html = success_page_html();
                     let _ = request.respond(
-                        Response::from_string(success_html)
-                            .with_header("Content-Type: text/html; charset=utf-8".parse::<tiny_http::Header>().unwrap()),
+                        Response::from_string(success_html).with_header(
+                            "Content-Type: text/html; charset=utf-8"
+                                .parse::<tiny_http::Header>()
+                                .unwrap(),
+                        ),
                     );
                     let _ = tx.send(code);
                     break;
@@ -739,8 +766,11 @@ impl AuthDialog {
                 // Serve the fragment-capture page for any other GET.
                 let capture_html = capture_page_html();
                 let _ = request.respond(
-                    Response::from_string(capture_html)
-                        .with_header("Content-Type: text/html; charset=utf-8".parse::<tiny_http::Header>().unwrap()),
+                    Response::from_string(capture_html).with_header(
+                        "Content-Type: text/html; charset=utf-8"
+                            .parse::<tiny_http::Header>()
+                            .unwrap(),
+                    ),
                 );
             }
         });
@@ -751,9 +781,13 @@ impl AuthDialog {
 
 fn extract_auth_code(input: &str) -> String {
     let trimmed = input.trim();
-    
+
     // Check if it's a raw token/code without URL syntax
-    if !trimmed.contains('?') && !trimmed.contains('#') && !trimmed.contains('&') && !trimmed.contains('=') {
+    if !trimmed.contains('?')
+        && !trimmed.contains('#')
+        && !trimmed.contains('&')
+        && !trimmed.contains('=')
+    {
         return trimmed.to_string();
     }
 
@@ -783,7 +817,6 @@ fn extract_auth_code(input: &str) -> String {
     // Fallback: return the whole string
     trimmed.to_string()
 }
-
 
 /// HTML page served on the initial callback hit — reads `location.hash`
 /// (where the implicit grant drops `access_token=…`) and POSTs it back
@@ -821,7 +854,8 @@ fn capture_page_html() -> String {
       headers:{'Content-Type':'application/x-www-form-urlencoded'},
       body: payload});
   })();
-</script></body></html>"#.to_string()
+</script></body></html>"#
+        .to_string()
 }
 
 /// HTML shown after the token has been captured.
@@ -847,5 +881,6 @@ fn success_page_html() -> String {
   <div class="check">✓</div>
   <h1>Вход выполнен</h1>
   <p>Вернитесь в Yandex Messenger — эту вкладку можно закрыть.</p>
-</div></div></body></html>"#.to_string()
+</div></div></body></html>"#
+        .to_string()
 }

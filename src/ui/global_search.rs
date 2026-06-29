@@ -1,10 +1,7 @@
 #![allow(dead_code)]
 
 use gtk::prelude::*;
-use gtk::{
-    Entry, Label, ListView, Orientation, ScrolledWindow,
-    SingleSelection,
-};
+use gtk::{Entry, Label, ListView, Orientation, ScrolledWindow, SingleSelection};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -142,8 +139,18 @@ impl GlobalSearch {
             results.sort_by(|a, b| {
                 let chat_a = chats.iter().find(|c| c.id == a.chat_id);
                 let chat_b = chats.iter().find(|c| c.id == b.chat_id);
-                let time_a = chat_a.map(|c| c.last_message.as_ref().map(|m| m.created).unwrap_or_default());
-                let time_b = chat_b.map(|c| c.last_message.as_ref().map(|m| m.created).unwrap_or_default());
+                let time_a = chat_a.map(|c| {
+                    c.last_message
+                        .as_ref()
+                        .map(|m| m.created)
+                        .unwrap_or_default()
+                });
+                let time_b = chat_b.map(|c| {
+                    c.last_message
+                        .as_ref()
+                        .map(|m| m.created)
+                        .unwrap_or_default()
+                });
                 time_b.cmp(&time_a)
             });
 
@@ -151,7 +158,8 @@ impl GlobalSearch {
         });
 
         // Select result
-        let on_select: Rc<RefCell<Option<Rc<dyn Fn(String) + 'static>>>> = Rc::new(RefCell::new(None));
+        let on_select: Rc<RefCell<Option<Rc<dyn Fn(String) + 'static>>>> =
+            Rc::new(RefCell::new(None));
         let on_select_inner = on_select.clone();
         let selection_clone = selection.clone();
         let model_clone3 = model.clone();

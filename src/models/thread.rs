@@ -13,11 +13,7 @@ pub struct Thread {
 }
 
 impl Thread {
-    pub fn new(
-        thread_id: String,
-        chat_id: String,
-        parent_message_id: String,
-    ) -> Self {
+    pub fn new(thread_id: String, chat_id: String, parent_message_id: String) -> Self {
         Self {
             thread_id,
             chat_id,

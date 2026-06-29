@@ -17,12 +17,15 @@ impl ScheduledMessageClient {
     }
 
     /// Получить список запланированных сообщений для чата
-    pub async fn get_scheduled_messages(&self, chat_id: &str) -> Result<Vec<ScheduledMessage>, String> {
+    pub async fn get_scheduled_messages(
+        &self,
+        chat_id: &str,
+    ) -> Result<Vec<ScheduledMessage>, String> {
         // Сохраняем в кэш
         let cache_dir = dirs::config_dir()
             .map(|d| d.join("yandex-messenger-native").join("cache"))
             .unwrap_or_else(|| std::path::PathBuf::from("/tmp/yandex-messenger-cache"));
-        
+
         std::fs::create_dir_all(&cache_dir).ok();
         let cache_file = cache_dir.join(format!("scheduled_{}.json", chat_id.replace("/", "_")));
 
@@ -44,12 +47,12 @@ impl ScheduledMessageClient {
         scheduled_at: DateTime<Utc>,
     ) -> Result<ScheduledMessage, String> {
         let message = ScheduledMessage::new(chat_id, text, scheduled_at);
-        
+
         // Сохраняем в кэш
         let cache_dir = dirs::config_dir()
             .map(|d| d.join("yandex-messenger-native").join("cache"))
             .unwrap_or_else(|| std::path::PathBuf::from("/tmp/yandex-messenger-cache"));
-        
+
         std::fs::create_dir_all(&cache_dir).ok();
         let cache_file = cache_dir.join(format!("scheduled_{}.json", chat_id.replace("/", "_")));
 
@@ -60,7 +63,7 @@ impl ScheduledMessageClient {
         };
 
         messages.push(message.clone());
-        
+
         if let Ok(json) = serde_json::to_string(&messages) {
             let _ = std::fs::write(&cache_file, json);
         }
@@ -77,7 +80,7 @@ impl ScheduledMessageClient {
         let cache_dir = dirs::config_dir()
             .map(|d| d.join("yandex-messenger-native").join("cache"))
             .unwrap_or_else(|| std::path::PathBuf::from("/tmp/yandex-messenger-cache"));
-        
+
         let cache_file = cache_dir.join(format!("scheduled_{}.json", chat_id.replace("/", "_")));
 
         let mut messages = if let Ok(data) = std::fs::read_to_string(&cache_file) {
@@ -87,7 +90,7 @@ impl ScheduledMessageClient {
         };
 
         messages.retain(|m| m.message_id != message_id);
-        
+
         if let Ok(json) = serde_json::to_string(&messages) {
             let _ = std::fs::write(&cache_file, json);
         }
@@ -105,7 +108,7 @@ impl ScheduledMessageClient {
         let cache_dir = dirs::config_dir()
             .map(|d| d.join("yandex-messenger-native").join("cache"))
             .unwrap_or_else(|| std::path::PathBuf::from("/tmp/yandex-messenger-cache"));
-        
+
         let cache_file = cache_dir.join(format!("scheduled_{}.json", chat_id.replace("/", "_")));
 
         let mut messages = if let Ok(data) = std::fs::read_to_string(&cache_file) {

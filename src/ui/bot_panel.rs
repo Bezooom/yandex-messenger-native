@@ -1,15 +1,12 @@
 #![allow(dead_code)]
 
 use gtk::prelude::*;
-use gtk::{
-    Box as GtkBox, Button, Label, Orientation, ScrolledWindow,
-    FlowBox,
-};
+use gtk::{Box as GtkBox, Button, FlowBox, Label, Orientation, ScrolledWindow};
 
 use std::sync::Arc;
 
 use crate::api::auth::AuthManager;
-use crate::models::bot::{BotInfo, BotReplyMarkup, BotCommand, InlineButton, ReplyKeyboard};
+use crate::models::bot::{BotCommand, BotInfo, BotReplyMarkup, InlineButton, ReplyKeyboard};
 
 /// Панель информации о боте
 pub struct BotPanel {
@@ -55,7 +52,7 @@ impl BotPanel {
             inline_scrolled: ScrolledWindow::new(),
             reply_keyboard_view: GtkBox::new(Orientation::Vertical, 4),
             start_btn: Button::with_label("Запустить"),
-         on_start: std::sync::Arc::new(std::sync::Mutex::new(None)),
+            on_start: std::sync::Arc::new(std::sync::Mutex::new(None)),
             on_inline_click: std::sync::Arc::new(std::sync::Mutex::new(None)),
             on_command_click: std::sync::Arc::new(std::sync::Mutex::new(None)),
         }
@@ -161,7 +158,8 @@ impl BotPanel {
 
         self.inline_button_grid.set_max_children_per_line(2);
         self.inline_button_grid.set_min_children_per_line(1);
-        self.inline_button_grid.set_orientation(Orientation::Horizontal);
+        self.inline_button_grid
+            .set_orientation(Orientation::Horizontal);
         self.inline_button_grid.set_margin_top(8);
         self.inline_button_grid.set_margin_bottom(8);
         self.inline_button_grid.add_css_class("inline-button-grid");
@@ -222,7 +220,12 @@ impl BotPanel {
                 let request_location = btn.request_location;
 
                 button.connect_clicked(move |_| {
-                    log::info!("Keyboard button clicked: {} (contact={}, location={})", text, request_contact, request_location);
+                    log::info!(
+                        "Keyboard button clicked: {} (contact={}, location={})",
+                        text,
+                        request_contact,
+                        request_location
+                    );
                 });
 
                 row_box.append(&button);

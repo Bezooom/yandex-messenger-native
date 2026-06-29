@@ -2,8 +2,7 @@
 
 use gtk::prelude::*;
 use gtk::{
-    Align, Box as GtkBox, Button, Calendar, Entry, Label, Orientation, Popover,
-    ScrolledWindow,
+    Align, Box as GtkBox, Button, Calendar, Entry, Label, Orientation, Popover, ScrolledWindow,
 };
 
 use std::cell::RefCell;
@@ -25,8 +24,14 @@ impl SendAtPopover {
         }
     }
 
-    pub fn new_with_popover(popover: Popover, scheduled_panel: Option<std::rc::Rc<ScheduledPanel>>) -> Self {
-        Self { popover, scheduled_panel }
+    pub fn new_with_popover(
+        popover: Popover,
+        scheduled_panel: Option<std::rc::Rc<ScheduledPanel>>,
+    ) -> Self {
+        Self {
+            popover,
+            scheduled_panel,
+        }
     }
 
     pub fn popover(&self) -> &Popover {
@@ -256,9 +261,7 @@ impl ScheduledPanel {
         let cal = Calendar::new();
         cal.set_show_day_names(true);
 
-        let time_entry = Entry::builder()
-            .placeholder_text("12:00")
-            .build();
+        let time_entry = Entry::builder().placeholder_text("12:00").build();
 
         let confirm_btn = Button::with_label("Подтвердить");
         confirm_btn.add_css_class("suggested-action");

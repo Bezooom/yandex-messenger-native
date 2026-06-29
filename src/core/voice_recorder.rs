@@ -17,7 +17,8 @@ use gstreamer_app::prelude::*;
 ///
 /// Uses the appsink element to extract raw encoded audio data.
 #[cfg(feature = "gstreamer")]
-static RECORDING_PIPELINE: &str = "autoaudiosrc ! audioconvert ! audioresample ! opusenc ! oggmux ! appsink";
+static RECORDING_PIPELINE: &str =
+    "autoaudiosrc ! audioconvert ! audioresample ! opusenc ! oggmux ! appsink";
 
 #[cfg(not(feature = "gstreamer"))]
 static RECORDING_PIPELINE: &str = "autoaudiosrc ! audioconvert ! audioresample ! wavenc ! appsink";
@@ -75,19 +76,19 @@ impl VoiceRecorder {
             // Create pipeline
             let element = gstreamer::parse::launch(RECORDING_PIPELINE)
                 .map_err(|e| format!("Failed to parse pipeline: {}", e))?;
-            
-            let pipeline = element.downcast::<gstreamer::Pipeline>()
+
+            let pipeline = element
+                .downcast::<gstreamer::Pipeline>()
                 .map_err(|_| "Failed to cast to Pipeline".to_string())?;
 
             // Set appsink to emit signals
-            if let Some(appsink) = pipeline
-                .by_name("appsink")
-            {
+            if let Some(appsink) = pipeline.by_name("appsink") {
                 appsink.set_property("emit-signals", true);
             }
 
             // Start the pipeline
-            pipeline.set_state(gstreamer::State::Playing)
+            pipeline
+                .set_state(gstreamer::State::Playing)
                 .map_err(|e| format!("Failed to start pipeline: {}", e))?;
 
             *self.pipeline.borrow_mut() = Some(pipeline);
@@ -99,7 +100,10 @@ impl VoiceRecorder {
         *self.audio_data.borrow_mut() = Vec::new();
         *self.waveform.borrow_mut() = Vec::new();
 
-        log::info!("Voice recording started (gstreamer={})", cfg!(feature = "gstreamer"));
+        log::info!(
+            "Voice recording started (gstreamer={})",
+            cfg!(feature = "gstreamer")
+        );
         Ok(())
     }
 
@@ -128,7 +132,8 @@ impl VoiceRecorder {
         // Set pipeline to NULL and stop appsink
         #[cfg(feature = "gstreamer")]
         if let Some(ref pipeline) = *self.pipeline.borrow() {
-            pipeline.set_state(gstreamer::State::Null)
+            pipeline
+                .set_state(gstreamer::State::Null)
                 .map_err(|e| format!("Failed to stop pipeline: {:?}", e))?;
         }
 
@@ -210,8 +215,13 @@ impl VoiceRecorder {
             *sample = noise as u16;
         }
 
-        self.audio_data.borrow_mut().extend(frame.iter().flat_map(|s| s.to_le_bytes()));
-        let max_amp = frame.iter().map(|s| (*s as f32 / 32768.0).abs()).fold(0.0f32, f32::max);
+        self.audio_data
+            .borrow_mut()
+            .extend(frame.iter().flat_map(|s| s.to_le_bytes()));
+        let max_amp = frame
+            .iter()
+            .map(|s| (*s as f32 / 32768.0).abs())
+            .fold(0.0f32, f32::max);
         self.add_waveform_sample(max_amp);
     }
 }

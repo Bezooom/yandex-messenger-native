@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
-pub mod voice_recorder;
 pub mod db;
+pub mod voice_recorder;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -11,10 +11,10 @@ use tokio::sync::Mutex;
 use crate::api::auth::AuthManager;
 use crate::api::scheduled_message::ScheduledMessageClient;
 use crate::api::{HttpClient, WebSocketClient};
-use crate::models::{Chat, Message};
+use crate::models::bot::{BotInfo, BotMessage, BotReplyMarkup};
 use crate::models::saved_message::SavedMessage;
-use crate::models::bot::{BotInfo, BotReplyMarkup, BotMessage};
 use crate::models::scheduled_message::ScheduledMessage;
+use crate::models::{Chat, Message};
 
 #[derive(Debug, Clone)]
 pub enum AppEvent {
@@ -153,8 +153,11 @@ impl AppController {
         waveform: Vec<f32>,
     ) -> Result<Message, String> {
         // 1. Upload voice to HTTP API
-        let voice_info = self.http.upload_voice_message(chat_id, audio_data, duration, waveform).await?;
-        
+        let voice_info = self
+            .http
+            .upload_voice_message(chat_id, audio_data, duration, waveform)
+            .await?;
+
         // 2. Send via WS as a message
         let text = format!("Voice message ({:.1}s)", duration);
         let sent = self.ws.send_text_message(chat_id, &text, None).await?;
@@ -177,7 +180,9 @@ impl AppController {
         description: Option<String>,
         is_public: bool,
     ) -> Result<crate::models::Chat, String> {
-        self.http.create_channel(title, description, is_public).await
+        self.http
+            .create_channel(title, description, is_public)
+            .await
     }
 
     /// Get group information
@@ -335,7 +340,8 @@ impl AppController {
                     return Err("Cache miss".to_string());
                 }
                 let data = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-                let messages: Vec<Message> = serde_json::from_str(&data).map_err(|e| e.to_string())?;
+                let messages: Vec<Message> =
+                    serde_json::from_str(&data).map_err(|e| e.to_string())?;
                 Ok(messages)
             })();
             let _ = tx.send(res);
@@ -343,11 +349,7 @@ impl AppController {
         rx.await.map_err(|_| "Thread panicked".to_string())?
     }
 
-    pub async fn send_text_message(
-        &self,
-        chat_id: &str,
-        text: &str,
-    ) -> Result<Message, String> {
+    pub async fn send_text_message(&self, chat_id: &str, text: &str) -> Result<Message, String> {
         // Send via WebSocket
         let sent = self.ws.send_text_message(chat_id, text, None).await?;
 
@@ -380,7 +382,10 @@ impl AppController {
         message_id: &str,
         note: Option<String>,
     ) -> Result<SavedMessage, String> {
-        let msg = self.http.get_messages(chat_id, Some(message_id), 0, 1).await?;
+        let msg = self
+            .http
+            .get_messages(chat_id, Some(message_id), 0, 1)
+            .await?;
         let preview = msg.first().and_then(|m| m.text.clone()).unwrap_or_default();
 
         let saved = SavedMessage {
@@ -488,19 +493,31 @@ impl AppController {
         text: &str,
         scheduled_at: chrono::DateTime<chrono::Utc>,
     ) -> Result<ScheduledMessage, String> {
-        let message = self.scheduled_client.schedule_message(chat_id, text, scheduled_at).await?;
+        let message = self
+            .scheduled_client
+            .schedule_message(chat_id, text, scheduled_at)
+            .await?;
         let mut state = self.state.lock().await;
         state.scheduled_messages.push(message.clone());
         Ok(message)
     }
 
-     /// Получить запланированные сообщения для чата
-    pub async fn get_scheduled_messages(&self, chat_id: &str) -> Result<Vec<ScheduledMessage>, String> {
-        let messages = self.scheduled_client.get_scheduled_messages(chat_id).await?;
+    /// Получить запланированные сообщения для чата
+    pub async fn get_scheduled_messages(
+        &self,
+        chat_id: &str,
+    ) -> Result<Vec<ScheduledMessage>, String> {
+        let messages = self
+            .scheduled_client
+            .get_scheduled_messages(chat_id)
+            .await?;
         let _state = self.state.lock().await;
         let filtered: Vec<ScheduledMessage> = messages
             .into_iter()
-            .filter(|m| m.chat_id == chat_id || m.status != crate::models::scheduled_message::ScheduledStatus::Sent)
+            .filter(|m| {
+                m.chat_id == chat_id
+                    || m.status != crate::models::scheduled_message::ScheduledStatus::Sent
+            })
             .collect();
         Ok(filtered)
     }
@@ -511,9 +528,13 @@ impl AppController {
         chat_id: &str,
         message_id: &str,
     ) -> Result<(), String> {
-        self.scheduled_client.cancel_scheduled_message(chat_id, message_id).await?;
+        self.scheduled_client
+            .cancel_scheduled_message(chat_id, message_id)
+            .await?;
         let mut state = self.state.lock().await;
-        state.scheduled_messages.retain(|m| !(m.chat_id == chat_id && m.message_id == message_id));
+        state
+            .scheduled_messages
+            .retain(|m| !(m.chat_id == chat_id && m.message_id == message_id));
         Ok(())
     }
 
@@ -524,9 +545,15 @@ impl AppController {
         message_id: &str,
         new_scheduled_at: chrono::DateTime<chrono::Utc>,
     ) -> Result<(), String> {
-        self.scheduled_client.update_scheduled_time(chat_id, message_id, new_scheduled_at).await?;
+        self.scheduled_client
+            .update_scheduled_time(chat_id, message_id, new_scheduled_at)
+            .await?;
         let mut state = self.state.lock().await;
-        if let Some(msg) = state.scheduled_messages.iter_mut().find(|m| m.chat_id == chat_id && m.message_id == message_id) {
+        if let Some(msg) = state
+            .scheduled_messages
+            .iter_mut()
+            .find(|m| m.chat_id == chat_id && m.message_id == message_id)
+        {
             msg.scheduled_at = new_scheduled_at;
         }
         Ok(())
@@ -553,7 +580,8 @@ impl AppController {
     ) -> Result<ScheduledMessage, String> {
         let now = chrono::Utc::now();
         let today = now.date_naive();
-        let scheduled_at = today.and_hms_opt(hour, minute, 0)
+        let scheduled_at = today
+            .and_hms_opt(hour, minute, 0)
             .map(|dt| dt.and_utc())
             .unwrap_or(chrono::Utc::now());
         self.schedule_message(chat_id, text, scheduled_at).await
@@ -565,32 +593,52 @@ impl AppController {
         let mut state = self.state.lock().await;
         let mut sent_messages = Vec::new();
 
-        let pending: Vec<String> = state.scheduled_messages
+        let pending: Vec<String> = state
+            .scheduled_messages
             .iter()
-            .filter(|m| m.status == crate::models::scheduled_message::ScheduledStatus::Pending && m.scheduled_at <= now)
+            .filter(|m| {
+                m.status == crate::models::scheduled_message::ScheduledStatus::Pending
+                    && m.scheduled_at <= now
+            })
             .map(|m| m.message_id.clone())
             .collect();
 
         let pending_clone = pending.clone();
         for msg_id in pending_clone {
-            if let Some(msg) = state.scheduled_messages.iter_mut().find(|m| m.message_id == msg_id) {
+            if let Some(msg) = state
+                .scheduled_messages
+                .iter_mut()
+                .find(|m| m.message_id == msg_id)
+            {
                 msg.status = crate::models::scheduled_message::ScheduledStatus::Sending;
             }
         }
 
         // Отправляем сообщения
         for msg_id in pending {
-            if let Some(msg) = state.scheduled_messages.iter().find(|m| m.message_id == msg_id) {
+            if let Some(msg) = state
+                .scheduled_messages
+                .iter()
+                .find(|m| m.message_id == msg_id)
+            {
                 let chat_id = msg.chat_id.clone();
                 let text = msg.text.clone();
                 if let Ok(sent) = self.ws.send_text_message(&chat_id, &text, None).await {
-                    if let Some(m) = state.scheduled_messages.iter_mut().find(|m| m.message_id == msg_id) {
+                    if let Some(m) = state
+                        .scheduled_messages
+                        .iter_mut()
+                        .find(|m| m.message_id == msg_id)
+                    {
                         m.status = crate::models::scheduled_message::ScheduledStatus::Sent;
                         m.original_message_id = Some(sent.id.clone());
                     }
                     sent_messages.push(sent);
                 } else {
-                    if let Some(m) = state.scheduled_messages.iter_mut().find(|m| m.message_id == msg_id) {
+                    if let Some(m) = state
+                        .scheduled_messages
+                        .iter_mut()
+                        .find(|m| m.message_id == msg_id)
+                    {
                         m.status = crate::models::scheduled_message::ScheduledStatus::Failed;
                     }
                 }

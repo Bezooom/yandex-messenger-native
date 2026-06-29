@@ -10,7 +10,7 @@ impl HttpClient {
             return Err("No authentication token".to_string());
         }
         let url = format!("{}api/get_folders", self.base_url);
-        
+
         let response = self
             .client
             .get(&url)
@@ -25,7 +25,10 @@ impl HttpClient {
             if response.status() == reqwest::StatusCode::NOT_FOUND {
                 return Ok(vec![]);
             }
-            return Err(format!("Get folders failed with status: {}", response.status()));
+            return Err(format!(
+                "Get folders failed with status: {}",
+                response.status()
+            ));
         }
 
         let json: Value = response
@@ -36,13 +39,13 @@ impl HttpClient {
         if let Ok(folders) = serde_json::from_value::<Vec<ChatFolder>>(json.clone()) {
             return Ok(folders);
         }
-        
+
         if let Some(folders_arr) = json.get("folders") {
             if let Ok(folders) = serde_json::from_value::<Vec<ChatFolder>>(folders_arr.clone()) {
                 return Ok(folders);
             }
         }
-        
+
         Err("Folders response has unsupported format".to_string())
     }
 
@@ -53,7 +56,7 @@ impl HttpClient {
             return Err("No authentication token".to_string());
         }
         let url = format!("{}api/update_folder", self.base_url);
-        
+
         let response = self
             .client
             .post(&url)
@@ -65,7 +68,10 @@ impl HttpClient {
             .map_err(|e| format!("Update folder failed: {}", e))?;
 
         if !response.status().is_success() {
-            return Err(format!("Update folder failed with status: {}", response.status()));
+            return Err(format!(
+                "Update folder failed with status: {}",
+                response.status()
+            ));
         }
 
         let json: Value = response

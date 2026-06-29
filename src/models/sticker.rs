@@ -101,8 +101,7 @@ mod tests {
         assert!(json.contains("\"title\":\"Test\""));
         assert!(json.contains("\"stickerCount\":1"));
 
-        let deserialized: StickerPack =
-            serde_json::from_str(&json).expect("deserialize pack");
+        let deserialized: StickerPack = serde_json::from_str(&json).expect("deserialize pack");
         assert_eq!(deserialized.pack_id, "abc123");
         assert_eq!(deserialized.title, "Test");
         assert_eq!(deserialized.sticker_count(), 1);
@@ -135,8 +134,7 @@ mod tests {
         };
 
         let json = serde_json::to_string(&list).expect("serialize list");
-        let deserialized: StickerPackList =
-            serde_json::from_str(&json).expect("deserialize list");
+        let deserialized: StickerPackList = serde_json::from_str(&json).expect("deserialize list");
 
         assert!(deserialized.next_cursor.is_some());
         assert_eq!(deserialized.next_cursor.unwrap(), "next");

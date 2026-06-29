@@ -49,22 +49,15 @@ impl GroupPanel {
         let info_box = gtk::Box::new(Orientation::Vertical, 4);
         info_box.set_hexpand(true);
 
-        let title_label = Label::builder()
-            .xalign(0.0)
-            .build();
+        let title_label = Label::builder().xalign(0.0).build();
         title_label.add_css_class("group-title");
         title_label.add_css_class("title");
 
-        let description_label = Label::builder()
-            .xalign(0.0)
-            .wrap(true)
-            .build();
+        let description_label = Label::builder().xalign(0.0).wrap(true).build();
         description_label.add_css_class("group-description");
         description_label.add_css_class("dim-label");
 
-        let member_count_label = Label::builder()
-            .xalign(0.0)
-            .build();
+        let member_count_label = Label::builder().xalign(0.0).build();
         member_count_label.add_css_class("dim-label");
 
         info_box.append(&title_label);
@@ -130,7 +123,8 @@ impl GroupPanel {
     pub fn set_chat(&self, chat: Chat) {
         *self.chat.borrow_mut() = Some(chat.clone());
 
-        self.title_label.set_label(chat.title.as_deref().unwrap_or("Без названия"));
+        self.title_label
+            .set_label(chat.title.as_deref().unwrap_or("Без названия"));
 
         let chat_type_str = match chat.chat_type {
             crate::models::ChatType::Group => "Группа",
@@ -145,7 +139,8 @@ impl GroupPanel {
             .unwrap_or_default();
         self.description_label.set_label(&description);
 
-        self.member_count_label.set_label(&format!("{} участников", chat.participants.len()));
+        self.member_count_label
+            .set_label(&format!("{} участников", chat.participants.len()));
 
         // Update member list
         self.update_member_list(&chat.participants);
@@ -193,9 +188,7 @@ impl GroupPanel {
                 .label(participant.name.as_deref().unwrap_or("Неизвестный"))
                 .build();
 
-            let role_label = Label::builder()
-                .xalign(0.0)
-                .build();
+            let role_label = Label::builder().xalign(0.0).build();
             role_label.add_css_class("group-member-role");
             role_label.add_css_class("dim-label");
 

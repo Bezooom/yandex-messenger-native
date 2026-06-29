@@ -1,9 +1,7 @@
 #![allow(dead_code)]
 
 use gtk::prelude::*;
-use gtk::{
-    Align, Box as GtkBox, Button, Entry, Label, Orientation, ScrolledWindow,
-};
+use gtk::{Align, Box as GtkBox, Button, Entry, Label, Orientation, ScrolledWindow};
 use std::cell::RefCell;
 use std::sync::Arc;
 
@@ -176,7 +174,7 @@ impl ThreadView {
     pub fn set_parent_message(&self, msg: Message) {
         *self.parent_message.borrow_mut() = Some(msg.clone());
 
-          // Update breadcrumb with parent message preview
+        // Update breadcrumb with parent message preview
         if let Some(preview) = &msg.text {
             let truncated: String = preview.chars().take(40).collect();
             let escaped = glib::markup_escape_text(&truncated);
