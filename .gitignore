@@ -12,10 +12,10 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .ipynb_checkpoints/
-models/
-model/
-weights/
-weight/
+/models/
+/model/
+/weights/
+/weight/
 *.bin
 *.onnx
 *.pth
