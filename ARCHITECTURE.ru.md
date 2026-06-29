@@ -5,31 +5,60 @@
 Нативный Linux-клиент для Яндекс Мессенджера, разработанный на Rust и GTK4.
 Приложение построено на основе слоистой архитектуры с четким разделением между интерфейсом (UI), бизнес-логикой и сетевым взаимодействием (API).
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Пользователь (Desktop)                   │
-└────────────────────────────┬────────────────────────────────────┘
-                             │ GTK4 События / Системные вызовы
-┌────────────────────────────▼────────────────────────────────────┐
-│                    Слой UI (src/ui/*)                           │
-│  AuthDialog  │  ChatListPanel  │  ChatView  │  TelemostWindow  │
-│  TrayHandle  │  Notifications  │  Settings  │  Тема (CSS)      │
-└────────────────────────────┬────────────────────────────────────┘
-                             │ Коллбеки / Shared State
-┌────────────────────────────▼────────────────────────────────────┐
-│                  Слой Core (src/core.rs)                       │
-│  AppController  │  AppState (Arc<Mutex>)  │  AppEvent enum     │
-└────────────────────────────┬────────────────────────────────────┘
-                             │ Асинхронные вызовы API
-┌────────────────────────────▼────────────────────────────────────┐
-│                   Слой API (src/api/*)                          │
-│  AuthManager (OAuth2)  │  HttpClient (reqwest)  │  WebSocketClient │
-└────────────────────────────┬────────────────────────────────────┘
-                             │ HTTP / WS / Диск
-┌────────────────────────────▼────────────────────────────────────┐
-│         Внешние сервисы: Yandex Messenger API (REST + WS)       │
-│  OAuth эндпоинты  │  Messenger API  │  Uniproxy WS  │  Файлы   │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    %% Styling
+    classDef user fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+    classDef ui fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
+    classDef core fill:#fff8e1,stroke:#f57f17,stroke-width:2px;
+    classDef api fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px;
+    classDef ext fill:#ffebee,stroke:#c62828,stroke-width:2px;
+
+    subgraph UserGroup ["Пространство пользователя"]
+        User["Пользователь (Desktop)"]:::user
+    end
+
+    subgraph UILayer ["Слой UI (src/ui/*)"]
+        direction LR
+        AuthDialog["AuthDialog"]
+        ChatListPanel["ChatListPanel"]
+        ChatView["ChatView"]
+        TelemostWindow["TelemostWindow"]
+        TrayHandle["TrayHandle"]
+        Notifications["Notifications"]
+        Settings["Settings"]
+        Theme["Тема (CSS)"]
+    end
+    class UILayer ui;
+
+    subgraph CoreLayer ["Слой Core (src/core.rs)"]
+        AppController["AppController"]
+        AppState["AppState (Arc&lt;Mutex&gt;)"]
+        AppEvent["AppEvent (enum)"]
+    end
+    class CoreLayer core;
+
+    subgraph APILayer ["Слой API (src/api/*)"]
+        direction LR
+        AuthManager["AuthManager (OAuth2)"]
+        HttpClient["HttpClient (reqwest)"]
+        WebSocketClient["WebSocketClient"]
+    end
+    class APILayer api;
+
+    subgraph External ["Внешние сервисы"]
+        OAuth["OAuth эндпоинты"]
+        MessengerAPI["Messenger API (REST)"]
+        UniproxyWS["Uniproxy WS"]
+        Disk["Файлы (Yandex Files)"]
+    end
+    class External ext;
+
+    %% Connections
+    User -->|"GTK4 События / Системные вызовы"| UILayer
+    UILayer -->|"Коллбеки / Shared State"| CoreLayer
+    CoreLayer -->|"Асинхронные вызовы API"| APILayer
+    APILayer -->|"HTTP / WS / Диск"| External
 ```
 
 ## Описание слоев
@@ -115,6 +144,38 @@ WebSocket-клиент для работы с Yandex Uniproxy (`wss://uniproxy.m
 ---
 
 ## Диаграммы потоков данных
+
+### Процесс WebSocket/HTTP взаимодействия (Interaction Flow)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Пользователь/Приложение
+    participant Auth as AuthManager
+    participant REST as HttpClient (REST)
+    participant WS as WebSocketClient
+    participant Uniproxy as Yandex Uniproxy
+
+    User->>Auth: Загрузка или запрос токена
+    Note over Auth: Проверка срока действия / Обновление при необходимости
+    Auth-->>User: Токен валиден
+
+    User->>REST: GET /api/get_chat_list (с OAuth токеном)
+    REST->>User: Возврат Vec<Chat> (Заполнение UI)
+
+    User->>WS: Установка соединения
+    WS->>Uniproxy: Подключение (wss://uni.ws)
+    Uniproxy-->>WS: Соединение установлено
+
+    User->>WS: Подписка на обновления чата
+    WS->>Uniproxy: Отправка {"method":"subscribe", "params":{"chatId":"..."}}
+    Uniproxy-->>WS: Подписка подтверждена
+
+    loop Обновления в реальном времени
+        Uniproxy->>WS: Входящее событие (сообщение)
+        WS->>User: Вызов коллбека on_message()
+    end
+```
 
 ### Выбор чата (Chat Selection Flow)
 ```
@@ -336,6 +397,20 @@ AppController (владеет)
     "params": {"chatId": "...", "message": {...}}
   }
 }
+```
+
+### Состояния подключения
+
+```mermaid
+stateDiagram-v2
+    [*] --> Disconnected
+    Disconnected --> Connecting : Подключение
+    Connecting --> Connected : Соединение установлено
+    Connecting --> Disconnected : Ошибка подключения
+    Connected --> Reconnecting : Соединение потеряно
+    Reconnecting --> Connected : Восстановление успешно
+    Reconnecting --> Disconnected : Восстановление не удалось / Превышен лимит попыток
+    Connected --> Disconnected : Закрытие / Выход из системы
 ```
 
 ---

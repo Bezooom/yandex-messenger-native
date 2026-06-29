@@ -6,31 +6,60 @@ Native Linux desktop client for Yandex Messenger built with Rust and GTK4.
 The application follows a layered architecture with clear separation between UI,
 business logic, and API communication.
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        User (Desktop)                          │
-└────────────────────────────┬────────────────────────────────────┘
-                             │ GTK4 Events / System Calls
-┌────────────────────────────▼────────────────────────────────────┐
-│                    UI Layer (src/ui/*)                          │
-│  AuthDialog  │  ChatListPanel  │  ChatView  │  TelemostWindow  │
-│  TrayHandle  │  Notifications  │  Settings  │  Theme (CSS)     │
-└────────────────────────────┬────────────────────────────────────┘
-                             │ Callbacks / Shared State
-┌────────────────────────────▼────────────────────────────────────┐
-│                  Core Layer (src/core.rs)                       │
-│  AppController  │  AppState (Arc<Mutex>)  │  AppEvent enum     │
-└────────────────────────────┬────────────────────────────────────┘
-                             │ Async API Calls
-┌────────────────────────────▼────────────────────────────────────┐
-│                   API Layer (src/api/*)                         │
-│  AuthManager (OAuth2)  │  HttpClient (reqwest)  │  WebSocketClient │
-└────────────────────────────┬────────────────────────────────────┘
-                             │ HTTP / WS / Disk
-┌────────────────────────────▼────────────────────────────────────┐
-│              External: Yandex Messenger API (REST + WS)         │
-│  OAuth endpoints  │  Messenger API  │  Uniproxy WS  │  Files   │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    %% Styling
+    classDef user fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+    classDef ui fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
+    classDef core fill:#fff8e1,stroke:#f57f17,stroke-width:2px;
+    classDef api fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px;
+    classDef ext fill:#ffebee,stroke:#c62828,stroke-width:2px;
+
+    subgraph UserGroup ["User Space"]
+        User["User (Desktop)"]:::user
+    end
+
+    subgraph UILayer ["UI Layer (src/ui/*)"]
+        direction LR
+        AuthDialog["AuthDialog"]
+        ChatListPanel["ChatListPanel"]
+        ChatView["ChatView"]
+        TelemostWindow["TelemostWindow"]
+        TrayHandle["TrayHandle"]
+        Notifications["Notifications"]
+        Settings["Settings"]
+        Theme["Theme (CSS)"]
+    end
+    class UILayer ui;
+
+    subgraph CoreLayer ["Core Layer (src/core.rs)"]
+        AppController["AppController"]
+        AppState["AppState (Arc&lt;Mutex&gt;)"]
+        AppEvent["AppEvent (enum)"]
+    end
+    class CoreLayer core;
+
+    subgraph APILayer ["API Layer (src/api/*)"]
+        direction LR
+        AuthManager["AuthManager (OAuth2)"]
+        HttpClient["HttpClient (reqwest)"]
+        WebSocketClient["WebSocketClient"]
+    end
+    class APILayer api;
+
+    subgraph External ["External Services"]
+        OAuth["OAuth Endpoints"]
+        MessengerAPI["Messenger API (REST)"]
+        UniproxyWS["Uniproxy WS"]
+        Disk["Files (Yandex Files)"]
+    end
+    class External ext;
+
+    %% Connections
+    User -->|"GTK4 Events / System Calls"| UILayer
+    UILayer -->|"Callbacks / Shared State"| CoreLayer
+    CoreLayer -->|"Async API Calls"| APILayer
+    APILayer -->|"HTTP / WS / Disk"| External
 ```
 
 ## Layer Descriptions
@@ -137,6 +166,38 @@ Domain types with `serde` serialization:
 - **TelemostCall**: call lifecycle with participants and status
 
 ## Data Flow Diagrams
+
+### WebSocket/HTTP Interaction Flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as User/App
+    participant Auth as AuthManager
+    participant REST as HttpClient (REST)
+    participant WS as WebSocketClient
+    participant Uniproxy as Yandex Uniproxy
+
+    User->>Auth: Load or Request Token
+    Note over Auth: Check expiration / Refresh if needed
+    Auth-->>User: Token Valid
+
+    User->>REST: GET /api/get_chat_list (with OAuth Token)
+    REST->>User: Return Vec<Chat> (Populate UI)
+
+    User->>WS: Establish Connection
+    WS->>Uniproxy: Connect (wss://uni.ws)
+    Uniproxy-->>WS: Connected
+
+    User->>WS: Subscribe to Chat updates
+    WS->>Uniproxy: Send {"method":"subscribe", "params":{"chatId":"..."}}
+    Uniproxy-->>WS: Subscription Confirmed
+
+    loop Real-time Updates
+        Uniproxy->>WS: Incoming Message Event
+        WS->>User: Trigger on_message() callback
+    end
+```
 
 ### Chat Selection Flow
 
@@ -366,8 +427,17 @@ Or for event notifications:
 ```
 
 ### Connection States
-```
-Disconnected → Connecting → Connected → Reconnecting(0, 1, 2, ...)
+
+```mermaid
+stateDiagram-v2
+    [*] --> Disconnected
+    Disconnected --> Connecting : Connect
+    Connecting --> Connected : Connection Established
+    Connecting --> Disconnected : Connection Failed
+    Connected --> Reconnecting : Connection Lost
+    Reconnecting --> Connected : Reconnect Success
+    Reconnecting --> Disconnected : Reconnect Failed / Max Attempts Reached
+    Connected --> Disconnected : Close / Logout
 ```
 
 Max reconnect attempts: 10 (from config `WS_MAX_RECONNECT_ATTEMPTS`).
