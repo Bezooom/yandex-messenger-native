@@ -96,7 +96,7 @@ The client can be configured using the following environment variables:
 
 | Variable | Description | Default Value |
 |---|---|---|
-| `YANDEX_CLIENT_ID` | Application OAuth client ID | `bef24ec2889b481bb39af0b430099845` |
+| `YANDEX_CLIENT_ID` | Application OAuth client ID | `<YOUR_YANDEX_CLIENT_ID>` |
 | `YANDEX_CLIENT_SECRET` | Application OAuth client secret | — |
 | `YANDEX_REDIRECT_URI` | Redirect URI for the callback server | Auto-detected (local port) |
 | `YANDEX_AUTH_PROXY_URL` | URL of the external authorization proxy | — |

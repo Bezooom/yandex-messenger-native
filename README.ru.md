@@ -96,7 +96,7 @@ sudo apt install -y ./dist/yandex-messenger-native_*_amd64.deb
 
 | Переменная | Описание | По умолчанию |
 |---|---|---|
-| `YANDEX_CLIENT_ID` | OAuth client ID приложения | `bef24ec2889b481bb39af0b430099845` |
+| `YANDEX_CLIENT_ID` | OAuth client ID приложения | `<YOUR_YANDEX_CLIENT_ID>` |
 | `YANDEX_CLIENT_SECRET` | OAuth client secret приложения | — |
 | `YANDEX_REDIRECT_URI` | Redirect URI для callback-сервера | Автоопределение (локальный порт) |
 | `YANDEX_AUTH_PROXY_URL` | URL внешнего auth-proxy | — |

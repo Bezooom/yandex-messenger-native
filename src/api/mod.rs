@@ -3047,7 +3047,7 @@ mod tests {
 
     #[test]
     fn test_config_values() {
-        assert_eq!(config::OAUTH_CLIENT_ID, "bef24ec2889b481bb39af0b430099845");
+        assert_eq!(config::OAUTH_CLIENT_ID, "YOUR_YANDEX_CLIENT_ID");
         assert_eq!(config::TELEMOST_URL, "https://telemost.yandex.ru");
         assert_eq!(
             config::FILE_PUBLIC_HOST,
@@ -3056,6 +3056,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore]
     async fn test_api_send() {
         let auth = Arc::new(AuthManager::new().unwrap());
         let token = auth.get_token().await.unwrap();

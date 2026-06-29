@@ -376,7 +376,7 @@ Max reconnect attempts: 10 (from config `WS_MAX_RECONNECT_ATTEMPTS`).
 
 | Constant | Value | Purpose |
 |---|---|---|
-| `OAUTH_CLIENT_ID` | `bef24ec2889b481bb39af0b430099845` | Yandex OAuth client ID |
+| `OAUTH_CLIENT_ID` | `<YOUR_YANDEX_CLIENT_ID>` | Yandex OAuth client ID |
 | `API_BASE_URL` | `https://yandex.ru/messenger/api/registry/api/` | REST API base |
 | `UNIPROXY_URL` | `wss://uniproxy.messenger.yandex.ru/uni.ws` | WebSocket endpoint |
 | `FILE_PUBLIC_HOST` | `https://files.messenger.yandex.net` | File upload/download |

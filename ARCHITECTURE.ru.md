@@ -344,7 +344,7 @@ AppController (владеет)
 
 | Константа | Значение | Описание |
 |---|---|---|
-| `OAUTH_CLIENT_ID` | `bef24ec2889b481bb39af0b430099845` | OAuth Client ID приложения |
+| `OAUTH_CLIENT_ID` | `<YOUR_YANDEX_CLIENT_ID>` | OAuth Client ID приложения |
 | `API_BASE_URL` | `https://yandex.ru/messenger/api/registry/api/` | Базовый REST API |
 | `UNIPROXY_URL` | `wss://uniproxy.messenger.yandex.ru/uni.ws` | Точка подключения WebSocket |
 | `FILE_PUBLIC_HOST` | `https://files.messenger.yandex.net` | Сервис работы с файлами |

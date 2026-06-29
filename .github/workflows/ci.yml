@@ -23,13 +23,25 @@ jobs:
             libssl-dev \
             libglib2.0-dev \
             libnotify-dev \
-            libwebkitgtk-6.0-dev
+            libwebkitgtk-6.0-dev \
+            xvfb
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
 
       - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
 
       - name: Format check
         run: cargo fmt --check
@@ -38,7 +50,7 @@ jobs:
         run: cargo clippy --all-targets
 
       - name: Test
-        run: cargo test --all-targets
+        run: xvfb-run cargo test --all-targets
 
       - name: Build release
         run: cargo build --release

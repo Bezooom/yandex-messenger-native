@@ -436,6 +436,7 @@ mod tests {
 
     #[test]
     fn test_new_panel() {
+        let _ = gtk::init();
         let packs = vec![sample_pack(), sample_pack()];
         let panel = StickerPanel::new(packs);
         assert!(panel.container().is_visible());
@@ -443,6 +444,7 @@ mod tests {
 
     #[test]
     fn test_select_pack() {
+        let _ = gtk::init();
         let packs = vec![
             StickerPack {
                 pack_id: "a".to_string(),
@@ -464,6 +466,7 @@ mod tests {
 
     #[test]
     fn test_update_packs() {
+        let _ = gtk::init();
         let packs = vec![sample_pack()];
         let panel = StickerPanel::new(packs);
         let new_packs = vec![sample_pack(), sample_pack()];

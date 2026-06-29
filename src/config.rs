@@ -2,7 +2,7 @@
 
 /// Configuration module - API endpoints reverse-engineered from Yandex Messenger Electron app
 
-pub const OAUTH_CLIENT_ID: &str = "bef24ec2889b481bb39af0b430099845";
+pub const OAUTH_CLIENT_ID: &str = "YOUR_YANDEX_CLIENT_ID";
 pub const OAUTH_AUTHORIZE_URL: &str = "https://oauth.yandex.com/authorize";
 pub const OAUTH_TOKEN_URL: &str = "https://oauth.yandex.com/token";
 pub const PASSPORT_HOST: &str = "passport.yandex.ru";

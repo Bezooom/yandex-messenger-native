@@ -177,7 +177,7 @@ The CSRF token is included in the `X-CSRF-Token` header (standard Yandex API con
 
 | Variable | Sensitive | Stored | Default |
 |---|---|---|---|
-| `YANDEX_CLIENT_ID` | Low | Env | `bef24ec2889b481bb39af0b430099845` |
+| `YANDEX_CLIENT_ID` | Low | Env | `<YOUR_YANDEX_CLIENT_ID>` |
 | `YANDEX_CLIENT_SECRET` | High | Env | — |
 | `YANDEX_REDIRECT_URI` | Low | Env | `""` |
 | `YANDEX_AUTH_PROXY_URL` | Medium | Env | — |
