@@ -94,8 +94,30 @@ impl Chat {
     pub fn display_name(&self) -> String {
         self.title
             .clone()
-            .unwrap_or_else(|| "Unknown Chat".to_string())
+            .unwrap_or_else(|| "Чат".to_string())
     }
+}
+
+/// Returns true when two message lists are equivalent for UI rendering.
+pub fn messages_equivalent(a: &[Message], b: &[Message]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+
+    let mut sorted_a: Vec<&Message> = a.iter().collect();
+    let mut sorted_b: Vec<&Message> = b.iter().collect();
+    sorted_a.sort_by(|left, right| left.created.cmp(&right.created).then_with(|| left.id.cmp(&right.id)));
+    sorted_b.sort_by(|left, right| left.created.cmp(&right.created).then_with(|| left.id.cmp(&right.id)));
+
+    sorted_a.iter().zip(sorted_b.iter()).all(|(left, right)| {
+        left.id == right.id
+            && left.text == right.text
+            && left.type_ == right.type_
+            && left.edited == right.edited
+            && left.read == right.read
+            && left.delivered == right.delivered
+            && left.media.len() == right.media.len()
+    })
 }
 
 /// Message types
@@ -342,9 +364,73 @@ impl User {
             name.push_str(last);
         }
         if name.is_empty() {
-            format!("User {}", &self.id[..8])
+            format!("User {}", &self.id[..8.min(self.id.len())])
         } else {
             name
+        }
+    }
+}
+
+/// Contact candidate for group/member pickers.
+/// Prefers phonebook `contact_name` over account `display_name`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContactCandidate {
+    pub guid: String,
+    /// Name from the user's address book (most "real" for the local user).
+    pub contact_name: Option<String>,
+    /// Account display name on Yandex.
+    pub display_name: Option<String>,
+    pub public_name: Option<String>,
+    pub avatar_id: Option<String>,
+    pub deleted: bool,
+}
+
+impl ContactCandidate {
+    /// Primary label for UI: contact book name → display name → public name.
+    pub fn primary_name(&self) -> String {
+        for name in [&self.contact_name, &self.display_name, &self.public_name] {
+            if let Some(n) = name {
+                let t = n.trim();
+                if !t.is_empty() {
+                    return t.to_string();
+                }
+            }
+        }
+        // Never show raw GUID as the main label
+        "Без имени".to_string()
+    }
+
+    /// Secondary line when contact_name and display_name differ.
+    pub fn secondary_name(&self) -> Option<String> {
+        let primary = self.primary_name();
+        for name in [&self.display_name, &self.public_name, &self.contact_name] {
+            if let Some(n) = name {
+                let t = n.trim();
+                if !t.is_empty() && t != primary {
+                    return Some(t.to_string());
+                }
+            }
+        }
+        None
+    }
+
+    pub fn initials(&self) -> String {
+        let name = self.primary_name();
+        let mut chars = name
+            .split_whitespace()
+            .filter_map(|w| w.chars().next())
+            .take(2);
+        let mut out = String::new();
+        if let Some(a) = chars.next() {
+            out.extend(a.to_uppercase());
+        }
+        if let Some(b) = chars.next() {
+            out.extend(b.to_uppercase());
+        }
+        if out.is_empty() {
+            "?".to_string()
+        } else {
+            out
         }
     }
 }

@@ -20,6 +20,7 @@
 @define-color bg_selected          rgba(255, 255, 255, 0.08);
 @define-color bg_active            rgba(255, 255, 255, 0.12);
 @define-color bg_composer          #14141c;
+@define-color bg_elevated          #1a1a24;
 
 @define-color border_color         rgba(255, 255, 255, 0.04);
 @define-color border_light         rgba(255, 255, 255, 0.08);
@@ -390,23 +391,24 @@ listview > row:hover {
 /* Chat Row */
 
 .chat-row {
-  padding: 12px 16px;
-  border-radius: 12px;
-  margin: 4px 8px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  margin: 2px 6px;
   border: 1px solid transparent;
   background-color: transparent;
-  transition: all 250ms cubic-bezier(0.2, 0.0, 0.0, 1.0);
+  transition: background-color 180ms cubic-bezier(0.2, 0.0, 0.0, 1.0),
+              border-color 180ms cubic-bezier(0.2, 0.0, 0.0, 1.0);
 }
 
 .chat-row:hover {
-  background-color: rgba(255, 255, 255, 0.03);
+  background-color: rgba(255, 255, 255, 0.04);
 }
 
 .chat-row:selected,
 .chat-row:active {
-  background-color: rgba(255, 255, 255, 0.07);
-  border: 1px solid rgba(255, 255, 255, 0.03);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  background-color: rgba(47, 128, 237, 0.12);
+  border: 1px solid rgba(47, 128, 237, 0.18);
+  box-shadow: none;
 }
 
 /* ==========================================================
@@ -559,8 +561,8 @@ listview > row:hover {
 .chat-header {
   background-color: rgba(23, 23, 33, 0.88);
   border-bottom: 1px solid @border_color;
-  padding: 0 24px;
-  min-height: 64px;
+  padding: 0 20px;
+  min-height: 48px;
   box-shadow: 0 1px 8px rgba(0, 0, 0, 0.15);
 }
 
@@ -582,12 +584,36 @@ listview > row:hover {
 
 .messages-list {
   background-color: transparent;
-  padding: 20px 32px;
+  padding: 12px 20px 24px 20px;
 }
 
 .chat-scrolled-window {
   background-color: @bg_chat;
-  background-image: radial-gradient(circle at 50% 50%, rgba(52, 152, 219, 0.04) 0%, transparent 85%);
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% 0%, rgba(47, 128, 237, 0.05) 0%, transparent 60%),
+    radial-gradient(circle at 50% 100%, rgba(255, 204, 0, 0.02) 0%, transparent 40%);
+}
+
+.empty-chat-state {
+  padding: 48px 24px;
+}
+
+.empty-chat-icon {
+  font-size: 42px;
+  margin-bottom: 4px;
+  opacity: 0.85;
+}
+
+.empty-chat-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: @text_primary;
+  letter-spacing: -0.2px;
+}
+
+.empty-chat-subtitle {
+  font-size: 14px;
+  color: @text_tertiary;
 }
 
 /* ==========================================================
@@ -601,35 +627,48 @@ listview > row:hover {
   font-size: 15px;
   line-height: 1.65;
   border-radius: 16px;
+  /* GTK CSS does not support max-width — constrain via Label.max_width_chars in code */
 }
 
 .message-bubble label {
   line-height: 1.65;
 }
 
+.message-text {
+  /* width constrained in code via max_width_chars */
+}
+
 .bubble-received {
   background-color: @bubble_received;
-  border: 1px solid rgba(255, 255, 255, 0.04);
-  border-radius: 16px 16px 16px 4px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 18px 18px 18px 6px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
 }
 
 .bubble-received:hover {
   background-color: @bubble_received_hover;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
 }
 
 .bubble-sent {
-  background-image: linear-gradient(135deg, #2f80ed, #0056b3);
+  /* Closer to official YM solid blue bubble */
+  background-color: #2f80ed;
+  background-image: none;
   color: #FFFFFF;
-  border-radius: 16px 16px 4px 16px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 3px 10px rgba(0, 86, 179, 0.25);
+  border-radius: 18px 18px 6px 18px;
+  border: none;
+  box-shadow: 0 1px 6px rgba(47, 128, 237, 0.28);
 }
 
 .bubble-sent:hover {
-  background-image: linear-gradient(135deg, #3897ff, #0066d6);
-  box-shadow: 0 5px 16px rgba(0, 86, 179, 0.35);
+  background-color: #3897ff;
+  background-image: none;
+  box-shadow: 0 2px 10px rgba(47, 128, 237, 0.35);
+}
+
+.bubble-sent .message-text,
+.bubble-sent label {
+  color: #FFFFFF;
 }
 
 /* Message Time Label */
@@ -661,11 +700,28 @@ listview > row:hover {
    Input Area — скрыть при невыбранном чате
    ========================================================== */
 
-.message-input-area {
+box.message-input-area,
+.message-input-area,
+window box.message-input-area {
   background-color: transparent;
-  border-top: none;
+  border: none;
+  border-width: 0;
+  border-style: none;
+  outline: none;
+  box-shadow: none;
   padding: 0;
   margin: 0;
+}
+
+paned > separator,
+window paned > separator,
+paned separator {
+  background-color: rgba(255, 255, 255, 0.04);
+  outline: none;
+  box-shadow: none;
+  border: none;
+  border-width: 0;
+  border-style: none;
 }
 
 .message-input-area:disabled {
@@ -694,7 +750,7 @@ listview > row:hover {
   border-radius: 24px;
   border: 1px solid rgba(255, 255, 255, 0.05);
   padding: 8px 16px;
-  margin: 12px 24px 20px 24px;
+  margin: 12px 16px 20px 16px;
   min-height: 48px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   transition: all 250ms cubic-bezier(0.2, 0.0, 0.0, 1.0);
@@ -704,6 +760,15 @@ listview > row:hover {
   border-color: rgba(47, 128, 237, 0.40);
   box-shadow: 0 8px 28px rgba(47, 128, 237, 0.15);
   background-color: #191924;
+}
+
+.input-pill scrolledwindow,
+.input-pill scrolledwindow viewport,
+.input-pill scrolledwindow textview {
+  border: none;
+  background: transparent;
+  outline: none;
+  box-shadow: none;
 }
 
 /* ==========================================================
@@ -754,47 +819,86 @@ listview > row:hover {
 
 /* ==========================================================
    Popover / Context Menu
+   ==========================================================
+   GTK4 draws: popover → contents → child.
+   Style ONLY `popover > contents` for the outer chrome.
+   Child panels must stay transparent (no second frame / "window in window").
    ========================================================== */
 
-popover,
-popover > contents {
-  background-color: @popover_bg;
-  border: 1px solid @popover_border;
-  border-radius: 16px;
-  box-shadow: 0 10px 30px @popover_shadow;
-  padding: 8px;
+popover {
+  background-color: transparent;
+  background: none;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  margin: 0;
   outline: none;
 }
 
-popover > contents > box {
-  padding: 4px;
-}
-
-.context-menu {
+popover > contents {
   background-color: @popover_bg;
   border: 1px solid @popover_border;
-  border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  border-radius: 14px;
+  box-shadow: 0 12px 32px @popover_shadow;
   padding: 6px;
+  outline: none;
 }
 
-/* Chat Context Menu */
-
-.chat-context-menu {
-  background-color: @popover_bg;
-  border-radius: 12px;
-  padding: 6px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+/* Do not add a nested padded box frame */
+popover > contents > box,
+popover > contents > .emoji-picker,
+popover > contents > .sticker-panel,
+popover > contents > .reaction-panel,
+popover > contents > .scheduled-panel,
+popover > contents > .poll-creator,
+popover > contents > .send-at-body {
+  background-color: transparent;
+  background: none;
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+  margin: 0;
 }
 
-.chat-context-menu button {
-  padding: 8px 16px;
+/* Legacy class names on children — force transparent (no double chrome) */
+.context-menu,
+.chat-context-menu,
+.emoji-picker-popover,
+.emoji-picker,
+.sticker-panel,
+.reaction-panel,
+.scheduled-panel,
+.send-at-popover,
+.poll-creator,
+.account-dropdown-menu {
+  background-color: transparent;
+  background: none;
+  border: none;
+  box-shadow: none;
+}
+
+.chat-context-menu button,
+.context-menu button,
+.message-context-menu button,
+.attach-menu-btn {
+  padding: 8px 14px;
   border-radius: 8px;
   font-weight: 500;
+  min-width: 180px;
 }
 
-.chat-context-menu button:hover {
+.chat-context-menu button:hover,
+.context-menu button:hover,
+.message-context-menu button:hover,
+.attach-menu-btn:hover {
   background-color: @bg_hover;
+}
+
+.message-context-menu,
+.attach-menu {
+  background: transparent;
+  border: none;
+  box-shadow: none;
 }
 
 .chat-context-menu button.danger:hover {
@@ -802,13 +906,16 @@ popover > contents > box {
 }
 
 /* ==========================================================
-   Sticker Panel
+   Sticker Panel (content only — chrome is the popover)
    ========================================================== */
 
 .sticker-panel {
-  background-color: @bg_sidebar;
-  border-radius: 16px;
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+  min-width: 480px;
+  min-height: 340px;
 }
 
 .sticker-panel-content {
@@ -907,15 +1014,159 @@ popover > contents > box {
 }
 
 /* ==========================================================
+   Emoji Picker (content only — chrome is the popover)
+   ========================================================== */
+
+.emoji-picker-popover {
+  /* class on Popover widget; chrome comes from popover > contents */
+  padding: 0;
+}
+
+.emoji-picker {
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+  min-width: 360px;
+  min-height: 320px;
+}
+
+.emoji-picker-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: @text_secondary;
+  letter-spacing: 0.2px;
+}
+
+.emoji-category-bar {
+  background-color: rgba(255, 255, 255, 0.03);
+  border-radius: 10px;
+  padding: 2px;
+}
+
+.emoji-category-btn {
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  font-size: 18px;
+  min-width: 36px;
+  min-height: 32px;
+  padding: 2px 4px;
+}
+
+.emoji-category-btn:hover {
+  background-color: @bg_hover;
+}
+
+.emoji-category-btn-active {
+  background-color: rgba(47, 128, 237, 0.18);
+}
+
+.emoji-picker-scroll {
+  background: transparent;
+}
+
+.emoji-flow {
+  background: transparent;
+}
+
+.emoji-btn {
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  font-size: 22px;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 2px;
+}
+
+.emoji-btn:hover {
+  background-color: @bg_hover;
+}
+
+.emoji-btn:active {
+  background-color: @bg_selected;
+}
+
+/* ==========================================================
+   Create Group / Member Picker
+   ========================================================== */
+
+.create-group-dialog {
+  background-color: @bg_sidebar;
+}
+
+.create-group-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: @text_primary;
+}
+
+.create-group-member-count {
+  font-size: 12px;
+}
+
+.create-group-search {
+  background-color: rgba(0, 0, 0, 0.22);
+  border-radius: 10px;
+  border: 1px solid @border_color;
+  padding: 6px 10px;
+  min-height: 36px;
+}
+
+.create-group-search:focus {
+  border-color: rgba(47, 128, 237, 0.45);
+}
+
+.create-group-member-scroll {
+  background-color: rgba(0, 0, 0, 0.15);
+  border-radius: 12px;
+  border: 1px solid @border_color;
+  min-height: 280px;
+}
+
+.member-selection-list {
+  background: transparent;
+}
+
+.member-selection-row {
+  border-radius: 10px;
+  margin: 2px 4px;
+  padding: 0;
+}
+
+.member-selection-row:hover {
+  background-color: @bg_hover;
+}
+
+.member-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: @text_primary;
+}
+
+.member-subtitle {
+  font-size: 12px;
+  color: @text_tertiary;
+}
+
+.member-avatar {
+  border-radius: 50%;
+  min-width: 40px;
+  min-height: 40px;
+  background-color: #2A2A2E;
+}
+
+/* ==========================================================
    Reaction Panel
    ========================================================== */
 
 .reaction-panel {
-  background-color: @popover_bg;
-  border-radius: 16px;
-  box-shadow: 0 10px 30px @popover_shadow;
-  border: 1px solid @popover_border;
-  padding: 8px;
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+  padding: 4px;
 }
 
 .reaction-row {
@@ -958,14 +1209,49 @@ popover > contents > box {
   margin: 4px 8px;
 }
 
+.message-reactions {
+  margin-top: 2px;
+  margin-bottom: 2px;
+}
+
+.reaction-chip {
+  min-height: 24px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background-color: @bg_elevated;
+  border: 1px solid @border_light;
+  color: @text_primary;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.reaction-chip:hover {
+  background-color: @bg_hover;
+  transform: scale(1.04);
+}
+
+.reaction-chip.selected {
+  background-color: rgba(47, 128, 237, 0.18);
+  border-color: rgba(47, 128, 237, 0.45);
+}
+
+.reaction-chip.add {
+  min-width: 24px;
+  padding: 2px 6px;
+  color: @text_secondary;
+}
+
 /* ==========================================================
    Poll Creator
    ========================================================== */
 
 .poll-creator {
-  background-color: @bg_chat;
-  border-radius: 16px;
-  padding: 24px;
+  /* lives inside popover — no second chrome */
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+  padding: 12px;
 }
 
 .poll-question {
@@ -1546,6 +1832,11 @@ tooltip > label {
   border-radius: 8px;
   background-color: @bg_elevated;
   padding: 4px;
+  /* size constrained in code via set_size_request / pixel_size */
+}
+
+.inline-video {
+  /* size constrained in code via set_size_request */
 }
 
 .inline-image:hover {
@@ -1862,10 +2153,11 @@ tooltip > label {
    ========================================================== */
 
 .scheduled-panel {
-   background-color: @bg_chat;
-   border-top: none;
-   background-color: rgba(20, 20, 24, 0.85);
-   padding: 8px 12px;
+   /* lives inside popover — no second chrome */
+   background-color: transparent;
+   border: none;
+   box-shadow: none;
+   padding: 4px 8px;
 }
 
 .scheduled-message-row {
@@ -1956,11 +2248,15 @@ tooltip > label {
 }
 
 .send-at-popover {
-   background-color: @bg_chat;
-   border-radius: 16px;
-   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
-   border: 1px solid @popover_border;
-   padding: 16px;
+   /* applied to Popover; chrome from popover > contents */
+   padding: 0;
+}
+
+.send-at-body {
+   padding: 12px;
+   background: transparent;
+   border: none;
+   box-shadow: none;
 }
 
 .send-at-popover calendar {
@@ -2119,11 +2415,12 @@ tooltip > label {
    ========================================================== */
 
 .account-dropdown-menu {
-     background-color: @popover_bg;
-     border: 1px solid @popover_border;
-     border-radius: 12px;
-     padding: 6px;
-     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+     /* lives inside popover — no second chrome */
+     background-color: transparent;
+     border: none;
+     box-shadow: none;
+     border-radius: 0;
+     padding: 4px;
 }
 
 .account-dropdown-menu button {
@@ -2313,6 +2610,7 @@ a:active {
 
 .sticker-message-image {
   background: transparent;
+  /* size constrained in code via set_pixel_size / set_size_request */
 }
 
 .bubble-emoji-only {

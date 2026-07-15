@@ -1,10 +1,15 @@
 [package]
 name = "yandex-messenger-native"
-version = "2.162.0"
+version = "2.165.0"
 edition = "2021"
-description = "Native Yandex Messenger (Telemost) for Linux"
-authors = ["BeZoom"]
+description = "Native Yandex Messenger (Telemost) client for Linux desktop"
+authors = ["BeZoom <naumov122@gmail.com>"]
 license = "MIT"
+repository = "https://github.com/Bezooom/yandex-messenger-native"
+homepage = "https://github.com/Bezooom/yandex-messenger-native"
+readme = "README.md"
+keywords = ["yandex-messenger", "yandex", "gtk4", "libadwaita", "messenger"]
+categories = ["gui", "network-programming"]
 
 [[bin]]
 name = "yandex-messenger"

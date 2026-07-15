@@ -4327,7 +4327,7 @@ checksum = "7a5a4b21e1a62b67a2970e6831bc091d7b87e119e7f9791aef9702e3bef04448"
 
 [[package]]
 name = "yandex-messenger-native"
-version = "2.162.0"
+version = "2.165.0"
 dependencies = [
  "anyhow",
  "base64",

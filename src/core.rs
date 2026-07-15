@@ -88,6 +88,7 @@ impl AppController {
     }
 
     pub async fn load_sticker_packs(&self) -> Result<crate::models::StickerPackList, String> {
+        // Catalog now goes bootstrap → public file CDN (no broken registry RPC).
         self.http.get_sticker_catalog(None).await
     }
 
@@ -96,6 +97,16 @@ impl AppController {
             Ok(chats) => {
                 let mut state = self.state.lock().await;
                 state.chats = chats.clone();
+                // Seed in-memory message cache from last_message previews so
+                // opening a chat is never completely empty while history loads.
+                for chat in &chats {
+                    if let Some(ref lm) = chat.last_message {
+                        state
+                            .messages_by_chat
+                            .entry(chat.id.clone())
+                            .or_insert_with(|| vec![lm.clone()]);
+                    }
+                }
                 Ok(chats)
             }
             Err(e) => {
@@ -153,7 +164,7 @@ impl AppController {
         waveform: Vec<f32>,
     ) -> Result<Message, String> {
         // 1. Upload voice to HTTP API
-        let voice_info = self
+        let _voice_info = self
             .http
             .upload_voice_message(chat_id, audio_data, duration, waveform)
             .await?;
@@ -171,6 +182,13 @@ impl AppController {
         is_public: bool,
     ) -> Result<crate::models::Chat, String> {
         self.http.create_group(title, members, is_public).await
+    }
+
+    /// Contacts for group member picker (real names, non-deleted).
+    pub async fn get_contact_candidates(
+        &self,
+    ) -> Result<Vec<crate::models::ContactCandidate>, String> {
+        self.http.get_contact_candidates().await
     }
 
     /// Create a new channel
@@ -482,6 +500,27 @@ impl AppController {
 
     pub fn send_typing(&self, chat_id: &str) {
         log::info!("Sending typing event to chat {}", chat_id);
+    }
+
+    pub async fn get_reactions_config(&self) -> Result<crate::models::ExtendedReactionsConfig, String> {
+        self.http.get_reactions_config_public().await
+    }
+
+    pub async fn add_reaction(&self, message_id: &str, emoji: &str) -> Result<(), String> {
+        if self.ws.send_add_reaction(message_id, emoji).await.is_ok() {
+            return Ok(());
+        }
+        self.http
+            .add_reaction_public(message_id, emoji)
+            .await
+            .map(|_| ())
+    }
+
+    pub async fn remove_reaction(&self, message_id: &str, emoji: &str) -> Result<(), String> {
+        if self.ws.send_remove_reaction(message_id, emoji).await.is_ok() {
+            return Ok(());
+        }
+        self.http.remove_reaction_public(message_id, emoji).await
     }
 
     // ── Scheduled message methods ──

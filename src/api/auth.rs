@@ -238,7 +238,8 @@ impl AuthManager {
                             let _ = fs::copy(&legacy_token, account_dir.join("token.json"));
                         }
 
-                        if let Ok(mut current) = self.current_account_id_sync.lock() {
+                        self.set_current_account_sync(Some(id.clone()));
+                        if let Ok(mut current) = self.current_account_id.try_lock() {
                             *current = Some(id);
                         }
                     }
@@ -246,25 +247,40 @@ impl AuthManager {
             }
         }
 
-        // Keep the sync current_account_id pointing at the first known account.
-        if self
+        // Keep both sync and async current_account_id pointing at a known account.
+        let need_current = self
             .current_account_id_sync
             .lock()
             .ok()
             .and_then(|g| g.clone())
-            .is_none()
-        {
+            .is_none();
+        if need_current {
             if let Some(first) = loaded.first() {
-                if let Ok(mut current) = self.current_account_id_sync.lock() {
+                self.set_current_account_sync(Some(first.id.clone()));
+                if let Ok(mut current) = self.current_account_id.try_lock() {
                     *current = Some(first.id.clone());
+                }
+            }
+        } else if let Some(id) = self
+            .current_account_id_sync
+            .lock()
+            .ok()
+            .and_then(|g| g.clone())
+        {
+            // Mirror sync → async so get_current_account_id() works after cold start
+            if let Ok(mut current) = self.current_account_id.try_lock() {
+                if current.is_none() {
+                    *current = Some(id);
                 }
             }
         }
 
         if !loaded.is_empty() {
             if let Ok(mut guard) = self.accounts.try_lock() {
-                *guard = loaded;
+                *guard = loaded.clone();
             }
+            // Ensure accounts.json exists for subsequent profile updates
+            self.persist_accounts(&loaded);
         }
     }
 
@@ -966,30 +982,63 @@ impl AuthManager {
 
         let id = json["id"]
             .as_str()
+            .or_else(|| json["uid"].as_str())
             .ok_or_else(|| "No id in user info response".to_string())?
             .to_string();
 
         let login = json["login"].as_str().map(|s| s.to_string());
 
-        let phone = json["default_phone"]
-            .get("number")
+        let phone = json
+            .get("default_phone")
+            .and_then(|p| p.get("number"))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
         let first_name = json["first_name"].as_str().map(|s| s.to_string());
-
         let last_name = json["last_name"].as_str().map(|s| s.to_string());
 
-        let display_name = json["display_name"].as_str().map(|s| s.to_string());
+        // Prefer human names: real_name → display_name → first+last → login
+        let display_name = json["real_name"]
+            .as_str()
+            .or_else(|| json["display_name"].as_str())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .or_else(|| {
+                let mut parts = Vec::new();
+                if let Some(f) = &first_name {
+                    parts.push(f.as_str());
+                }
+                if let Some(l) = &last_name {
+                    parts.push(l.as_str());
+                }
+                if parts.is_empty() {
+                    None
+                } else {
+                    Some(parts.join(" "))
+                }
+            })
+            .or_else(|| login.clone());
 
-        let username = json["login"].as_str().map(|s| s.to_string());
+        let username = login.clone();
 
-        let avatar_id = json["default_avatar_id"].as_str().map(|s| s.to_string());
+        // OAuth returns numeric default_avatar_id; messenger uses user_avatar/yapic/...
+        let avatar_id = json["default_avatar_id"]
+            .as_str()
+            .map(|s| {
+                if s.starts_with("user_avatar/") || s.contains('/') {
+                    s.to_string()
+                } else {
+                    format!("user_avatar/yapic/{}", s)
+                }
+            })
+            .or_else(|| {
+                json["default_avatar_id"]
+                    .as_i64()
+                    .map(|n| format!("user_avatar/yapic/{}", n))
+            });
 
         let status_raw = json["status"].as_str();
-
         let is_bot = json["is_bot"].as_bool().unwrap_or(false);
-
         let is_premium = json["is_premium"].as_bool().unwrap_or(false);
 
         Ok(crate::models::User {
@@ -1005,6 +1054,100 @@ impl AuthManager {
             is_bot,
             is_premium,
         })
+    }
+
+    /// Update current account display name / avatar (from bootstrap or OAuth).
+    pub async fn update_current_profile(
+        &self,
+        display_name: Option<String>,
+        avatar_id: Option<String>,
+    ) -> Result<(), String> {
+        let id = self
+            .get_current_account_id()
+            .await
+            .or_else(|| {
+                self.current_account_id_sync
+                    .lock()
+                    .ok()
+                    .and_then(|g| g.clone())
+            })
+            .ok_or_else(|| "No current account".to_string())?;
+
+        // Ensure async id is set
+        *self.current_account_id.lock().await = Some(id.clone());
+        self.set_current_account_sync(Some(id.clone()));
+
+        let mut accounts = self.accounts.lock().await;
+        if let Some(acc) = accounts.iter_mut().find(|a| a.id == id) {
+            if let Some(name) = display_name {
+                let name = name.trim().to_string();
+                if !name.is_empty() {
+                    acc.display_name = Some(name);
+                }
+            }
+            if let Some(avatar) = avatar_id {
+                if !avatar.is_empty() {
+                    acc.avatar_url = Some(avatar);
+                }
+            }
+            let name_log = acc.display_name.clone();
+            let avatar_log = acc
+                .avatar_url
+                .as_ref()
+                .map(|s| s.chars().take(40).collect::<String>());
+            self.persist_accounts(&accounts);
+            log::info!(
+                "Updated account profile: name={:?}, avatar={:?}",
+                name_log,
+                avatar_log
+            );
+            Ok(())
+        } else {
+            // Account missing from list — synthesize from token
+            let token = self.token.lock().await.clone();
+            let access = token
+                .as_ref()
+                .map(|t| t.access_token.clone())
+                .unwrap_or_default();
+            let mut account = Account::new(id.clone(), access);
+            account.display_name = display_name.filter(|s| !s.trim().is_empty());
+            account.avatar_url = avatar_id.filter(|s| !s.is_empty());
+            if let Some(t) = token {
+                account.refresh_token = t.refresh_token;
+                account.expires_at = t.received_at + t.expires_in;
+            }
+            accounts.push(account);
+            self.persist_accounts(&accounts);
+            Ok(())
+        }
+    }
+
+    /// Apply a User profile onto the current account and persist.
+    pub async fn apply_user_profile(&self, user: &crate::models::User) -> Result<(), String> {
+        let name = user
+            .display_name
+            .clone()
+            .or_else(|| {
+                match (&user.first_name, &user.last_name) {
+                    (Some(f), Some(l)) => Some(format!("{} {}", f, l)),
+                    (Some(f), None) => Some(f.clone()),
+                    (None, Some(l)) => Some(l.clone()),
+                    _ => None,
+                }
+            })
+            .or_else(|| user.username.clone())
+            .or_else(|| user.email.clone());
+
+        // Prefer messenger guid as account id when token has messenger-style id
+        if let Some(token_uid) = self.user_id() {
+            if token_uid != user.id && token_uid.contains('-') {
+                // keep messenger guid as account id
+                let _ = token_uid;
+            }
+        }
+
+        self.update_current_profile(name, user.avatar_id.clone())
+            .await
     }
 
     /// Validates the current session by fetching the user profile from the OAuth API.
@@ -1050,7 +1193,20 @@ impl AuthManager {
 
     /// Get the currently active account ID (if any)
     pub async fn get_current_account_id(&self) -> Option<String> {
-        self.current_account_id.lock().await.clone()
+        let async_id = self.current_account_id.lock().await.clone();
+        if async_id.is_some() {
+            return async_id;
+        }
+        // Fall back to sync mirror (set during cold-start load)
+        let sync_id = self
+            .current_account_id_sync
+            .lock()
+            .ok()
+            .and_then(|g| g.clone());
+        if let Some(ref id) = sync_id {
+            *self.current_account_id.lock().await = Some(id.clone());
+        }
+        sync_id
     }
 
     /// Get the currently active account (if any)

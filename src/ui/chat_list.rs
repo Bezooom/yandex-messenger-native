@@ -17,8 +17,15 @@ use crate::ui::account_dropdown::AccountDropdown;
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-static AVATAR_CACHE: OnceLock<Mutex<HashMap<String, gtk::gdk::Texture>>> = OnceLock::new();
-fn get_avatar_cache() -> &'static Mutex<HashMap<String, gtk::gdk::Texture>> {
+#[derive(Clone)]
+enum AvatarCacheEntry {
+    Pending,
+    Failed,
+    Success(gtk::gdk::Texture),
+}
+
+static AVATAR_CACHE: OnceLock<Mutex<HashMap<String, AvatarCacheEntry>>> = OnceLock::new();
+fn get_avatar_cache() -> &'static Mutex<HashMap<String, AvatarCacheEntry>> {
     AVATAR_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
@@ -358,93 +365,92 @@ impl ChatListPanel {
         let auth = auth.clone();
 
         glib::spawn_future_local(async move {
-            if let Some(id) = auth.get_current_account_id().await {
-                let accounts = auth.list_accounts().await;
-                if let Some(acc) = accounts.iter().find(|a| a.id == id) {
-                    let label = acc.display_label();
-                    let initials: String = label
-                        .chars()
-                        .take(2)
-                        .map(|c| c.to_ascii_uppercase())
-                        .collect();
-                    user_name_label.set_label(&label);
+            // Prefer full account object; fall back to name-only helpers
+            let acc = auth.get_current_account().await;
+            let label = if let Some(ref a) = acc {
+                a.display_label()
+            } else {
+                auth.current_account_name()
+                    .await
+                    .unwrap_or_else(|| "Messenger".to_string())
+            };
 
-                    // Clear any existing children of the user_avatar box
-                    while let Some(child) = user_avatar.first_child() {
-                        user_avatar.remove(&child);
-                    }
+            let id = acc
+                .as_ref()
+                .map(|a| a.id.clone())
+                .or(auth.get_current_account_id().await)
+                .unwrap_or_else(|| "default".to_string());
 
-                    user_avatar.remove_css_class("avatar");
-                    for i in 0..8 {
-                        user_avatar.remove_css_class(&format!("avatar-gradient-{}", i));
-                    }
-                    user_avatar.add_css_class("avatar");
+            let initials: String = label
+                .split_whitespace()
+                .filter_map(|w| w.chars().next())
+                .take(2)
+                .map(|c| c.to_uppercase().to_string())
+                .collect::<String>();
+            let initials = if initials.is_empty() {
+                label
+                    .chars()
+                    .take(2)
+                    .collect::<String>()
+                    .to_uppercase()
+            } else {
+                initials
+            };
 
-                    let hash = hash_color(&id);
-                    user_avatar.add_css_class(&format!("avatar-gradient-{}", hash % 8));
+            user_name_label.set_label(&label);
+            user_name_label.set_tooltip_text(Some(&label));
 
-                    if let Some(ref avatar_id) = acc.avatar_url {
-                        let normalized_id = avatar_id.replace("user_avatar/", "");
-                        let avatar_url = format!(
-                            "https://avatars.mds.yandex.net/get-{}/islands-middle",
-                            normalized_id
-                        );
-                        let user_avatar_clone = user_avatar.clone();
-                        let initials_clone = initials.clone();
-                        let hash_clone = hash;
-                        glib::spawn_future_local(async move {
-                            if let Ok(bytes) = download_avatar_bytes(&avatar_url, None).await {
-                                while let Some(child) = user_avatar_clone.first_child() {
-                                    user_avatar_clone.remove(&child);
-                                }
-                                for i in 0..8 {
-                                    user_avatar_clone
-                                        .remove_css_class(&format!("avatar-gradient-{}", i));
-                                }
-                                let bytes_glib = glib::Bytes::from(&bytes);
-                                if let Ok(texture) = gtk::gdk::Texture::from_bytes(&bytes_glib) {
-                                    let image = gtk::Image::from_paintable(Some(&texture));
-                                    image.add_css_class("avatar-image");
-                                    image.set_pixel_size(40);
-                                    user_avatar_clone.append(&image);
-                                    return;
-                                }
-                            }
-                            // Fallback
-                            let label = Label::builder()
-                                .label(&initials_clone)
-                                .css_classes(vec!["avatar-label".to_string()])
-                                .build();
-                            user_avatar_clone.append(&label);
-                            user_avatar_clone
-                                .add_css_class(&format!("avatar-gradient-{}", hash_clone % 8));
-                        });
-                    } else {
-                        let label = Label::builder()
-                            .label(&initials)
-                            .css_classes(vec!["avatar-label".to_string()])
-                            .build();
-                        user_avatar.append(&label);
-                    }
-                    return;
-                }
-            }
-            // Fallback
+            // Clear avatar box
             while let Some(child) = user_avatar.first_child() {
                 user_avatar.remove(&child);
             }
-            let label = Label::builder()
-                .label("YM")
-                .css_classes(vec!["avatar-label".to_string()])
-                .build();
-            user_avatar.append(&label);
-            user_name_label.set_label("Messenger");
             user_avatar.remove_css_class("avatar");
             for i in 0..8 {
                 user_avatar.remove_css_class(&format!("avatar-gradient-{}", i));
             }
             user_avatar.add_css_class("avatar");
-            user_avatar.add_css_class("avatar-gradient-0");
+
+            let hash = hash_color(&id);
+            user_avatar.add_css_class(&format!("avatar-gradient-{}", hash % 8));
+
+            let avatar_url = acc.as_ref().and_then(|a| a.avatar_cdn_url());
+            if let Some(avatar_url) = avatar_url {
+                let user_avatar_clone = user_avatar.clone();
+                let initials_clone = initials.clone();
+                let hash_clone = hash;
+                glib::spawn_future_local(async move {
+                    if let Ok(bytes) = download_avatar_bytes(&avatar_url, None).await {
+                        while let Some(child) = user_avatar_clone.first_child() {
+                            user_avatar_clone.remove(&child);
+                        }
+                        for i in 0..8 {
+                            user_avatar_clone
+                                .remove_css_class(&format!("avatar-gradient-{}", i));
+                        }
+                        let bytes_glib = glib::Bytes::from(&bytes);
+                        if let Ok(texture) = gtk::gdk::Texture::from_bytes(&bytes_glib) {
+                            let image = gtk::Image::from_paintable(Some(&texture));
+                            image.add_css_class("avatar-image");
+                            image.set_pixel_size(40);
+                            user_avatar_clone.append(&image);
+                            return;
+                        }
+                    }
+                    let label = Label::builder()
+                        .label(&initials_clone)
+                        .css_classes(vec!["avatar-label".to_string()])
+                        .build();
+                    user_avatar_clone.append(&label);
+                    user_avatar_clone
+                        .add_css_class(&format!("avatar-gradient-{}", hash_clone % 8));
+                });
+            } else {
+                let label = Label::builder()
+                    .label(&initials)
+                    .css_classes(vec!["avatar-label".to_string()])
+                    .build();
+                user_avatar.append(&label);
+            }
         });
     }
 
@@ -658,6 +664,8 @@ impl ChatListPanel {
             let title = Label::builder()
                 .xalign(0.0)
                 .ellipsize(gtk::pango::EllipsizeMode::End)
+                .width_chars(1)
+                .max_width_chars(28)
                 .css_classes(["chat-title"])
                 .hexpand(true)
                 .build();
@@ -684,6 +692,8 @@ impl ChatListPanel {
             let preview = Label::builder()
                 .xalign(0.0)
                 .ellipsize(gtk::pango::EllipsizeMode::End)
+                .width_chars(1)
+                .max_width_chars(32)
                 .css_classes(["chat-preview"])
                 .hexpand(true)
                 .build();
@@ -814,16 +824,36 @@ impl ChatListPanel {
         let avatar_id = chat.avatar_id.clone().unwrap_or_default();
         if !avatar_id.is_empty() {
             let cache = get_avatar_cache();
-            let cached_texture = {
+            
+            // Check cache entry
+            let entry = {
                 let map = cache.lock().unwrap();
                 map.get(&avatar_id).cloned()
             };
-            if let Some(texture) = cached_texture {
-                avatar.set_custom_image(Some(&texture));
-                return;
+            
+            match entry {
+                Some(AvatarCacheEntry::Success(texture)) => {
+                    avatar.set_custom_image(Some(&texture));
+                    return;
+                }
+                Some(AvatarCacheEntry::Pending) => {
+                    // Download is already in progress, show initials for now
+                    avatar.set_custom_image(None::<&gtk::gdk::Texture>);
+                    return;
+                }
+                Some(AvatarCacheEntry::Failed) => {
+                    // Download failed previously, show initials
+                    avatar.set_custom_image(None::<&gtk::gdk::Texture>);
+                    return;
+                }
+                None => {
+                    // Cache miss: mark as Pending and start downloading
+                    let mut map = cache.lock().unwrap();
+                    map.insert(avatar_id.clone(), AvatarCacheEntry::Pending);
+                }
             }
 
-            // Cache miss: clear custom image to show initials first
+            // Clear custom image to show initials first
             avatar.set_custom_image(None::<&gtk::gdk::Texture>);
 
             let avatar_clone = avatar.clone();
@@ -854,20 +884,56 @@ impl ChatListPanel {
                     None
                 };
 
-                if let Ok(bytes) = download_avatar_bytes(&avatar_url, token_opt.as_deref()).await {
-                    let bytes_glib = glib::Bytes::from(&bytes);
-                    if let Ok(texture) = gtk::gdk::Texture::from_bytes(&bytes_glib) {
-                        // Put in static cache!
+                let url_for_thread = avatar_url.clone();
+                let token_for_thread = token_opt.clone();
+
+                let download_handle = tokio::spawn(async move {
+                    download_avatar_bytes(&url_for_thread, token_for_thread.as_deref()).await
+                });
+
+                match download_handle.await {
+                    Ok(Ok(bytes)) => {
+                        let bytes_glib = glib::Bytes::from(&bytes);
+                        match gtk::gdk::Texture::from_bytes(&bytes_glib) {
+                            Ok(texture) => {
+                                log::info!("Successfully loaded texture for {}", avatar_id_clone);
+                                // Put in static cache!
+                                let cache = get_avatar_cache();
+                                cache
+                                    .lock()
+                                    .unwrap()
+                                    .insert(avatar_id_clone, AvatarCacheEntry::Success(texture.clone()));
+
+                                // Check if the avatar is still bound to the same chat
+                                if avatar_clone.widget_name() == expected_chat_id {
+                                    avatar_clone.set_custom_image(Some(&texture));
+                                }
+                            }
+                            Err(e) => {
+                                log::warn!("Failed to parse texture for {}: {}", avatar_id_clone, e);
+                                let cache = get_avatar_cache();
+                                cache
+                                    .lock()
+                                    .unwrap()
+                                    .insert(avatar_id_clone, AvatarCacheEntry::Failed);
+                            }
+                        }
+                    }
+                    Ok(Err(e)) => {
+                        log::warn!("Failed to download avatar {}: {}", avatar_id_clone, e);
                         let cache = get_avatar_cache();
                         cache
                             .lock()
                             .unwrap()
-                            .insert(avatar_id_clone, texture.clone());
-
-                        // Check if the avatar is still bound to the same chat
-                        if avatar_clone.widget_name() == expected_chat_id {
-                            avatar_clone.set_custom_image(Some(&texture));
-                        }
+                            .insert(avatar_id_clone, AvatarCacheEntry::Failed);
+                    }
+                    Err(join_err) => {
+                        log::error!("Join error downloading avatar {}: {}", avatar_id_clone, join_err);
+                        let cache = get_avatar_cache();
+                        cache
+                            .lock()
+                            .unwrap()
+                            .insert(avatar_id_clone, AvatarCacheEntry::Failed);
                     }
                 }
             });
@@ -935,10 +1001,13 @@ impl ChatListPanel {
     }
 
     fn show_context_menu(chat: Chat) {
-        let menu = GtkBox::new(Orientation::Vertical, 4);
+        let menu = GtkBox::new(Orientation::Vertical, 2);
         menu.add_css_class("chat-context-menu");
 
-        let popover = Popover::builder().has_arrow(false).build();
+        let popover = Popover::builder()
+            .has_arrow(false)
+            .autohide(true)
+            .build();
 
         let actions: Vec<(&str, &str)> = vec![
             ("Отметить как прочитанное", "mark_read"),
@@ -1121,6 +1190,42 @@ impl ChatListPanel {
         self.model.update_chat_ids_model();
     }
 
+    /// Update last-message preview after loading history or receiving WS events.
+    pub fn update_last_message(&mut self, chat_id: &str, message: crate::models::Message) {
+        let mut chats = self.model.chats.lock().unwrap();
+        if let Some(chat) = chats.iter_mut().find(|c| c.id == chat_id) {
+            chat.last_message = Some(message);
+            chat.updated = Some(chrono::Utc::now());
+        }
+        // Re-sort by recency
+        chats.sort_by(|a, b| {
+            if a.pinned && !b.pinned {
+                return std::cmp::Ordering::Less;
+            }
+            if !a.pinned && b.pinned {
+                return std::cmp::Ordering::Greater;
+            }
+            let a_time = a
+                .last_message
+                .as_ref()
+                .map(|m| m.created)
+                .or(a.updated)
+                .unwrap_or_else(|| chrono::DateTime::<chrono::Utc>::MIN_UTC);
+            let b_time = b
+                .last_message
+                .as_ref()
+                .map(|m| m.created)
+                .or(b.updated)
+                .unwrap_or_else(|| chrono::DateTime::<chrono::Utc>::MIN_UTC);
+            b_time.cmp(&a_time)
+        });
+        let count = chats.len();
+        drop(chats);
+        let all_indices: Vec<usize> = (0..count).collect();
+        *self.model.visible.lock().unwrap() = all_indices;
+        self.model.update_chat_ids_model();
+    }
+
     pub fn update_unread(&mut self, chat_id: &str, unread_count: u32) {
         let mut chats = self.model.chats.lock().unwrap();
         if let Some(chat) = chats.iter_mut().find(|c| c.id == chat_id) {
@@ -1253,13 +1358,21 @@ fn hash_color(s: &str) -> usize {
     hash as usize
 }
 
+static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+fn get_http_client() -> &'static reqwest::Client {
+    HTTP_CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(5))
+            .user_agent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            .build()
+            .unwrap_or_default()
+    })
+}
+
 /// Asynchronously load an avatar image from a URL and set it on the avatar widget.
 /// Falls back to the initials display if the image fails to load.
 async fn download_avatar_bytes(url: &str, token: Option<&str>) -> Result<bytes::Bytes, String> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(5))
-        .build()
-        .map_err(|e| format!("Failed to create client: {}", e))?;
+    let client = get_http_client();
 
     let mut req = client.get(url);
     if let Some(t) = token {
@@ -1299,7 +1412,7 @@ async fn download_avatar_bytes(url: &str, token: Option<&str>) -> Result<bytes::
         .header("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
         .send()
         .await
-        .map_err(|e| format!("Fetch failed: {}", e))?;
+        .map_err(|e| format!("Fetch failed: {:?}", e))?;
 
     if !response.status().is_success() {
         return Err(format!("HTTP error {}", response.status()));

@@ -286,10 +286,34 @@ fn create_app_layout(
         },
     );
 
+    let ctrl_reactions = controller.clone();
+    chat_view.on_reaction_toggle(move |message_id, emoji, add| {
+        let ctrl = ctrl_reactions.clone();
+        glib::spawn_future_local(async move {
+            let result = if add {
+                ctrl.add_reaction(&message_id, &emoji).await
+            } else {
+                ctrl.remove_reaction(&message_id, &emoji).await
+            };
+            if let Err(error) = result {
+                eprintln!("Reaction failed: {}", error);
+            }
+        });
+    });
+
+    let ctrl_reactions_config = controller.clone();
+    let cv_reactions_config = chat_view.clone();
+    glib::spawn_future_local(async move {
+        if let Ok(config) = ctrl_reactions_config.get_reactions_config().await {
+            cv_reactions_config.set_reactions_config(config);
+        }
+    });
+
     // ── Wire: Chat selection → load messages ──
     let ctrl_select = controller.clone();
     let cv_for_select = chat_view.clone();
     let ctrl_ws_for_select = controller.clone();
+    let cl_for_select = chat_list.clone();
     chat_list
         .lock()
         .unwrap()
@@ -297,47 +321,63 @@ fn create_app_layout(
             let chat_id = chat.id.clone();
             cv_for_select.set_chat(chat);
 
-            let ctrl_cached = ctrl_select.clone();
-            let cv_cached = cv_for_select.clone();
-            let chat_id_cached = chat_id.clone();
-            glib::spawn_future_local(async move {
-                let cached = ctrl_cached
-                    .get_cached_messages_async(chat_id_cached.clone())
-                    .await;
-                let current_id = cv_cached.current_chat_id();
-                if current_id == Some(chat_id_cached) {
-                    if !cached.is_empty() {
-                        cv_cached.set_messages(cached);
-                    } else {
-                        cv_cached.set_messages(Vec::new());
-                    }
-                }
-            });
-
-            // Set the current chat for WebSocket subscription
-            let ctrl_ws = ctrl_ws_for_select.clone();
-            let chat_id_clone = chat_id.clone();
-            glib::spawn_future_local(async move {
-                ctrl_ws.ws().set_current_chat(Some(chat_id_clone)).await;
-            });
-
             let ctrl = ctrl_select.clone();
             let cv = cv_for_select.clone();
             let chat_id_future = chat_id.clone();
+            let ctrl_ws = ctrl_ws_for_select.clone();
+            let chat_id_clone = chat_id.clone();
+            let cl_for_preview = cl_for_select.clone();
+
             glib::spawn_future_local(async move {
+                // 1. Set the current chat for WebSocket subscription
+                ctrl_ws.ws().set_current_chat(Some(chat_id_clone)).await;
+                let _ = ctrl_ws
+                    .ws()
+                    .subscribe_typing_enhanced(&chat_id_future)
+                    .await;
+
+                // 2. Load cached messages first
+                let start_cached = std::time::Instant::now();
+                let cached = ctrl
+                    .get_cached_messages_async(chat_id_future.clone())
+                    .await;
+                eprintln!("[PERF] get_cached_messages_async took {:?}", start_cached.elapsed());
+
+                let current_id = cv.current_chat_id();
+                if current_id == Some(chat_id_future.clone()) && !cached.is_empty() {
+                    let start_set = std::time::Instant::now();
+                    cv.set_messages(cached.clone());
+                    eprintln!("[PERF] set_messages (cached) took {:?}", start_set.elapsed());
+                }
+
+                // 3. Fetch fresh messages
+                let start_select = std::time::Instant::now();
                 match ctrl.select_chat(&chat_id_future).await {
                     Ok(messages) => {
+                        eprintln!("[PERF] select_chat took {:?}", start_select.elapsed());
+                        // Keep chat-list preview in sync with actual last message
+                        if let Some(last) = messages.last() {
+                            cl_for_preview
+                                .lock()
+                                .unwrap()
+                                .update_last_message(&chat_id_future, last.clone());
+                        }
                         let current_chat_id = cv.current_chat_id();
-                        if current_chat_id == Some(chat_id_future.clone()) {
+                        if current_chat_id == Some(chat_id_future.clone())
+                            && !crate::models::messages_equivalent(&cached, &messages)
+                        {
+                            let start_set = std::time::Instant::now();
                             cv.set_messages(messages);
+                            eprintln!("[PERF] set_messages (fresh) took {:?}", start_set.elapsed());
                         }
                     }
                     Err(e) => {
+                        eprintln!("[PERF] select_chat failed after {:?}: {}", start_select.elapsed(), e);
                         eprintln!("Failed to load messages for chat {}: {}", chat_id_future, e);
                     }
                 }
 
-                // Load scheduled messages
+                // 4. Load scheduled messages
                 match ctrl.get_scheduled_messages(&chat_id_future).await {
                     Ok(sched_msgs) => {
                         let current_chat_id = cv.current_chat_id();
@@ -486,6 +526,8 @@ fn create_app_layout(
         let dialog_clone = std::rc::Rc::new(dialog);
         let dialog_for_confirm = dialog_clone.clone();
         let dialog_for_cancel = dialog_clone.clone();
+        let dialog_for_load = dialog_clone.clone();
+        let ctrl_for_load = ctrl.clone();
 
         dialog_clone.connect_cancel_clicked(move || {
             dialog_for_cancel.hide();
@@ -499,12 +541,18 @@ fn create_app_layout(
             let description = dg.get_description();
             let is_public = dg.is_public();
             let is_channel = dg.is_channel();
+            let members = dg.get_selected_members();
+
+            if title.trim().is_empty() {
+                eprintln!("Group title is required");
+                return;
+            }
 
             glib::spawn_future_local(async move {
                 let res = if is_channel {
                     ctrl.create_channel(&title, description, is_public).await
                 } else {
-                    ctrl.create_group(&title, Vec::new(), is_public).await
+                    ctrl.create_group(&title, members, is_public).await
                 };
 
                 match res {
@@ -522,6 +570,19 @@ fn create_app_layout(
         });
 
         dialog_clone.show();
+
+        // Load real contacts asynchronously so the dialog opens immediately
+        glib::spawn_future_local(async move {
+            match ctrl_for_load.get_contact_candidates().await {
+                Ok(contacts) => {
+                    dialog_for_load.load_candidates(contacts);
+                }
+                Err(e) => {
+                    log::warn!("Failed to load contacts for group dialog: {}", e);
+                    dialog_for_load.load_candidates(Vec::new());
+                }
+            }
+        });
     });
 
     // ── Wire: Scheduled Messages ──
@@ -564,35 +625,51 @@ fn create_app_layout(
         },
     );
 
-    // ── Load chats in background ──
+    // ── Load chats + refresh account header with real profile ──
     let ctrl_load = controller.clone();
     let cl_for_load = chat_list.clone();
+    let auth_for_header = controller.auth().clone();
     glib::spawn_future_local(async move {
+        // Best-effort OAuth profile (often limited scopes — may only have login)
+        if let Ok(user) = auth_for_header.get_user_info().await {
+            let _ = auth_for_header.apply_user_profile(&user).await;
+            cl_for_load.lock().unwrap().refresh_header(&auth_for_header);
+        }
+
         match ctrl_load.load_chats().await {
             Ok(chats) => {
                 cl_for_load.lock().unwrap().set_chats(chats);
+                // Bootstrap updates account name/avatar via auth.update_current_profile;
+                // give it a moment then refresh header with real messenger display_name.
+                let auth = auth_for_header.clone();
+                let cl = cl_for_load.clone();
+                glib::timeout_add_local_once(std::time::Duration::from_millis(400), move || {
+                    cl.lock().unwrap().refresh_header(&auth);
+                });
             }
             Err(e) => {
                 eprintln!("Failed to load chats: {}", e);
+                cl_for_load.lock().unwrap().refresh_header(&auth_for_header);
             }
         }
     });
 
-    // ── Load sticker packs in background ──
+    // ── Load sticker packs in background (CDN via bootstrap IDs) ──
     let ctrl_stickers = controller.clone();
     let cv_for_stickers = chat_view.clone();
     glib::spawn_future_local(async move {
         match ctrl_stickers.load_sticker_packs().await {
-            Ok(catalog) => {
-                if catalog.packs.is_empty() {
-                    cv_for_stickers.update_sticker_packs(get_default_mock_packs());
-                } else {
-                    cv_for_stickers.update_sticker_packs(catalog.packs);
-                }
+            Ok(catalog) if !catalog.packs.is_empty() => {
+                log::info!("Loaded {} sticker packs from CDN", catalog.packs.len());
+                cv_for_stickers.update_sticker_packs(catalog.packs);
+            }
+            Ok(_) => {
+                log::warn!("Sticker catalog empty — using offline fallback packs");
+                cv_for_stickers.update_sticker_packs(get_default_mock_packs());
             }
             Err(e) => {
-                eprintln!(
-                    "Failed to load sticker packs: {}. Using fallback mock packs.",
+                log::warn!(
+                    "Sticker packs unavailable ({}). Using offline fallback packs.",
                     e
                 );
                 cv_for_stickers.update_sticker_packs(get_default_mock_packs());
@@ -656,44 +733,42 @@ fn create_app_layout(
 
                 match method {
                     "new_message" => {
-                        if let Some(messages_val) = ws_msg.message.get("messages") {
-                            if let Ok(messages) = serde_json::from_value::<
-                                Vec<crate::models::Message>,
-                            >(messages_val.clone())
-                            {
-                                for msg in &messages {
-                                    let mut sender = "Yandex User".to_string();
-                                    if let Some(chat) = ctrl
-                                        .state()
-                                        .lock()
-                                        .await
-                                        .chats
-                                        .iter()
-                                        .find(|c| c.id == msg.chat_id)
-                                    {
-                                        if let Some(p) =
-                                            chat.participants.iter().find(|p| p.id == msg.from_id)
-                                        {
-                                            if let Some(ref name) = p.name {
-                                                sender = name.clone();
-                                            }
-                                        }
+                        let messages =
+                            crate::api::HttpClient::parse_ws_incoming_messages(&ws_msg.message);
+                        if !messages.is_empty() {
+                            for msg in &messages {
+                                let mut sender = "Yandex User".to_string();
+                                if let Some(chat) = ctrl
+                                    .state()
+                                    .lock()
+                                    .await
+                                    .chats
+                                    .iter()
+                                    .find(|c| c.id == msg.chat_id)
+                                {
+                                    if let Some(title) = chat.title.as_ref() {
+                                        sender = title.clone();
                                     }
-                                    let text = msg.text.as_deref().unwrap_or("").to_string();
+                                }
+                                let text = msg.text.as_deref().unwrap_or("").to_string();
+                                if !text.is_empty() {
                                     ui::notifications::send_notification(&sender, &text);
                                 }
+                            }
 
-                                if let Some(chat_id) = ctrl.get_selected_chat_id().await {
-                                    for msg in messages {
+                            if let Some(selected_chat_id) = ctrl.get_selected_chat_id().await {
+                                for msg in messages {
+                                    if msg.chat_id == selected_chat_id {
                                         cv.add_message(msg);
                                     }
-                                    // Update unread count
-                                    let chats = ctrl.state().lock().await.chats.clone();
-                                    if let Some(chat) = chats.iter().find(|c| c.id == chat_id) {
-                                        cl.lock()
-                                            .unwrap()
-                                            .update_unread(&chat.id, chat.unread_count);
-                                    }
+                                }
+
+                                let chats = ctrl.state().lock().await.chats.clone();
+                                if let Some(chat) = chats.iter().find(|c| c.id == selected_chat_id)
+                                {
+                                    cl.lock()
+                                        .unwrap()
+                                        .update_unread(&chat.id, chat.unread_count);
                                 }
                             }
                         }
@@ -710,18 +785,29 @@ fn create_app_layout(
                         }
                     }
                     "typing_enhanced" => {
-                        if let Some(user) = ws_msg
+                        let typing_user = ws_msg
                             .message
                             .get("user")
-                            .and_then(|u| u.get("display_name"))
-                            .and_then(|n| n.as_str())
-                        {
-                            cv.set_typing(user);
+                            .and_then(|user| {
+                                user.get("display_name")
+                                    .or_else(|| user.get("public_name"))
+                                    .or_else(|| user.get("contact_name"))
+                            })
+                            .and_then(|name| name.as_str())
+                            .map(|name| name.to_string());
+                        if let Some(user) = typing_user {
+                            cv.set_typing(&user);
                         }
                     }
                     "reaction_update" => {
-                        if let Some(chat_id) = ctrl.get_selected_chat_id().await {
-                            let _ = ctrl.fetch_fresh_messages(&chat_id).await;
+                        if let Some((message_id, reactions)) =
+                            crate::api::HttpClient::parse_reaction_update_payload(&ws_msg.message)
+                        {
+                            cv.update_message_reactions(&message_id, reactions);
+                        } else if let Some(chat_id) = ctrl.get_selected_chat_id().await {
+                            if let Ok(messages) = ctrl.fetch_fresh_messages(&chat_id).await {
+                                cv.set_messages(messages);
+                            }
                         }
                     }
                     _ => {}

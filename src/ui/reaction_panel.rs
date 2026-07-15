@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use gtk::prelude::*;
 use gtk::{Align, Box as GtkBox, Button, Orientation, Popover};
 use std::cell::RefCell;
@@ -52,32 +50,38 @@ impl ReactionPanel {
 
     /// Show the reaction panel as a popover anchored to a target widget.
     pub fn show(&self, target: &impl IsA<gtk::Widget>) {
-        let popover = self.build_popover();
+        // Tear down previous popover to avoid stacked shells
+        if let Some(old) = self.popover.borrow_mut().take() {
+            old.popdown();
+            old.unparent();
+        }
 
-        // Set container as popover child
+        // Rebuild content once per open (clear previous children)
+        while let Some(child) = self.container.first_child() {
+            self.container.remove(&child);
+        }
+        self.fill_container();
+
+        let popover = Popover::builder().has_arrow(false).autohide(true).build();
+        // Do NOT put frame classes on the Popover — chrome is CSS `popover > contents`
+        popover.set_css_classes(&["reaction-popover"]);
         popover.set_child(Some(&self.container));
-
-        // Store reference for later updates
-        *self.popover.borrow_mut() = Some(popover.clone());
-
-        popover.set_parent(&target.clone().upcast());
+        popover.set_parent(target);
         popover.set_position(gtk::PositionType::Bottom);
-        popover.set_has_arrow(false);
+        *self.popover.borrow_mut() = Some(popover.clone());
         popover.popup();
     }
 
     /// Hide the reaction panel popover.
     pub fn hide(&self) {
-        if let Some(pop) = self.popover.borrow().as_ref() {
+        if let Some(pop) = self.popover.borrow_mut().take() {
             pop.popdown();
+            pop.unparent();
         }
     }
 
-    /// Build the reaction panel popover content.
-    fn build_popover(&self) -> Popover {
-        let popover = Popover::builder().build();
-        popover.set_css_classes(&["reaction-panel", "context-menu"]);
-
+    /// Build the reaction panel content into `self.container`.
+    fn fill_container(&self) {
         // ── Quick reactions row ──
         let quick_row = GtkBox::new(Orientation::Horizontal, 4);
         quick_row.set_css_classes(&["reaction-row"]);
@@ -102,7 +106,6 @@ impl ReactionPanel {
                 extended_row.append(&btn);
             }
         } else {
-            // Show "+" button to expand
             let more_btn = Button::builder().label("+").sensitive(false).build();
             more_btn.set_css_classes(&["reaction-btn", "circular"]);
             more_btn.set_size_request(32, 32);
@@ -112,8 +115,6 @@ impl ReactionPanel {
         self.container.append(&quick_row);
         self.container.append(&divider);
         self.container.append(&extended_row);
-
-        popover
     }
 
     /// Create a single reaction emoji button with circular styling.
@@ -177,16 +178,12 @@ impl ReactionPanel {
     pub fn set_config(&self, config: ExtendedReactionsConfig) {
         *self.config.borrow_mut() = Some(config);
 
-        // Rebuild popover to show extended reactions
-        if let Some(pop) = self.popover.borrow().as_ref() {
-            // Clear and rebuild
+        // Rebuild content if currently open (keep the same popover shell)
+        if self.popover.borrow().is_some() {
             while let Some(child) = self.container.first_child() {
                 self.container.remove(&child);
             }
-            let new_popover = self.build_popover();
-            new_popover.set_parent(&pop.parent().unwrap());
-            new_popover.set_position(pop.position());
-            *self.popover.borrow_mut() = Some(new_popover);
+            self.fill_container();
         }
     }
 

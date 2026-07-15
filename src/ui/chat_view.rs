@@ -12,9 +12,20 @@ use std::sync::{Arc, Mutex};
 use crate::api::auth::AuthManager;
 use crate::core::voice_recorder::VoiceRecorder;
 use crate::models::scheduled_message::MessageSchedule;
-use crate::models::{Chat, Message, MessageType, Poll};
+use crate::models::{Chat, ExtendedReactionsConfig, Message, MessageType, Poll, Reaction};
+use crate::ui::reaction_panel::ReactionPanel;
 use crate::ui::bot_panel::BotPanel;
 use crate::ui::emoji_picker::EmojiPicker;
+
+/// Which composer popover should stay open when switching tools.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ComposerPopover {
+    Emoji,
+    Sticker,
+    Attach,
+    Poll,
+    Schedule,
+}
 use crate::ui::poll_creator::PollCreator;
 use crate::ui::poll_renderer::PollRenderer;
 use crate::ui::scheduled_panel::{ScheduledPanel, SendAtPopover};
@@ -54,6 +65,8 @@ pub struct ChatView {
     last_typing_time: Arc<Mutex<i64>>,
     current_thread_view: Mutex<Option<Arc<crate::ui::ThreadView>>>,
     reaction_popover: Mutex<Option<Popover>>,
+    reactions_config: Mutex<Option<ExtendedReactionsConfig>>,
+    on_reaction_toggle: Arc<Mutex<Option<StdBox<dyn Fn(String, String, bool)>>>>,
     reply_preview_box: GtkBox,
     reply_preview_label: Label,
     reply_preview_close_btn: Button,
@@ -72,6 +85,8 @@ pub struct ChatView {
     sticker_btn: Button,
     sticker_panel: Mutex<Option<StickerPanel>>,
     sticker_packs: Mutex<Vec<crate::models::StickerPack>>,
+    /// Reused attach menu popover (avoid creating nested shells each click)
+    attach_menu_popover: Mutex<Option<Popover>>,
     // Voice recording state
     voice_recorder: Mutex<Option<Arc<VoiceRecorder>>>,
     voice_recording: Mutex<bool>,
@@ -306,6 +321,8 @@ impl ChatView {
             last_typing_time: Arc::new(Mutex::new(0)),
             current_thread_view: Mutex::new(None),
             reaction_popover: Mutex::new(None),
+            reactions_config: Mutex::new(None),
+            on_reaction_toggle: Arc::new(Mutex::new(None)),
             reply_preview_box: reply_preview_box.clone(),
             reply_preview_label: reply_preview_label.clone(),
             reply_preview_close_btn: reply_preview_close_btn.clone(),
@@ -319,6 +336,7 @@ impl ChatView {
             sticker_btn,
             sticker_panel: Mutex::new(None),
             sticker_packs: Mutex::new(Vec::new()),
+            attach_menu_popover: Mutex::new(None),
             voice_recorder: Mutex::new(None),
             voice_recording: Mutex::new(false),
             long_press_timer: Mutex::new(None),
@@ -529,10 +547,13 @@ impl ChatView {
         }
 
         let poll_creator = PollCreator::new();
-        let popover = Popover::new();
+        let popover = Popover::builder()
+            .has_arrow(false)
+            .autohide(true)
+            .build();
+        popover.add_css_class("poll-creator-popover");
         popover.set_child(Some(poll_creator.container()));
         popover.set_parent(&self.attach_btn);
-        popover.set_autohide(true);
         popover.set_position(gtk::PositionType::Top);
 
         // Обработка создания опроса — захватываем только необходимые данные
@@ -608,12 +629,198 @@ impl ChatView {
 
     /// Добавляет сообщение в чат
     pub fn add_message(&self, msg: Message) {
-        let mut messages = self.messages.lock().unwrap();
-        if !messages.iter().any(|m| m.id == msg.id) {
-            messages.push(msg.clone());
-            let obj = crate::ui::message_object::MessageObject::new(msg);
-            self.messages_store.append(&obj);
+        if let Some(current_chat_id) = self.current_chat_id() {
+            if msg.chat_id != current_chat_id {
+                return;
+            }
         }
+
+        let mut messages = self.messages.lock().unwrap();
+        if let Some(existing) = messages.iter_mut().find(|m| m.id == msg.id) {
+            if !msg.reactions.is_empty() {
+                existing.reactions = msg.reactions.clone();
+            }
+            if msg.read {
+                existing.read = true;
+            }
+            if msg.delivered {
+                existing.delivered = true;
+            }
+            return;
+        }
+
+        messages.push(msg.clone());
+        let obj = crate::ui::message_object::MessageObject::new(msg);
+        self.messages_store.append(&obj);
+    }
+
+    pub fn set_reactions_config(&self, config: ExtendedReactionsConfig) {
+        *self.reactions_config.lock().unwrap() = Some(config);
+    }
+
+    pub fn on_reaction_toggle(&self, callback: impl Fn(String, String, bool) + 'static) {
+        *self.on_reaction_toggle.lock().unwrap() = Some(StdBox::new(callback));
+    }
+
+    pub fn update_message_reactions(&self, message_id: &str, reactions: Vec<Reaction>) {
+        let mut messages = self.messages.lock().unwrap();
+        let mut updated_id = None;
+        for msg in messages.iter_mut() {
+            if msg.id == message_id || msg.message_id.as_deref() == Some(message_id) {
+                msg.reactions = reactions.clone();
+                updated_id = Some(msg.id.clone());
+                break;
+            }
+        }
+
+        let Some(row_id) = updated_id else {
+            return;
+        };
+        drop(messages);
+        self.refresh_message_list_item(&row_id);
+    }
+
+    pub fn toggle_reaction_local(&self, message_id: &str, emoji: &str, add: bool) {
+        let mut messages = self.messages.lock().unwrap();
+        let mut updated_id = None;
+        for msg in messages.iter_mut() {
+            if msg.id != message_id && msg.message_id.as_deref() != Some(message_id) {
+                continue;
+            }
+
+            if add {
+                if let Some(reaction) = msg.reactions.iter_mut().find(|r| r.emoji == emoji) {
+                    reaction.count = reaction.count.saturating_add(1);
+                    reaction.selected = true;
+                } else {
+                    msg.reactions.push(Reaction {
+                        emoji: emoji.to_string(),
+                        count: 1,
+                        selected: true,
+                        user_ids: vec![],
+                        is_extended: false,
+                    });
+                }
+            } else if let Some(index) = msg.reactions.iter().position(|r| r.emoji == emoji) {
+                let reaction = &mut msg.reactions[index];
+                if reaction.count > 1 {
+                    reaction.count -= 1;
+                } else {
+                    msg.reactions.remove(index);
+                }
+            }
+
+            updated_id = Some(msg.id.clone());
+            break;
+        }
+
+        let Some(row_id) = updated_id else {
+            return;
+        };
+        drop(messages);
+        self.refresh_message_list_item(&row_id);
+    }
+
+    fn refresh_message_list_item(&self, message_id: &str) {
+        let messages = self.messages.lock().unwrap();
+        let Some(position) = messages.iter().position(|m| m.id == message_id) else {
+            return;
+        };
+        let msg = messages[position].clone();
+        drop(messages);
+
+        self.message_rows
+            .lock()
+            .unwrap()
+            .retain(|(id, _), _| id != message_id);
+
+        let obj = crate::ui::message_object::MessageObject::new(msg);
+        self.messages_store.remove(position as u32);
+        self.messages_store.insert(position as u32, &obj);
+    }
+
+    fn show_reaction_picker(self: &Arc<Self>, msg: &Message, target: &impl IsA<gtk::Widget>) {
+        let message_id = msg
+            .message_id
+            .clone()
+            .unwrap_or_else(|| msg.id.clone());
+        let panel = ReactionPanel::new(message_id.clone());
+        panel.set_reactions(msg.reactions.clone());
+        if let Some(config) = self.reactions_config.lock().unwrap().clone() {
+            panel.set_config(config);
+        }
+
+        let view_add = self.clone();
+        let view_remove = self.clone();
+        panel.on_reaction_click(move |msg_id, emoji| {
+            if let Some(cb) = view_add.on_reaction_toggle.lock().unwrap().as_ref() {
+                cb(msg_id.clone(), emoji.clone(), true);
+            }
+            view_add.toggle_reaction_local(&msg_id, &emoji, true);
+        });
+        panel.on_remove_reaction(move |msg_id, emoji| {
+            if let Some(cb) = view_remove.on_reaction_toggle.lock().unwrap().as_ref() {
+                cb(msg_id.clone(), emoji.clone(), false);
+            }
+            view_remove.toggle_reaction_local(&msg_id, &emoji, false);
+        });
+
+        panel.show(target);
+    }
+
+    fn create_reaction_chips_row(
+        self: &Arc<Self>,
+        msg: &Message,
+        is_sent: bool,
+        picker_target: &impl IsA<gtk::Widget>,
+    ) -> GtkBox {
+        let row = GtkBox::new(Orientation::Horizontal, 4);
+        row.add_css_class("message-reactions");
+        row.set_halign(if is_sent { Align::End } else { Align::Start });
+
+        let message_id = msg
+            .message_id
+            .clone()
+            .unwrap_or_else(|| msg.id.clone());
+
+        for reaction in &msg.reactions {
+            let label = if reaction.count > 1 {
+                format!("{} {}", reaction.emoji, reaction.count)
+            } else {
+                reaction.emoji.clone()
+            };
+            let mut classes = vec!["reaction-chip".to_string()];
+            if reaction.selected {
+                classes.push("selected".to_string());
+            }
+
+            let chip = Button::builder().label(&label).css_classes(classes).build();
+            let emoji = reaction.emoji.clone();
+            let selected = reaction.selected;
+            let msg_id = message_id.clone();
+            let view = self.clone();
+            chip.connect_clicked(move |_| {
+                if let Some(cb) = view.on_reaction_toggle.lock().unwrap().as_ref() {
+                    cb(msg_id.clone(), emoji.clone(), !selected);
+                }
+                view.toggle_reaction_local(&msg_id, &emoji, !selected);
+            });
+            row.append(&chip);
+        }
+
+        let add_btn = Button::builder()
+            .label("+")
+            .css_classes(vec!["reaction-chip".to_string(), "add".to_string()])
+            .build();
+        let msg_clone = msg.clone();
+        let view = self.clone();
+        let target_widget = picker_target.clone();
+        add_btn.connect_clicked(move |_| {
+            view.show_reaction_picker(&msg_clone, &target_widget);
+        });
+        row.append(&add_btn);
+
+        row
     }
 
     /// Обновляет опрос по ID (например, после получения обновления от сервера)
@@ -769,21 +976,39 @@ impl ChatView {
     }
 
     fn show_attach_menu(self: &Arc<Self>) {
-        let popover = Popover::new();
+        // Reuse a single popover — creating a new one every click left orphan shells
+        // and looked like a "window inside a window".
+        {
+            let guard = self.attach_menu_popover.lock().unwrap();
+            if let Some(pop) = guard.as_ref() {
+                if pop.is_visible() {
+                    pop.popdown();
+                } else {
+                    pop.popup();
+                }
+                return;
+            }
+        }
+
+        let popover = Popover::builder()
+            .has_arrow(false)
+            .autohide(true)
+            .build();
         popover.set_parent(&self.attach_btn);
         popover.set_position(gtk::PositionType::Top);
-        popover.set_autohide(true);
+        popover.add_css_class("attach-menu-popover");
 
-        let vbox = gtk::Box::new(Orientation::Vertical, 4);
-        vbox.set_margin_start(6);
-        vbox.set_margin_end(6);
-        vbox.set_margin_top(6);
-        vbox.set_margin_bottom(6);
+        let vbox = gtk::Box::new(Orientation::Vertical, 2);
+        vbox.set_margin_start(4);
+        vbox.set_margin_end(4);
+        vbox.set_margin_top(4);
+        vbox.set_margin_bottom(4);
+        vbox.add_css_class("attach-menu");
 
         let btn_file = gtk::Button::builder()
             .label("📎 Отправить файл")
             .css_classes(vec!["flat".to_string(), "attach-menu-btn".to_string()])
-            .halign(gtk::Align::Start)
+            .halign(gtk::Align::Fill)
             .build();
         let this_file = self.clone();
         let pop_clone = popover.clone();
@@ -795,21 +1020,25 @@ impl ChatView {
         let btn_poll = gtk::Button::builder()
             .label("📊 Создать опрос")
             .css_classes(vec!["flat".to_string(), "attach-menu-btn".to_string()])
-            .halign(gtk::Align::Start)
+            .halign(gtk::Align::Fill)
             .build();
         let this_poll = self.clone();
         let pop_clone2 = popover.clone();
         btn_poll.connect_clicked(move |_| {
             pop_clone2.popdown();
             if let Some(pop) = this_poll.poll_popover.lock().unwrap().as_ref() {
-                pop.popup();
+                if pop.is_visible() {
+                    pop.popdown();
+                } else {
+                    pop.popup();
+                }
             }
         });
 
         let btn_sched = gtk::Button::builder()
             .label("📅 Запланировать")
             .css_classes(vec!["flat".to_string(), "attach-menu-btn".to_string()])
-            .halign(gtk::Align::Start)
+            .halign(gtk::Align::Fill)
             .build();
         let this_sched = self.clone();
         let pop_clone3 = popover.clone();
@@ -823,20 +1052,24 @@ impl ChatView {
         vbox.append(&btn_sched);
 
         popover.set_child(Some(&vbox));
+        *self.attach_menu_popover.lock().unwrap() = Some(popover.clone());
         popover.popup();
     }
 
     fn show_header_menu(self: &Arc<Self>) {
-        let popover = Popover::new();
+        let popover = Popover::builder()
+            .has_arrow(false)
+            .autohide(true)
+            .build();
         popover.set_parent(&self.menu_btn);
         popover.set_position(gtk::PositionType::Bottom);
-        popover.set_autohide(true);
+        popover.add_css_class("header-menu-popover");
 
-        let menu_vbox = gtk::Box::new(Orientation::Vertical, 4);
-        menu_vbox.set_margin_start(6);
-        menu_vbox.set_margin_end(6);
-        menu_vbox.set_margin_top(6);
-        menu_vbox.set_margin_bottom(6);
+        let menu_vbox = gtk::Box::new(Orientation::Vertical, 2);
+        menu_vbox.set_margin_start(4);
+        menu_vbox.set_margin_end(4);
+        menu_vbox.set_margin_top(4);
+        menu_vbox.set_margin_bottom(4);
 
         let btn_info = Button::builder()
             .label("ℹ️ Информация")
@@ -946,15 +1179,17 @@ impl ChatView {
         }
 
         let emoji_picker = EmojiPicker::new();
-        let popover = Popover::new();
+        let popover = Popover::builder()
+            .has_arrow(false)
+            .autohide(true)
+            .build();
+        popover.add_css_class("emoji-picker-popover");
         popover.set_child(Some(emoji_picker.container()));
         popover.set_parent(&self.emoji_btn);
-        popover.set_autohide(true);
         popover.set_position(gtk::PositionType::Top);
 
         let input_entry_clone = self.input_entry.clone();
-        let popover_clone = popover.clone();
-
+        // Keep popover open while picking multiple emojis (YM-style)
         emoji_picker.on_select(move |emoji| {
             let buffer = input_entry_clone.buffer();
             let (start, end) = buffer.bounds();
@@ -963,7 +1198,6 @@ impl ChatView {
             input_entry_clone.grab_focus();
             let end_iter = buffer.end_iter();
             buffer.place_cursor(&end_iter);
-            popover_clone.popdown();
         });
 
         *self.emoji_popover.lock().unwrap() = Some(popover.clone());
@@ -971,8 +1205,14 @@ impl ChatView {
         let emoji_btn = self.emoji_btn.clone();
         let cv_emoji = self.clone();
         emoji_btn.connect_clicked(move |_| {
+            // Close sibling popovers so shells don't stack
+            cv_emoji.close_composer_popovers(ComposerPopover::Emoji);
             if let Some(pop) = cv_emoji.emoji_popover.lock().unwrap().as_ref() {
-                pop.popup();
+                if pop.is_visible() {
+                    pop.popdown();
+                } else {
+                    pop.popup();
+                }
             }
         });
     }
@@ -995,10 +1235,13 @@ impl ChatView {
         }
 
         let sticker_panel = StickerPanel::new(vec![]);
-        let popover = Popover::new();
+        let popover = Popover::builder()
+            .has_arrow(false)
+            .autohide(true)
+            .build();
+        popover.add_css_class("sticker-panel-popover");
         popover.set_child(Some(sticker_panel.container()));
         popover.set_parent(&self.sticker_btn);
-        popover.set_autohide(true);
         popover.set_position(gtk::PositionType::Top);
 
         let cv_select = self.clone();
@@ -1026,15 +1269,51 @@ impl ChatView {
         *self.sticker_panel.lock().unwrap() = Some(sticker_panel);
 
         let sticker_btn = self.sticker_btn.clone();
-        let _sticker_btn_clone = sticker_btn.clone();
         let cv_sticker = self.clone();
         sticker_btn.connect_clicked(move |_| {
+            cv_sticker.close_composer_popovers(ComposerPopover::Sticker);
             if let Some(panel) = cv_sticker.sticker_panel.lock().unwrap().as_ref() {
                 if let Some(pop) = panel.popover.borrow().as_ref() {
-                    pop.popup();
+                    if pop.is_visible() {
+                        pop.popdown();
+                    } else {
+                        pop.popup();
+                    }
                 }
             }
         });
+    }
+
+    /// Close other composer popovers so only one shell is visible.
+    fn close_composer_popovers(&self, keep: ComposerPopover) {
+        if !matches!(keep, ComposerPopover::Emoji) {
+            if let Some(pop) = self.emoji_popover.lock().unwrap().as_ref() {
+                pop.popdown();
+            }
+        }
+        if !matches!(keep, ComposerPopover::Sticker) {
+            if let Some(panel) = self.sticker_panel.lock().unwrap().as_ref() {
+                if let Some(pop) = panel.popover.borrow().as_ref() {
+                    pop.popdown();
+                }
+            }
+        }
+        if !matches!(keep, ComposerPopover::Attach) {
+            if let Some(pop) = self.attach_menu_popover.lock().unwrap().as_ref() {
+                pop.popdown();
+            }
+        }
+        if !matches!(keep, ComposerPopover::Poll) {
+            if let Some(pop) = self.poll_popover.lock().unwrap().as_ref() {
+                pop.popdown();
+            }
+        }
+        if !matches!(keep, ComposerPopover::Schedule) {
+            if let Some(pop) = self.send_at_popover.lock().unwrap().as_ref() {
+                pop.popover().popdown();
+                *self.popover_open.lock().unwrap() = false;
+            }
+        }
     }
 
     /// Обновляет список пакетов стикеров
@@ -1106,9 +1385,18 @@ impl ChatView {
     }
 
     pub fn set_chat(&self, chat: Chat) {
+        let previous_chat_id = self.current_chat_id();
+        let is_new_chat = previous_chat_id.as_deref() != Some(chat.id.as_str());
+
         *self.chat.lock().unwrap() = Some(chat.clone());
         self.title_label
             .set_label(chat.title.as_deref().unwrap_or("Чат"));
+
+        if is_new_chat {
+            self.messages_store.remove_all();
+            self.messages.lock().unwrap().clear();
+            self.message_rows.lock().unwrap().clear();
+        }
 
         // Update status based on chat type
         let status_text = match chat.chat_type {
@@ -1132,9 +1420,6 @@ impl ChatView {
                 }
             }
         }
-
-        self.messages_store.remove_all();
-        self.messages.lock().unwrap().clear();
 
         // Show input area
         self.input_entry.set_visible(true);
@@ -1274,6 +1559,23 @@ impl ChatView {
     }
 
     pub fn set_messages(&self, messages: Vec<Message>) {
+        let current_chat_id = self.current_chat_id();
+        if let Some(chat_id) = current_chat_id.as_ref() {
+            if let Some(first) = messages.first() {
+                if first.chat_id != *chat_id {
+                    return;
+                }
+            }
+        }
+
+        let should_render = {
+            let current = self.messages.lock().unwrap();
+            !crate::models::messages_equivalent(&current, &messages)
+        };
+        if !should_render {
+            return;
+        }
+
         self.message_rows.lock().unwrap().clear();
         *self.messages.lock().unwrap() = messages;
         self.render_messages();
@@ -1310,9 +1612,14 @@ impl ChatView {
 
         factory.connect_setup(|_, list_item_obj| {
             let list_item = list_item_obj.downcast_ref::<gtk::ListItem>().unwrap();
-            let row = GtkBox::new(Orientation::Horizontal, 0);
+            list_item.set_activatable(false);
+            list_item.set_selectable(false);
+            let row = GtkBox::new(Orientation::Vertical, 0);
             row.set_hexpand(true);
             row.set_halign(gtk::Align::Fill);
+            row.set_vexpand(false);
+            // Give the measure pass a sane minimum so wrap labels don't fight
+            row.set_size_request(200, -1);
             list_item.set_child(Some(&row));
         });
 
@@ -1392,21 +1699,24 @@ impl ChatView {
     }
 
     pub fn render_messages(&self) {
-        self.messages_store.remove_all();
         let messages = self.messages.lock().unwrap();
         log::info!("Rendering {} messages via ListView", messages.len());
-        if messages.is_empty() {
-            // Can't easily append a non-MessageObject empty state to ListStore.
-            // We'll let it be empty, maybe show empty state via an Overlay later.
-            return;
-        }
 
         let mut sorted_messages = messages.clone();
         sorted_messages.sort_by(|a, b| a.created.cmp(&b.created));
 
-        for msg in sorted_messages {
-            let obj = crate::ui::message_object::MessageObject::new(msg);
-            self.messages_store.append(&obj);
+        let start_time = std::time::Instant::now();
+        let new_objects: Vec<glib::Object> = sorted_messages
+            .into_iter()
+            .map(|msg| crate::ui::message_object::MessageObject::new(msg).upcast::<glib::Object>())
+            .collect();
+
+        let old_count = self.messages_store.n_items();
+        self.messages_store.splice(0, old_count, &new_objects);
+        eprintln!("[PERF] render_messages splice of {} items took {:?}", new_objects.len(), start_time.elapsed());
+
+        if messages.is_empty() {
+            return;
         }
 
         // Scroll to the bottom once the list view updates
@@ -1447,18 +1757,25 @@ impl ChatView {
             #[derive(serde::Deserialize)]
             struct StickerPayload {
                 sticker_id: String,
+                #[serde(default)]
                 pack_id: String,
             }
             if let Ok(parsed) = serde_json::from_str::<StickerPayload>(text_val) {
                 sticker_payload = Some(parsed);
             }
         }
-        let is_sticker = msg.type_ == MessageType::Sticker || sticker_payload.is_some();
+        let looks_like_sticker_path = msg
+            .text
+            .as_deref()
+            .map(|t| t.starts_with("stickers/") || t.contains("/stickers/"))
+            .unwrap_or(false);
+        let is_sticker =
+            msg.type_ == MessageType::Sticker || sticker_payload.is_some() || looks_like_sticker_path;
         if is_sticker {
             if let Some(ref payload) = sticker_payload {
                 let packs = self.sticker_packs.lock().unwrap();
                 for pack in packs.iter() {
-                    if pack.pack_id == payload.pack_id {
+                    if payload.pack_id.is_empty() || pack.pack_id == payload.pack_id {
                         for sticker in &pack.stickers {
                             if sticker.sticker_id == payload.sticker_id {
                                 sticker_url = Some(sticker.file_url.clone());
@@ -1466,6 +1783,17 @@ impl ChatView {
                             }
                         }
                     }
+                    if sticker_url.is_some() {
+                        break;
+                    }
+                }
+                // CDN direct URL when pack metadata not loaded yet
+                if sticker_url.is_none() && !payload.sticker_id.is_empty() {
+                    sticker_url = Some(format!(
+                        "{}/{}?size=large",
+                        crate::config::FILE_PUBLIC_HOST,
+                        payload.sticker_id.trim_start_matches('/')
+                    ));
                 }
             }
             if sticker_url.is_none() {
@@ -1478,6 +1806,17 @@ impl ChatView {
                                 break 'outer;
                             }
                         }
+                    }
+                    // Path-style sticker id from history
+                    if sticker_url.is_none()
+                        && (text_val.starts_with("stickers/") || text_val.contains("stickers/images/"))
+                    {
+                        let id = text_val.trim_start_matches('/');
+                        sticker_url = Some(format!(
+                            "{}/{}?size=large",
+                            crate::config::FILE_PUBLIC_HOST,
+                            id
+                        ));
                     }
                 }
             }
@@ -1498,7 +1837,8 @@ impl ChatView {
         };
 
         let row = GtkBox::new(Orientation::Horizontal, 0);
-        row.set_hexpand(false);
+        row.set_hexpand(true);
+        row.set_halign(Align::Fill);
 
         let bubble = GtkBox::new(Orientation::Vertical, 4);
         bubble.add_css_class(if is_sent {
@@ -1533,18 +1873,24 @@ impl ChatView {
         let on_thread_open_outer = self.on_thread_open.clone();
         let on_save_outer = self.on_save.clone();
 
+        let view_for_menu = self.clone();
+        let bubble_for_menu = bubble.clone();
         let bubble_clone = Arc::downgrade(&Arc::new(bubble.clone()));
         right_click_gesture.connect_pressed(move |gesture, _n_press, x, y| {
             let _ = gesture;
             let _ = x;
             let _ = y;
             let _ = _n_press;
-            let popover = gtk::Popover::new();
+            let popover = gtk::Popover::builder()
+                .has_arrow(false)
+                .autohide(true)
+                .build();
             if let Some(bubble_strong) = bubble_clone.upgrade() {
                 popover.set_parent(bubble_strong.as_ref());
             }
 
-            let vbox = gtk::Box::new(gtk::Orientation::Vertical, 4);
+            let vbox = gtk::Box::new(gtk::Orientation::Vertical, 2);
+            vbox.add_css_class("message-context-menu");
 
             let btn_reply = gtk::Button::with_label("Ответить");
             let msg_id_reply = msg_clone2.id.clone();
@@ -1565,6 +1911,17 @@ impl ChatView {
                 popover_clone_reply.popdown();
             });
             vbox.append(&btn_reply);
+
+            let btn_reaction = gtk::Button::with_label("Реакция");
+            let popover_clone_reaction = popover.clone();
+            let msg_for_reaction = msg_clone2.clone();
+            let view_for_reaction = view_for_menu.clone();
+            let bubble_for_reaction = bubble_for_menu.clone();
+            btn_reaction.connect_clicked(move |_| {
+                view_for_reaction.show_reaction_picker(&msg_for_reaction, &bubble_for_reaction);
+                popover_clone_reaction.popdown();
+            });
+            vbox.append(&btn_reaction);
 
             let btn_thread_reply = gtk::Button::with_label("Ответить в треде");
             let popover_clone_thread = popover.clone();
@@ -1727,7 +2084,7 @@ impl ChatView {
                 let img = gtk::Image::new();
                 img.set_css_classes(&["inline-image"]);
                 img.set_margin_bottom(4);
-                img.set_size_request(300, -1);
+                img.set_size_request(260, -1);
 
                 // Show loading placeholder (or thumbnail if available, but for now we just use a placeholder icon)
                 img.set_from_icon_name(Some("image-x-generic-symbolic"));
@@ -1786,7 +2143,7 @@ impl ChatView {
                 let video_box = gtk::Box::new(Orientation::Vertical, 4);
                 video_box.set_css_classes(&["inline-video"]);
                 video_box.set_margin_bottom(4);
-                video_box.set_size_request(320, -1);
+                video_box.set_size_request(260, -1);
 
                 // Video thumbnail
                 let thumbnail = gtk::Image::new();
@@ -1886,7 +2243,10 @@ impl ChatView {
             if let Some(url) = sticker_url {
                 let img = gtk::Image::new();
                 img.add_css_class("sticker-message-image");
+                // Constrain size in code (GTK CSS has no max-width/max-height)
+                img.set_pixel_size(128);
                 img.set_size_request(128, 128);
+                img.set_halign(Align::Center);
 
                 let img_clone = img.clone();
                 let url_clone = url.clone();
@@ -1898,10 +2258,9 @@ impl ChatView {
                 bubble.append(&img);
             } else {
                 let label = Label::builder()
-                    .label("[Стикер]")
-                    .wrap(true)
-                    .wrap_mode(gtk::pango::WrapMode::WordChar)
+                    .label("🎟 Стикер")
                     .xalign(0.0)
+                    .max_width_chars(32)
                     .build();
                 bubble.append(&label);
             }
@@ -1916,14 +2275,20 @@ impl ChatView {
                 bubble.add_css_class("bubble-emoji-only");
             }
 
+            // max_width_chars prevents GtkBox height-for-width CRITICAL:
+            // "minimum width of N, but minimum width for height of 1048576 is M"
             let label = Label::builder()
                 .label(&display_text)
                 .use_markup(true)
                 .wrap(true)
                 .wrap_mode(gtk::pango::WrapMode::WordChar)
+                .max_width_chars(if is_emoji { 16 } else { 42 })
+                .width_chars(1)
                 .xalign(0.0)
-                .max_width_chars(60)
+                .hexpand(false)
+                .css_classes(vec!["message-text".to_string()])
                 .build();
+            label.set_natural_wrap_mode(gtk::NaturalWrapMode::None);
 
             bubble.append(&label);
         }
@@ -1966,17 +2331,44 @@ impl ChatView {
 
         bubble.append(&time_label);
 
+        let double_click = gtk::GestureClick::new();
+        let msg_for_picker = msg.clone();
+        let view_for_picker = self.clone();
+        let bubble_for_picker = bubble.clone();
+        double_click.connect_pressed(move |gesture, n_press, _, _| {
+            if n_press == 2 {
+                view_for_picker.show_reaction_picker(&msg_for_picker, &bubble_for_picker);
+                gesture.set_state(gtk::EventSequenceState::Claimed);
+            }
+        });
+        bubble.add_controller(double_click);
+
+        bubble.set_hexpand(false);
+        bubble.set_vexpand(false);
+        // Cap bubble natural width (~42 chars ≈ 420–480px) without invalid GTK CSS max-width
+        bubble.set_size_request(-1, -1);
+        bubble.add_css_class("message-fade-in");
+
         if is_sent {
-            row.set_halign(Align::End);
-            row.set_margin_start(40);
+            row.set_margin_start(64);
+            row.set_margin_end(12);
+            bubble.set_halign(Align::End);
         } else {
-            row.set_halign(Align::Start);
-            row.set_margin_end(40);
+            row.set_margin_start(12);
+            row.set_margin_end(64);
+            bubble.set_halign(Align::Start);
         }
         row.append(&bubble);
 
         let main_box = GtkBox::new(Orientation::Vertical, 4);
         main_box.set_hexpand(true);
+        // Prevent ListView measure from treating this as infinitely tall HFW pass
+        main_box.set_vexpand(false);
+
+        if !msg.reactions.is_empty() {
+            let chips = self.create_reaction_chips_row(msg, is_sent, &bubble);
+            main_box.append(&chips);
+        }
 
         if show_date_sep {
             let date_str = format_date_separator(&msg.created);
@@ -2010,15 +2402,20 @@ impl ChatView {
             return;
         }
 
-        let popover = Popover::new();
+        let popover = Popover::builder()
+            .has_arrow(false)
+            .autohide(true)
+            .build();
         popover.set_css_classes(&["send-at-popover"]);
         popover.set_parent(&self.attach_btn);
+        popover.set_position(gtk::PositionType::Top);
 
-        let container = GtkBox::new(Orientation::Vertical, 16);
-        container.set_margin_top(8);
-        container.set_margin_bottom(8);
-        container.set_margin_start(8);
-        container.set_margin_end(8);
+        let container = GtkBox::new(Orientation::Vertical, 12);
+        container.add_css_class("send-at-body");
+        container.set_margin_top(4);
+        container.set_margin_bottom(4);
+        container.set_margin_start(4);
+        container.set_margin_end(4);
 
         // Title
         let title = Label::builder()
@@ -2207,17 +2604,39 @@ impl ChatView {
     }
 
     fn create_empty_state() -> GtkBox {
-        let empty = GtkBox::new(Orientation::Vertical, 12);
+        let empty = GtkBox::new(Orientation::Vertical, 16);
         empty.set_halign(Align::Center);
         empty.set_valign(Align::Center);
-        empty.set_vexpand(false);
-        empty.set_hexpand(false);
-        let text = Label::builder()
-            .label("Выберите чат, чтобы начать общение")
-            .xalign(0.5)
-            .wrap(true)
+        empty.set_vexpand(true);
+        empty.set_hexpand(true);
+        empty.add_css_class("empty-chat-state");
+
+        let icon = Label::builder()
+            .label("💬")
+            .css_classes(vec!["empty-chat-icon".to_string()])
+            .halign(Align::Center)
             .build();
-        text.add_css_class("dim-label");
+
+        let title = Label::builder()
+            .label("Выберите чат")
+            .xalign(0.5)
+            .halign(Align::Center)
+            .css_classes(vec!["empty-chat-title".to_string()])
+            .build();
+
+        let text = Label::builder()
+            .label("Выберите диалог слева, чтобы начать общение")
+            .xalign(0.5)
+            .halign(Align::Center)
+            .wrap(true)
+            .max_width_chars(36)
+            .width_chars(1)
+            .css_classes(vec!["dim-label".to_string(), "empty-chat-subtitle".to_string()])
+            .build();
+        text.set_natural_wrap_mode(gtk::NaturalWrapMode::None);
+
+        empty.append(&icon);
+        empty.append(&title);
         empty.append(&text);
         empty
     }
@@ -2388,68 +2807,85 @@ impl ChatView {
 
 /// Asynchronously load an inline image from a URL and set it on the image widget using memory-resident textures.
 async fn load_inline_image(img: &gtk::Image, url: &str) -> Result<(), String> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(5))
-        .build()
-        .map_err(|e| format!("Failed to create client: {}", e))?;
+    let url_clone = url.to_string();
+    let img_clone = img.clone();
 
-    let response = client
-        .get(url)
-        .header("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-        .send()
-        .await
-        .map_err(|e| format!("Failed to fetch inline image: {}", e))?;
+    let download_handle = tokio::spawn(async move {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(5))
+            .build()
+            .map_err(|e| format!("Failed to create client: {}", e))?;
 
-    if !response.status().is_success() {
-        return Err(format!(
-            "Inline image fetch failed: HTTP {}",
-            response.status()
-        ));
-    }
+        let response = client
+            .get(&url_clone)
+            .header("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            .send()
+            .await
+            .map_err(|e| format!("Failed to fetch inline image: {}", e))?;
 
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|e| format!("Failed to read image bytes: {}", e))?;
-
-    let bytes_glib = glib::Bytes::from(&bytes);
-    match gtk::gdk::Texture::from_bytes(&bytes_glib) {
-        Ok(texture) => {
-            img.set_from_paintable(Some(&texture));
+        if !response.status().is_success() {
+            return Err(format!(
+                "Inline image fetch failed: HTTP {}",
+                response.status()
+            ));
         }
-        Err(e) => {
-            log::error!("Failed to load inline image texture from bytes: {}", e);
-            return Err(format!("Failed to load texture: {}", e));
+
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|e| format!("Failed to read image bytes: {}", e))?;
+
+        Ok(bytes)
+    });
+
+    match download_handle.await {
+        Ok(Ok(bytes)) => {
+            let bytes_glib = glib::Bytes::from(&bytes);
+            match gtk::gdk::Texture::from_bytes(&bytes_glib) {
+                Ok(texture) => {
+                    img_clone.set_from_paintable(Some(&texture));
+                    Ok(())
+                }
+                Err(e) => {
+                    log::error!("Failed to load inline image texture from bytes: {}", e);
+                    Err(format!("Failed to load texture: {}", e))
+                }
+            }
         }
+        Ok(Err(e)) => Err(e),
+        Err(join_err) => Err(format!("Join error: {}", join_err)),
     }
-    Ok(())
 }
 
 fn format_message_text(text: &str) -> String {
     let mut escaped = glib::markup_escape_text(text).to_string();
 
-    if let Ok(re_list) = regex::Regex::new(r"\s+(\d+)\.\s+\*\*") {
-        escaped = re_list.replace_all(&escaped, "\n$1. **").to_string();
-    }
+    static RE_LIST: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    static RE_BOLD: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    static RE_ITALIC: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    static RE_CODE_BLOCK: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    static RE_CODE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+
+    let re_list = RE_LIST.get_or_init(|| regex::Regex::new(r"\s+(\d+)\.\s+\*\*").unwrap());
+    escaped = re_list.replace_all(&escaped, "\n$1. **").to_string();
 
     // Bold
-    if let Ok(re_bold) = regex::Regex::new(r"\*\*(.+?)\*\*") {
-        escaped = re_bold.replace_all(&escaped, "<b>$1</b>").to_string();
-    }
+    let re_bold = RE_BOLD.get_or_init(|| regex::Regex::new(r"\*\*([^\*\s]|[^\*\s][^\*]*?[^\*\s])\*\*").unwrap());
+    escaped = re_bold.replace_all(&escaped, "<b>$1</b>").to_string();
+
     // Italic
-    if let Ok(re_italic) = regex::Regex::new(r"\*(.+?)\*") {
-        escaped = re_italic.replace_all(&escaped, "<i>$1</i>").to_string();
-    }
+    let re_italic = RE_ITALIC.get_or_init(|| regex::Regex::new(r"\*([^\*\s]|[^\*\s][^\*]*?[^\*\s])\*").unwrap());
+    escaped = re_italic.replace_all(&escaped, "<i>$1</i>").to_string();
+
     // Code block
-    if let Ok(re_code_block) = regex::Regex::new(r"```([\s\S]+?)```") {
-        escaped = re_code_block
-            .replace_all(&escaped, "<tt>$1</tt>")
-            .to_string();
-    }
+    let re_code_block = RE_CODE_BLOCK.get_or_init(|| regex::Regex::new(r"```([\s\S]+?)```").unwrap());
+    escaped = re_code_block
+        .replace_all(&escaped, "<tt>$1</tt>")
+        .to_string();
+
     // Inline code
-    if let Ok(re_code) = regex::Regex::new(r"`(.+?)`") {
-        escaped = re_code.replace_all(&escaped, "<tt>$1</tt>").to_string();
-    }
+    let re_code = RE_CODE.get_or_init(|| regex::Regex::new(r"`(.+?)`").unwrap());
+    escaped = re_code.replace_all(&escaped, "<tt>$1</tt>").to_string();
 
     escaped
 }

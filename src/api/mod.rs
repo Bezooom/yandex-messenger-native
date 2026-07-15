@@ -1156,14 +1156,20 @@ impl HttpClient {
             }
         };
 
-        // Check if session is too old (older than 30 days)
+        // Warn if session is old, but still use cookies — Passport sessions often
+        // remain valid longer than 30 days (hard-drop was causing stale chat history).
         let now = std::time::SystemTime::now()
             .duration_since(std::time::SystemTime::UNIX_EPOCH)
             .map(|d| d.as_secs())
             .unwrap_or(0);
-        if data.saved_at > 0 && now - data.saved_at > 30 * 24 * 3600 {
-            log::warn!("Session cookies expired (older than 30 days), please re-login");
-            return (None, None);
+        if data.saved_at > 0 && now > data.saved_at {
+            let age_days = (now - data.saved_at) / 86400;
+            if age_days > 30 {
+                log::warn!(
+                    "Session cookies are {} days old — if history fails, re-run login_browser.py",
+                    age_days
+                );
+            }
         }
 
         if data.cookies.is_empty() {
@@ -1509,6 +1515,140 @@ impl HttpClient {
         serde_json::from_value(json).map_err(|e| format!("Profile deserialization failed: {}", e))
     }
 
+    /// Load contacts for member pickers (create group, add member, forward…).
+    /// Returns non-deleted contacts with real names (contact_name preferred).
+    pub async fn get_contact_candidates(
+        &self,
+    ) -> Result<Vec<models::ContactCandidate>, String> {
+        let data = self
+            .rpc_request(
+                "bootstrap",
+                serde_json::json!({
+                    "flags": {
+                        "with_deleted": true,
+                        "compact": false
+                    }
+                }),
+            )
+            .await?;
+
+        let current_user_id = data
+            .get("user")
+            .and_then(|u| u.get("guid"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        let mut by_guid: std::collections::HashMap<String, models::ContactCandidate> =
+            std::collections::HashMap::new();
+
+        let mut ingest = |obj: &serde_json::Value, from_contacts: bool| {
+            let guid = obj
+                .get("guid")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            if guid.is_empty() || guid == current_user_id {
+                return;
+            }
+            let contact_name = obj
+                .get("contact_name")
+                .and_then(|v| v.as_str())
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty());
+            let display_name = obj
+                .get("display_name")
+                .and_then(|v| v.as_str())
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty());
+            let public_name = obj
+                .get("public_name")
+                .and_then(|v| v.as_str())
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty());
+            let avatar_id = obj
+                .get("avatar_id")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let deleted = obj
+                .get("deleted")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+
+            // Skip bots / system-ish accounts without human names
+            let nick = obj.get("nickname").and_then(|v| v.as_str()).unwrap_or("");
+            if nick.ends_with("_bot") || nick.contains("bot") {
+                // still allow if has contact_name
+                if contact_name.is_none() && display_name.is_none() {
+                    return;
+                }
+            }
+
+            let entry = by_guid.entry(guid.clone()).or_insert_with(|| {
+                models::ContactCandidate {
+                    guid: guid.clone(),
+                    contact_name: None,
+                    display_name: None,
+                    public_name: None,
+                    avatar_id: None,
+                    deleted: false,
+                }
+            });
+
+            if from_contacts {
+                if contact_name.is_some() {
+                    entry.contact_name = contact_name;
+                }
+                entry.deleted = deleted;
+            }
+            if entry.display_name.is_none() {
+                entry.display_name = display_name;
+            } else if from_contacts {
+                // Prefer fresher display_name from contacts when present
+                if let Some(d) = display_name {
+                    entry.display_name = Some(d);
+                }
+            }
+            if entry.public_name.is_none() {
+                entry.public_name = public_name;
+            }
+            if entry.avatar_id.is_none() {
+                entry.avatar_id = avatar_id;
+            }
+        };
+
+        if let Some(users) = data.get("users").and_then(|v| v.as_array()) {
+            for u in users {
+                ingest(u, false);
+            }
+        }
+        if let Some(contacts) = data.get("contacts").and_then(|v| v.as_array()) {
+            for c in contacts {
+                ingest(c, true);
+            }
+        }
+
+        let mut out: Vec<models::ContactCandidate> = by_guid
+            .into_values()
+            .filter(|c| !c.deleted)
+            .filter(|c| {
+                // Must have at least one human-readable name field
+                c.contact_name.is_some()
+                    || c.display_name.is_some()
+                    || c.public_name.is_some()
+            })
+            .collect();
+
+        out.sort_by(|a, b| {
+            a.primary_name()
+                .to_lowercase()
+                .cmp(&b.primary_name().to_lowercase())
+        });
+
+        log::info!("Loaded {} contact candidates for picker", out.len());
+        Ok(out)
+    }
+
     /// Get chat list
     pub async fn get_chat_list(
         &self,
@@ -1547,15 +1687,79 @@ impl HttpClient {
             self.auth.set_user_id(current_user_id);
         }
 
+        // Prefer contact book name (real name for the local user), then account names.
+        fn extract_display_name(obj: &serde_json::Value) -> Option<String> {
+            for key in ["contact_name", "display_name", "public_name"] {
+                if let Some(name) = obj.get(key).and_then(|v| v.as_str()) {
+                    let trimmed = name.trim();
+                    if !trimmed.is_empty() {
+                        return Some(trimmed.to_string());
+                    }
+                }
+            }
+            None
+        }
+
+        if let Some(user) = data.get("user") {
+            if let Some(guid) = user.get("guid").and_then(|v| v.as_str()) {
+                if let Some(name) = extract_display_name(user) {
+                    user_names.insert(guid.to_string(), name.clone());
+                    // Keep account header in sync with real messenger profile
+                    let avatar = user
+                        .get("avatar_id")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+                    let auth = self.auth.clone();
+                    let name_for_acc = name.clone();
+                    let avatar_for_acc = avatar.clone();
+                    // Fire-and-forget profile update (bootstrap is already async)
+                    tokio::spawn(async move {
+                        if let Err(e) = auth
+                            .update_current_profile(Some(name_for_acc), avatar_for_acc)
+                            .await
+                        {
+                            log::warn!("Failed to update account profile from bootstrap: {}", e);
+                        }
+                    });
+                }
+                if let Some(avatar) = user.get("avatar_id").and_then(|v| v.as_str()) {
+                    user_avatars.insert(guid.to_string(), avatar.to_string());
+                }
+            }
+        }
+
         // Parse users for display names
         if let Some(users_val) = data.get("users").and_then(|v| v.as_array()) {
             for u in users_val {
                 let guid = u.get("guid").and_then(|v| v.as_str()).unwrap_or("");
-                if let Some(name) = u.get("display_name").and_then(|v| v.as_str()) {
-                    user_names.insert(guid.to_string(), name.to_string());
+                if guid.is_empty() {
+                    continue;
+                }
+                if let Some(name) = extract_display_name(u) {
+                    user_names.entry(guid.to_string()).or_insert(name);
                 }
                 if let Some(avatar) = u.get("avatar_id").and_then(|v| v.as_str()) {
-                    user_avatars.insert(guid.to_string(), avatar.to_string());
+                    user_avatars
+                        .entry(guid.to_string())
+                        .or_insert(avatar.to_string());
+                }
+            }
+        }
+
+        if let Some(contacts_val) = data.get("contacts").and_then(|v| v.as_array()) {
+            for contact in contacts_val {
+                let guid = contact.get("guid").and_then(|v| v.as_str()).unwrap_or("");
+                if guid.is_empty() {
+                    continue;
+                }
+                // Contact book names override generic account display names
+                if let Some(name) = extract_display_name(contact) {
+                    user_names.insert(guid.to_string(), name);
+                }
+                if let Some(avatar) = contact.get("avatar_id").and_then(|v| v.as_str()) {
+                    user_avatars
+                        .entry(guid.to_string())
+                        .or_insert(avatar.to_string());
                 }
             }
         }
@@ -1563,9 +1767,6 @@ impl HttpClient {
         // Parse recent messages for last_message preview
         let mut recent_messages = std::collections::HashMap::new();
         if let Some(messages_val) = data.get("messages").and_then(|v| v.as_array()) {
-            if !messages_val.is_empty() {
-                println!("DEBUG messages[0]: {}", messages_val[0].to_string());
-            }
             for m in messages_val {
                 let mut chat_id = "";
                 if let Some(info) = m.get("server_message_info") {
@@ -1622,23 +1823,29 @@ impl HttpClient {
                     let clean_id = id.rsplit('/').next().unwrap_or(&id);
                     let parts: Vec<&str> = clean_id.split('_').collect();
                     if parts.len() == 2 {
-                        let other_id = if parts[0] == current_user_id {
-                            parts[1]
+                        if parts[0] == parts[1] {
+                            title = Some("Избранное".to_string());
+                            if let Some(avatar) = user_avatars.get(current_user_id) {
+                                avatar_id = Some(avatar.clone());
+                            }
                         } else {
-                            parts[0]
-                        };
-                        if let Some(name) = user_names.get(other_id) {
-                            title = Some(name.clone());
-                        }
-                        if let Some(avatar) = user_avatars.get(other_id) {
-                            avatar_id = Some(avatar.clone());
+                            let other_id = if parts[0] == current_user_id {
+                                parts[1]
+                            } else {
+                                parts[0]
+                            };
+                            if let Some(name) = user_names.get(other_id) {
+                                title = Some(name.clone());
+                            }
+                            if let Some(avatar) = user_avatars.get(other_id) {
+                                avatar_id = Some(avatar.clone());
+                            }
                         }
                     }
                 }
                 let mut last_message = None;
                 let mut text = None;
                 if let Some(lm) = c.get("last_message") {
-                    println!("DEBUG last_message: {}", lm.to_string());
                     if let Some(txt) = lm.get("text").and_then(|v| v.as_str()) {
                         text = Some(txt.to_string());
                     } else if let Some(txt) = lm.get("message").and_then(|v| v.as_str()) {
@@ -1799,31 +2006,67 @@ impl HttpClient {
             }
         }
 
-        if let Some(msgs) = cached_msgs {
-            if !skip_cache {
-                return Ok(msgs);
+        // Fast path: return disk cache only when not asked for fresh data
+        if !skip_cache {
+            if let Some(ref msgs) = cached_msgs {
+                return Ok(msgs.clone());
             }
         }
 
+        // 1) Session RPC — full chronological history
         if self.has_session() {
             match self.get_messages_via_session(chat_id, msg_id, limit).await {
-                Ok(msgs) => {
+                Ok(msgs) if !msgs.is_empty() => {
                     if let Ok(json) = serde_json::to_string(&msgs) {
                         std::fs::write(&cache_file, json).ok();
                     }
+                    log::info!(
+                        "Loaded {} fresh messages via session for {}",
+                        msgs.len(),
+                        chat_id
+                    );
                     return Ok(msgs);
+                }
+                Ok(_) => {
+                    log::warn!("Session messages empty for {}", chat_id);
                 }
                 Err(e) => {
                     log::warn!("get_messages_via_session failed: {}", e);
                 }
             }
+        } else {
+            log::warn!(
+                "No session cookies — history may be incomplete (run scripts/login_browser.py)"
+            );
         }
 
-        let msgs = self.get_messages_via_search(chat_id).await?;
-        if let Ok(json) = serde_json::to_string(&msgs) {
-            std::fs::write(&cache_file, json).ok();
+        // 2) Search fallback (OAuth) — always try when fresh was requested
+        match self.get_messages_via_search(chat_id).await {
+            Ok(msgs) if !msgs.is_empty() => {
+                if let Ok(json) = serde_json::to_string(&msgs) {
+                    std::fs::write(&cache_file, json).ok();
+                }
+                log::info!(
+                    "Loaded {} messages via search for {}",
+                    msgs.len(),
+                    chat_id
+                );
+                return Ok(msgs);
+            }
+            Ok(_) => log::warn!("Search returned no messages for {}", chat_id),
+            Err(e) => log::warn!("get_messages_via_search failed: {}", e),
         }
-        Ok(msgs)
+
+        // 3) Stale cache as last resort
+        if let Some(msgs) = cached_msgs {
+            log::info!(
+                "Returning cached messages as last-resort fallback for chat {}",
+                chat_id
+            );
+            return Ok(msgs);
+        }
+
+        Err(format!("No messages available for chat {}", chat_id))
     }
 
     /// Fetch messages using the session-based 'messages' RPC method.
@@ -1920,6 +2163,7 @@ impl HttpClient {
             .to_string();
 
         let seq_no = item.get("seq_no").and_then(|v| v.as_u64()).unwrap_or(0);
+        let reactions = Self::parse_reactions_from_message(item);
 
         Some(models::Message {
             id: format!("{}_{}", seq_no, msg_id),
@@ -1933,7 +2177,7 @@ impl HttpClient {
             reply_to: None,
             forward: None,
             media: vec![],
-            reactions: vec![],
+            reactions,
             thread_id: None,
             has_thread: false,
             pinned: false,
@@ -2017,6 +2261,207 @@ impl HttpClient {
         Ok(all_messages)
     }
 
+    fn parse_single_reaction(value: &serde_json::Value) -> Option<models::Reaction> {
+        let emoji = value
+            .get("emoji")
+            .or_else(|| value.get("Emoji"))
+            .and_then(|v| v.as_str())?;
+
+        let count = value
+            .get("count")
+            .or_else(|| value.get("Count"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(1) as u32;
+
+        let selected = value
+            .get("selected")
+            .or_else(|| value.get("Selected"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        let user_ids = value
+            .get("user_ids")
+            .or_else(|| value.get("userIds"))
+            .or_else(|| value.get("UserGuids"))
+            .or_else(|| value.get("user_guids"))
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|id| id.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let is_extended = value
+            .get("is_extended")
+            .or_else(|| value.get("isExtended"))
+            .or_else(|| value.get("IsExtended"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        Some(models::Reaction {
+            emoji: emoji.to_string(),
+            count,
+            selected,
+            user_ids,
+            is_extended,
+        })
+    }
+
+    fn parse_reactions_array(value: &serde_json::Value) -> Vec<models::Reaction> {
+        value
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(Self::parse_single_reaction)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    fn parse_reactions_from_message(data: &serde_json::Value) -> Vec<models::Reaction> {
+        let candidates = [
+            data.get("reactions"),
+            data.get("Reactions"),
+            data.get("ServerMessageInfo")
+                .and_then(|info| info.get("reactions")),
+            data.get("ServerMessageInfo")
+                .and_then(|info| info.get("Reactions")),
+            data.get("ClientMessage")
+                .and_then(|msg| msg.get("reactions")),
+            data.get("ClientMessage")
+                .and_then(|msg| msg.get("Reactions")),
+        ];
+
+        for candidate in candidates.into_iter().flatten() {
+            let reactions = Self::parse_reactions_array(candidate);
+            if !reactions.is_empty() {
+                return reactions;
+            }
+        }
+
+        Vec::new()
+    }
+
+    pub fn parse_reaction_update_payload(
+        payload: &serde_json::Value,
+    ) -> Option<(String, Vec<models::Reaction>)> {
+        let message_id = payload
+            .get("message_id")
+            .or_else(|| payload.get("messageId"))
+            .and_then(|v| v.as_str())?;
+
+        let reactions = payload
+            .get("reactions")
+            .or_else(|| payload.get("Reactions"))
+            .map(Self::parse_reactions_array)
+            .filter(|reactions| !reactions.is_empty())
+            .or_else(|| {
+                let reactions = Self::parse_reactions_from_message(payload);
+                if reactions.is_empty() {
+                    None
+                } else {
+                    Some(reactions)
+                }
+            })?;
+
+        Some((message_id.to_string(), reactions))
+    }
+
+    pub fn parse_ws_incoming_messages(value: &serde_json::Value) -> Vec<models::Message> {
+        let messages_val = match value.get("messages").and_then(|v| v.as_array()) {
+            Some(messages) => messages,
+            None => return Vec::new(),
+        };
+
+        let mut parsed = Vec::new();
+        for item in messages_val {
+            if let Ok(msg) = serde_json::from_value::<models::Message>(item.clone()) {
+                if !msg.id.is_empty() && !msg.chat_id.is_empty() {
+                    parsed.push(msg);
+                    continue;
+                }
+            }
+
+            let chat_id = item
+                .get("chat_id")
+                .or_else(|| item.get("chatId"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if chat_id.is_empty() {
+                continue;
+            }
+
+            let text = item
+                .get("text")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let from_id = item
+                .get("from_id")
+                .or_else(|| item.get("fromId"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("system")
+                .to_string();
+            let message_id = item
+                .get("message_id")
+                .or_else(|| item.get("messageId"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let id = item
+                .get("id")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| {
+                    message_id
+                        .clone()
+                        .unwrap_or_else(|| uuid::Uuid::new_v4().simple().to_string())
+                });
+            let created = item
+                .get("created")
+                .and_then(|v| {
+                    if let Some(secs) = v.as_i64() {
+                        chrono::DateTime::from_timestamp(secs, 0)
+                    } else if let Some(text) = v.as_str() {
+                        chrono::DateTime::parse_from_rfc3339(text)
+                            .ok()
+                            .map(|dt| dt.with_timezone(&chrono::Utc))
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or_else(chrono::Utc::now);
+            let reactions = Self::parse_reactions_from_message(item);
+
+            parsed.push(models::Message {
+                id,
+                chat_id: chat_id.to_string(),
+                from_id,
+                message_id,
+                rmid: None,
+                type_: models::MessageType::Text,
+                text,
+                entities: vec![],
+                reply_to: None,
+                forward: None,
+                media: vec![],
+                reactions,
+                thread_id: None,
+                has_thread: false,
+                pinned: false,
+                edited: false,
+                edited_at: None,
+                sent: true,
+                delivered: true,
+                read: false,
+                created,
+                updated: None,
+                poll: None,
+            });
+        }
+
+        parsed
+    }
+
     /// Parse a single search result item into our Message model.
     fn parse_search_message(item: &serde_json::Value, chat_id: &str) -> Option<models::Message> {
         let data = item.get("data")?;
@@ -2058,6 +2503,8 @@ impl HttpClient {
             .and_then(|s| s.as_u64())
             .unwrap_or(0);
 
+        let reactions = Self::parse_reactions_from_message(data);
+
         Some(models::Message {
             id: format!("{}_{}", seq_no, payload_id),
             chat_id: chat_id.to_string(),
@@ -2070,7 +2517,7 @@ impl HttpClient {
             reply_to: None,
             forward: None,
             media: vec![],
-            reactions: vec![],
+            reactions,
             thread_id: None,
             has_thread: false,
             pinned: false,
@@ -2677,6 +3124,11 @@ impl HttpClient {
     // Reaction API methods
     // ============================================================
 
+    /// Get reactions configuration
+    pub async fn get_reactions_config_public(&self) -> Result<models::ExtendedReactionsConfig, String> {
+        self.get_reactions_config().await
+    }
+
     /// Get reactions configuration (private, requires token)
     async fn get_reactions_config(&self) -> Result<models::ExtendedReactionsConfig, String> {
         let auth_header = self.get_token_header();
@@ -2942,73 +3394,320 @@ impl HttpClient {
 
     // ============================================================
     // Sticker API methods
+    //
+    // Yandex Messenger serves sticker metadata from the public file host:
+    //   GET {FILE_PUBLIC_HOST}/stickers/packs?id={packId}&id={packId2}
+    // Sticker images:
+    //   GET {FILE_PUBLIC_HOST}/{stickerId}?size=small|large
+    // Pack IDs themselves come from the bootstrap `sticker_packs` bucket.
+    // Fake registry RPC methods (get_sticker_catalog etc.) return "No such path".
     // ============================================================
 
-    /// Получить каталог стикеров
-    pub async fn get_sticker_catalog(
-        &self,
-        cursor: Option<&str>,
-    ) -> Result<crate::models::StickerPackList, String> {
-        let params = if let Some(c) = cursor {
-            format!("?cursor={}", c)
-        } else {
-            String::new()
-        };
-        let url = format!("{}api/get_sticker_catalog{}", self.base_url, params);
-        let body = self.get(&url).await?;
-        let json: serde_json::Value = serde_json::from_str(&body)
-            .map_err(|e| format!("Sticker catalog parse failed: {}", e))?;
-        let data = json
-            .get("data")
-            .and_then(|v| v.as_object())
-            .and_then(|o| o.get("catalog"))
-            .ok_or("No data in sticker catalog response")?;
-        let catalog: crate::models::StickerPackList = serde_json::from_value(data.clone())
-            .map_err(|e| format!("Sticker catalog deserialization failed: {}", e))?;
-        Ok(catalog)
+    fn sticker_cdn_url(sticker_id: &str, size: &str) -> String {
+        format!(
+            "{}/{}?size={}",
+            crate::config::FILE_PUBLIC_HOST,
+            sticker_id.trim_start_matches('/'),
+            size
+        )
     }
 
-    /// Поиск стикеров по запросу
+    /// Parse CDN response packs into our StickerPack model.
+    fn parse_cdn_sticker_packs(
+        packs_val: &serde_json::Value,
+    ) -> Result<crate::models::StickerPackList, String> {
+        let arr = packs_val
+            .as_array()
+            .ok_or_else(|| "Sticker packs payload is not an array".to_string())?;
+
+        let mut packs = Vec::new();
+        for pack_node in arr {
+            let pack_id = pack_node
+                .get("id")
+                .or_else(|| pack_node.get("packId"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            if pack_id.is_empty() {
+                continue;
+            }
+
+            let title = pack_node
+                .get("title")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Стикеры")
+                .to_string();
+
+            let stickers_arr = pack_node
+                .get("stickers")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
+
+            let mut stickers = Vec::with_capacity(stickers_arr.len());
+            for s in &stickers_arr {
+                let sticker_id = s
+                    .get("id")
+                    .or_else(|| s.get("stickerId"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                if sticker_id.is_empty() {
+                    continue;
+                }
+                let emoji = s
+                    .get("text")
+                    .or_else(|| s.get("emoji"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+
+                stickers.push(crate::models::Sticker {
+                    sticker_id: sticker_id.clone(),
+                    pack_id: pack_id.clone(),
+                    file_url: Self::sticker_cdn_url(&sticker_id, "large"),
+                    thumb_url: Self::sticker_cdn_url(&sticker_id, "small"),
+                    width: 512,
+                    height: 512,
+                    emoji,
+                    file_size: 0,
+                    is_animated: sticker_id.ends_with(".json") || sticker_id.ends_with(".tgs"),
+                    is_text_sticker: false,
+                    text: None,
+                });
+            }
+
+            let sticker_count = stickers.len() as u32;
+            let thumb_url = stickers
+                .first()
+                .map(|s| s.thumb_url.clone())
+                .unwrap_or_default();
+
+            packs.push(crate::models::StickerPack {
+                pack_id,
+                title,
+                stickers,
+                is_installed: true,
+                is_featured: false,
+                category: pack_node
+                    .get("description")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                thumb_url,
+                sticker_count,
+            });
+        }
+
+        if packs.is_empty() {
+            Err("No sticker packs parsed from CDN".to_string())
+        } else {
+            Ok(crate::models::StickerPackList {
+                packs,
+                next_cursor: None,
+            })
+        }
+    }
+
+    /// Fetch sticker packs by IDs from the public file host (no auth required).
+    pub async fn fetch_sticker_packs_by_ids(
+        &self,
+        pack_ids: &[String],
+    ) -> Result<crate::models::StickerPackList, String> {
+        if pack_ids.is_empty() {
+            return Err("No sticker pack IDs".to_string());
+        }
+
+        // CDN accepts repeated ?id= params; batch in chunks to keep URLs short
+        let mut all_packs = Vec::new();
+        for chunk in pack_ids.chunks(12) {
+            let query: String = chunk
+                .iter()
+                .map(|id| format!("id={}", urlencoding::encode(id)))
+                .collect::<Vec<_>>()
+                .join("&");
+            let url = format!(
+                "{}/stickers/packs?{}",
+                crate::config::FILE_PUBLIC_HOST,
+                query
+            );
+
+            let body = self
+                .client
+                .get(&url)
+                .header("Origin", "https://yandex.ru")
+                .header("Referer", "https://yandex.ru/chat")
+                .send()
+                .await
+                .map_err(|e| format!("Sticker packs CDN request failed: {}", e))?
+                .text()
+                .await
+                .map_err(|e| format!("Sticker packs CDN read failed: {}", e))?;
+
+            let json: serde_json::Value = serde_json::from_str(&body)
+                .map_err(|e| format!("Sticker packs CDN parse failed: {}", e))?;
+
+            if json.get("status").and_then(|s| s.as_str()) == Some("error") {
+                log::warn!("Sticker packs CDN error for {:?}: {:?}", chunk, json.get("data"));
+                continue;
+            }
+
+            let data = json
+                .get("data")
+                .cloned()
+                .unwrap_or(serde_json::Value::Array(vec![]));
+
+            if let Ok(list) = Self::parse_cdn_sticker_packs(&data) {
+                all_packs.extend(list.packs);
+            }
+        }
+
+        if all_packs.is_empty() {
+            Err("CDN returned no sticker packs".to_string())
+        } else {
+            Ok(crate::models::StickerPackList {
+                packs: all_packs,
+                next_cursor: None,
+            })
+        }
+    }
+
+    async fn get_sticker_pack_by_id(
+        &self,
+        pack_id: &str,
+    ) -> Result<crate::models::StickerPack, String> {
+        let list = self
+            .fetch_sticker_packs_by_ids(&[pack_id.to_string()])
+            .await?;
+        list.packs
+            .into_iter()
+            .next()
+            .ok_or_else(|| format!("No pack data for {}", pack_id))
+    }
+
+    /// Extract installed pack IDs from bootstrap, then load full packs from CDN.
+    pub async fn get_sticker_catalog_from_bootstrap(
+        &self,
+    ) -> Result<crate::models::StickerPackList, String> {
+        let data = self
+            .rpc_request(
+                "bootstrap",
+                serde_json::json!({
+                    "flags": {
+                        "with_deleted": true,
+                        "compact": true
+                    }
+                }),
+            )
+            .await?;
+
+        let pack_ids: Vec<String> = data
+            .get("buckets")
+            .and_then(|buckets| buckets.as_array())
+            .into_iter()
+            .flatten()
+            .filter(|bucket| {
+                bucket.get("bucket_name").and_then(|v| v.as_str()) == Some("sticker_packs")
+            })
+            .flat_map(|bucket| {
+                bucket
+                    .get("bucket_value")
+                    .and_then(|value| value.get("sticker_packs"))
+                    .and_then(|packs| packs.as_array())
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|pack_id| pack_id.as_str().map(|s| s.to_string()))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+
+        if pack_ids.is_empty() {
+            return Err("No sticker pack IDs in bootstrap".to_string());
+        }
+
+        log::info!(
+            "Loading {} sticker packs from CDN: {:?}",
+            pack_ids.len().min(16),
+            &pack_ids[..pack_ids.len().min(8)]
+        );
+
+        // Load first 16 installed packs (enough for the picker UI)
+        let ids: Vec<String> = pack_ids.into_iter().take(16).collect();
+        self.fetch_sticker_packs_by_ids(&ids).await
+    }
+
+    /// Получить каталог стикеров (CDN via bootstrap pack IDs).
+    pub async fn get_sticker_catalog(
+        &self,
+        _cursor: Option<&str>,
+    ) -> Result<crate::models::StickerPackList, String> {
+        // Official web client does not use registry RPC for stickers — go straight
+        // to bootstrap IDs + public file host to avoid "No such path" spam.
+        self.get_sticker_catalog_from_bootstrap().await
+    }
+
+    /// Поиск стикеров по запросу (локальный фильтр по уже загруженным пакам / title+emoji).
     pub async fn search_stickers(
         &self,
         query: &str,
     ) -> Result<crate::models::StickerPackList, String> {
-        let url = format!("{}api/search_stickers?query={}", self.base_url, query);
-        let body = self.get(&url).await?;
-        let json: serde_json::Value = serde_json::from_str(&body)
-            .map_err(|e| format!("Search stickers parse failed: {}", e))?;
-        let data = json
-            .get("data")
-            .and_then(|v| v.as_object())
-            .and_then(|o| o.get("catalog"))
-            .ok_or("No data in search stickers response")?;
-        let catalog: crate::models::StickerPackList = serde_json::from_value(data.clone())
-            .map_err(|e| format!("Search stickers deserialization failed: {}", e))?;
-        Ok(catalog)
+        let catalog = self.get_sticker_catalog(None).await?;
+        let q = query.to_lowercase();
+        if q.is_empty() {
+            return Ok(catalog);
+        }
+
+        let packs: Vec<crate::models::StickerPack> = catalog
+            .packs
+            .into_iter()
+            .filter_map(|mut pack| {
+                if pack.title.to_lowercase().contains(&q) {
+                    return Some(pack);
+                }
+                pack.stickers
+                    .retain(|s| s.emoji.to_lowercase().contains(&q) || s.sticker_id.contains(&q));
+                if pack.stickers.is_empty() {
+                    None
+                } else {
+                    pack.sticker_count = pack.stickers.len() as u32;
+                    Some(pack)
+                }
+            })
+            .collect();
+
+        if packs.is_empty() {
+            Err("No stickers match query".to_string())
+        } else {
+            Ok(crate::models::StickerPackList {
+                packs,
+                next_cursor: None,
+            })
+        }
     }
 
-    /// Установить пакет стикеров
+    /// Установить пакет стикеров (best-effort; may not be available on all accounts)
     pub async fn install_sticker_pack(&self, pack_id: &str) -> Result<(), String> {
-        let url = format!("{}api/install_sticker_pack", self.base_url);
-        self.post(&url, serde_json::json!({ "packId": pack_id }))
-            .await?;
+        // Prefer silent failure over spammy registry RPC
+        let _ = pack_id;
+        log::info!("install_sticker_pack is not supported via public API; pack stays local");
         Ok(())
     }
 
-    /// Получить информацию о стикере
+    /// Получить информацию о стикере (CDN URL only — no metadata endpoint)
     pub async fn get_sticker(&self, sticker_id: &str) -> Result<crate::models::Sticker, String> {
-        let url = format!("{}api/get_sticker?stickerId={}", self.base_url, sticker_id);
-        let body = self.get(&url).await?;
-        let json: serde_json::Value =
-            serde_json::from_str(&body).map_err(|e| format!("Get sticker parse failed: {}", e))?;
-        let data = json
-            .get("data")
-            .and_then(|v| v.as_object())
-            .and_then(|o| o.get("sticker"))
-            .ok_or("No data in get sticker response")?;
-        let sticker: crate::models::Sticker = serde_json::from_value(data.clone())
-            .map_err(|e| format!("Get sticker deserialization failed: {}", e))?;
-        Ok(sticker)
+        Ok(crate::models::Sticker {
+            sticker_id: sticker_id.to_string(),
+            pack_id: String::new(),
+            file_url: Self::sticker_cdn_url(sticker_id, "large"),
+            thumb_url: Self::sticker_cdn_url(sticker_id, "small"),
+            width: 512,
+            height: 512,
+            emoji: String::new(),
+            file_size: 0,
+            is_animated: sticker_id.ends_with(".json") || sticker_id.ends_with(".tgs"),
+            is_text_sticker: false,
+            text: None,
+        })
     }
 
     /// Отправить стикер в чат

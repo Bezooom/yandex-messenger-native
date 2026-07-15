@@ -154,7 +154,7 @@ impl VoiceMessagePlayer {
 
         let waveform_label = Label::builder().use_markup(true).xalign(0.0).build();
 
-        let waveform_markup = generate_waveform_markup(&voice.waveform, 400, 32);
+        let waveform_markup = generate_waveform_markup(&voice.waveform, 240, 32);
         waveform_label.set_markup(&waveform_markup);
 
         waveform_container.append(&waveform_label);

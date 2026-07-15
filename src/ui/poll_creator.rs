@@ -24,12 +24,13 @@ pub struct PollCreator {
 impl PollCreator {
     /// Create a new PollCreator instance.
     pub fn new() -> Self {
-        let container = GtkBox::new(Orientation::Vertical, 12);
-        container.set_margin_start(24);
-        container.set_margin_end(24);
-        container.set_margin_top(24);
-        container.set_margin_bottom(24);
+        let container = GtkBox::new(Orientation::Vertical, 10);
+        container.set_margin_start(12);
+        container.set_margin_end(12);
+        container.set_margin_top(10);
+        container.set_margin_bottom(10);
         container.set_css_classes(&["poll-creator"]);
+        container.set_size_request(320, -1);
 
         // Question
         let question_label = Label::builder()

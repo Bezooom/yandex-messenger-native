@@ -248,15 +248,18 @@ impl ScheduledPanel {
     }
 
     fn show_popover(&self) {
-        // Создаем popover
-        let popover = Popover::new();
+        let popover = Popover::builder()
+            .has_arrow(false)
+            .autohide(true)
+            .build();
         popover.set_css_classes(&["send-at-popover"]);
 
         let container = GtkBox::new(Orientation::Vertical, 12);
-        container.set_margin_top(8);
-        container.set_margin_bottom(8);
-        container.set_margin_start(8);
-        container.set_margin_end(8);
+        container.add_css_class("send-at-body");
+        container.set_margin_top(4);
+        container.set_margin_bottom(4);
+        container.set_margin_start(4);
+        container.set_margin_end(4);
 
         let cal = Calendar::new();
         cal.set_show_day_names(true);

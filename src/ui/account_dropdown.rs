@@ -19,14 +19,17 @@ pub struct AccountDropdown {
 
 impl AccountDropdown {
     pub fn new(auth: Arc<AuthManager>) -> Self {
-        let popover = Rc::new(RefCell::new(Popover::builder().has_arrow(false).build()));
+        let popover = Rc::new(RefCell::new(
+            Popover::builder().has_arrow(false).autohide(true).build(),
+        ));
+        popover.borrow().add_css_class("account-dropdown-popover");
 
         let menu = Rc::new(RefCell::new(GtkBox::new(Orientation::Vertical, 4)));
         menu.borrow_mut().add_css_class("account-dropdown-menu");
-        menu.borrow_mut().set_margin_start(6);
-        menu.borrow_mut().set_margin_end(6);
-        menu.borrow_mut().set_margin_top(6);
-        menu.borrow_mut().set_margin_bottom(6);
+        menu.borrow_mut().set_margin_start(4);
+        menu.borrow_mut().set_margin_end(4);
+        menu.borrow_mut().set_margin_top(4);
+        menu.borrow_mut().set_margin_bottom(4);
 
         Self {
             auth,

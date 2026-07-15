@@ -1,7 +1,10 @@
 #![allow(dead_code)]
 
 use gtk::prelude::*;
-use gtk::{Align, Box as GtkBox, Button, Entry, Orientation, Popover, ScrolledWindow};
+use gtk::{
+    Align, Box as GtkBox, Button, Entry, FlowBox, FlowBoxChild, Orientation, Popover,
+    ScrolledWindow,
+};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -42,8 +45,10 @@ pub struct StickerPanel {
     pub search_entry: Entry,
     /// Scrollable list of pack items (left side).
     pub pack_list_box: GtkBox,
-    /// Grid of stickers in the selected pack (right side).
-    pub sticker_grid: GtkBox,
+    /// Header above the sticker flow (pack title).
+    pub sticker_header: GtkBox,
+    /// Flow grid of stickers in the selected pack (right side).
+    pub sticker_grid: FlowBox,
     /// Optional popover for displaying the panel.
     pub popover: RefCell<Option<Popover>>,
 }
@@ -95,20 +100,43 @@ impl StickerPanel {
             .build();
         sticker_scroll.set_css_classes(&["sticker-panel-scroll"]);
         sticker_scroll.set_hexpand(true);
+        sticker_scroll.set_min_content_width(320);
+        sticker_scroll.set_min_content_height(280);
 
-        let sticker_grid = GtkBox::new(Orientation::Vertical, 8);
+        let sticker_col = GtkBox::new(Orientation::Vertical, 4);
+        sticker_col.set_hexpand(true);
+
+        let sticker_header = GtkBox::new(Orientation::Horizontal, 0);
+        sticker_header.set_css_classes(&["sticker-grid-header"]);
+        sticker_header.set_margin_start(8);
+        sticker_header.set_margin_end(8);
+        sticker_header.set_margin_top(4);
+        sticker_header.set_margin_bottom(4);
+        sticker_header.set_hexpand(true);
+
+        let sticker_grid = FlowBox::new();
         sticker_grid.set_css_classes(&[CSS_STICKER_GRID]);
-        sticker_grid.set_margin_top(4);
+        sticker_grid.set_valign(Align::Start);
+        sticker_grid.set_max_children_per_line(5);
+        sticker_grid.set_min_children_per_line(3);
+        sticker_grid.set_selection_mode(gtk::SelectionMode::None);
+        sticker_grid.set_homogeneous(true);
+        sticker_grid.set_column_spacing(4);
+        sticker_grid.set_row_spacing(4);
         sticker_grid.set_margin_start(4);
         sticker_grid.set_margin_end(4);
-        sticker_grid.set_margin_bottom(4);
-        sticker_scroll.set_child(Some(&sticker_grid));
+        sticker_grid.set_margin_bottom(8);
+
+        sticker_col.append(&sticker_header);
+        sticker_col.append(&sticker_grid);
+        sticker_scroll.set_child(Some(&sticker_col));
 
         content.append(&pack_list_scroll);
         content.append(&sticker_scroll);
 
         container.append(&search_entry);
         container.append(&content);
+        container.set_size_request(520, 360);
 
         let panel = StickerPanel {
             container,
@@ -117,6 +145,7 @@ impl StickerPanel {
             on_select: RefCell::new(None),
             search_entry,
             pack_list_box,
+            sticker_header,
             sticker_grid,
             popover: RefCell::new(None),
         };
@@ -179,10 +208,12 @@ impl StickerPanel {
             .label(&pack.title)
             .lines(1)
             .ellipsize(gtk::pango::EllipsizeMode::End)
+            .width_chars(1)
+            .max_width_chars(14)
             .build();
         title.set_css_classes(&[CSS_PACK_TITLE]);
         title.set_halign(Align::Start);
-        title.set_valign(Align::Start);
+        title.set_valign(Align::Center);
         title.set_xalign(0.0);
         title.set_hexpand(true);
 
@@ -214,9 +245,12 @@ impl StickerPanel {
 
     /// Render the sticker grid for a specific pack index.
     pub fn render_stickers(&self, pack_idx: usize) {
-        // Clear existing stickers
+        // Clear existing stickers in the flow
         while let Some(child) = self.sticker_grid.first_child() {
             self.sticker_grid.remove(&child);
+        }
+        while let Some(child) = self.sticker_header.first_child() {
+            self.sticker_header.remove(&child);
         }
 
         let packs = self.packs.borrow();
@@ -227,16 +261,12 @@ impl StickerPanel {
 
         let pack = &packs[pack_idx];
 
-        // Add title row
-        let title_row = GtkBox::new(Orientation::Horizontal, 0);
-        title_row.set_css_classes(&["sticker-grid-header"]);
-        title_row.set_margin_start(4);
-        title_row.set_margin_end(4);
-        title_row.set_margin_top(4);
-        title_row.set_margin_bottom(8);
-        title_row.set_hexpand(true);
-
-        let pack_title = gtk::Label::builder().label(&pack.title).build();
+        let pack_title = gtk::Label::builder()
+            .label(&pack.title)
+            .ellipsize(gtk::pango::EllipsizeMode::End)
+            .max_width_chars(28)
+            .xalign(0.0)
+            .build();
         pack_title.set_css_classes(&["sticker-grid-title"]);
         pack_title.set_halign(Align::Start);
         pack_title.set_hexpand(true);
@@ -247,31 +277,32 @@ impl StickerPanel {
         pack_count.set_css_classes(&["sticker-grid-count"]);
         pack_count.set_halign(Align::End);
 
-        title_row.append(&pack_title);
-        title_row.append(&pack_count);
-        self.sticker_grid.append(&title_row);
+        self.sticker_header.append(&pack_title);
+        self.sticker_header.append(&pack_count);
 
-        // Render stickers in a vertical layout (Telegram-style)
-        let stickers = &pack.stickers;
-        for sticker in stickers {
-            let btn = self.create_sticker_button(sticker);
-            self.sticker_grid.append(&btn);
-        }
-
+        let stickers = pack.stickers.clone();
         drop(packs);
+
+        for sticker in &stickers {
+            let btn = self.create_sticker_button(sticker);
+            let child = FlowBoxChild::new();
+            child.set_child(Some(&btn));
+            self.sticker_grid.insert(&child, -1);
+        }
     }
 
     /// Create a single sticker button.
     fn create_sticker_button(&self, sticker: &Sticker) -> Button {
         let btn = Button::builder().build();
         btn.set_css_classes(&[CSS_STICKER_ITEM]);
-        btn.set_size_request(100, 100);
-        btn.set_halign(Align::Start);
-        btn.set_valign(Align::Start);
+        btn.set_size_request(72, 72);
+        btn.set_halign(Align::Center);
+        btn.set_valign(Align::Center);
+        btn.set_tooltip_text(Some(&sticker.emoji));
 
         let image = gtk::Image::builder().icon_name("image-missing").build();
         image.set_css_classes(&[CSS_THUMB]);
-        image.set_pixel_size(80);
+        image.set_pixel_size(64);
         image.set_halign(Align::Center);
         image.set_valign(Align::Center);
         btn.set_child(Some(&image));
@@ -338,33 +369,37 @@ impl StickerPanel {
         }
 
         let pack_title = packs[pack_idx].title.clone();
-        let filtered: Vec<_> = packs[pack_idx]
-            .stickers
-            .iter()
-            .filter(|s| {
-                s.emoji.to_lowercase().contains(&query.to_lowercase())
-                    || s.pack_id.to_lowercase().contains(&query.to_lowercase())
-            })
-            .cloned()
-            .collect();
+        let q = query.to_lowercase();
+        let filtered: Vec<_> = if q.is_empty() {
+            packs[pack_idx].stickers.clone()
+        } else {
+            packs[pack_idx]
+                .stickers
+                .iter()
+                .filter(|s| {
+                    s.emoji.to_lowercase().contains(&q)
+                        || s.sticker_id.to_lowercase().contains(&q)
+                        || s.pack_id.to_lowercase().contains(&q)
+                })
+                .cloned()
+                .collect()
+        };
 
         drop(packs);
 
-        // Replace stickers in grid
         while let Some(child) = self.sticker_grid.first_child() {
             self.sticker_grid.remove(&child);
         }
+        while let Some(child) = self.sticker_header.first_child() {
+            self.sticker_header.remove(&child);
+        }
 
-        // Re-add title row
-        let title_row = GtkBox::new(Orientation::Horizontal, 0);
-        title_row.set_css_classes(&["sticker-grid-header"]);
-        title_row.set_margin_start(4);
-        title_row.set_margin_end(4);
-        title_row.set_margin_top(4);
-        title_row.set_margin_bottom(8);
-        title_row.set_hexpand(true);
-
-        let pack_title_label = gtk::Label::builder().label(&pack_title).build();
+        let pack_title_label = gtk::Label::builder()
+            .label(&pack_title)
+            .ellipsize(gtk::pango::EllipsizeMode::End)
+            .max_width_chars(28)
+            .xalign(0.0)
+            .build();
         pack_title_label.set_css_classes(&["sticker-grid-title"]);
         pack_title_label.set_halign(Align::Start);
         pack_title_label.set_hexpand(true);
@@ -375,13 +410,14 @@ impl StickerPanel {
         pack_count.set_css_classes(&["sticker-grid-count"]);
         pack_count.set_halign(Align::End);
 
-        title_row.append(&pack_title_label);
-        title_row.append(&pack_count);
-        self.sticker_grid.append(&title_row);
+        self.sticker_header.append(&pack_title_label);
+        self.sticker_header.append(&pack_count);
 
         for sticker in filtered {
             let btn = self.create_sticker_button(&sticker);
-            self.sticker_grid.append(&btn);
+            let child = FlowBoxChild::new();
+            child.set_child(Some(&btn));
+            self.sticker_grid.insert(&child, -1);
         }
     }
 

@@ -57,7 +57,7 @@ impl Database {
         Ok(())
     }
 
-    pub fn cache_chats(&self, chats_json: &str) -> Result<()> {
+    pub fn cache_chats(&self, _chats_json: &str) -> Result<()> {
         // Implementation for inserting/updating chats based on JSON
         // In a full implementation, we'd parse the JSON array and upsert rows
         Ok(())
