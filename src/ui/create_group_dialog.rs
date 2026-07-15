@@ -320,11 +320,7 @@ impl CreateGroupDialog {
             row_box.append(&check);
             row.set_child(Some(&row_box));
             // Store searchable text on the row via widget name
-            row.set_widget_name(&format!(
-                "{} {}",
-                primary,
-                secondary.unwrap_or_default()
-            ));
+            row.set_widget_name(&format!("{} {}", primary, secondary.unwrap_or_default()));
             self.member_list.append(&row);
         }
 
@@ -333,8 +329,7 @@ impl CreateGroupDialog {
 
     fn update_count_label(&self) {
         let n = self.selected_members.borrow().len();
-        self.member_count_label
-            .set_label(&format_selected_count(n));
+        self.member_count_label.set_label(&format_selected_count(n));
     }
 
     pub fn show(&self) {

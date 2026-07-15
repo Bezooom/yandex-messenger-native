@@ -1517,9 +1517,7 @@ impl HttpClient {
 
     /// Load contacts for member pickers (create group, add member, forward…).
     /// Returns non-deleted contacts with real names (contact_name preferred).
-    pub async fn get_contact_candidates(
-        &self,
-    ) -> Result<Vec<models::ContactCandidate>, String> {
+    pub async fn get_contact_candidates(&self) -> Result<Vec<models::ContactCandidate>, String> {
         let data = self
             .rpc_request(
                 "bootstrap",
@@ -1584,16 +1582,16 @@ impl HttpClient {
                 }
             }
 
-            let entry = by_guid.entry(guid.clone()).or_insert_with(|| {
-                models::ContactCandidate {
+            let entry = by_guid
+                .entry(guid.clone())
+                .or_insert_with(|| models::ContactCandidate {
                     guid: guid.clone(),
                     contact_name: None,
                     display_name: None,
                     public_name: None,
                     avatar_id: None,
                     deleted: false,
-                }
-            });
+                });
 
             if from_contacts {
                 if contact_name.is_some() {
@@ -1633,9 +1631,7 @@ impl HttpClient {
             .filter(|c| !c.deleted)
             .filter(|c| {
                 // Must have at least one human-readable name field
-                c.contact_name.is_some()
-                    || c.display_name.is_some()
-                    || c.public_name.is_some()
+                c.contact_name.is_some() || c.display_name.is_some() || c.public_name.is_some()
             })
             .collect();
 
@@ -2046,11 +2042,7 @@ impl HttpClient {
                 if let Ok(json) = serde_json::to_string(&msgs) {
                     std::fs::write(&cache_file, json).ok();
                 }
-                log::info!(
-                    "Loaded {} messages via search for {}",
-                    msgs.len(),
-                    chat_id
-                );
+                log::info!("Loaded {} messages via search for {}", msgs.len(), chat_id);
                 return Ok(msgs);
             }
             Ok(_) => log::warn!("Search returned no messages for {}", chat_id),
@@ -2311,11 +2303,7 @@ impl HttpClient {
     fn parse_reactions_array(value: &serde_json::Value) -> Vec<models::Reaction> {
         value
             .as_array()
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(Self::parse_single_reaction)
-                    .collect()
-            })
+            .map(|arr| arr.iter().filter_map(Self::parse_single_reaction).collect())
             .unwrap_or_default()
     }
 
@@ -3125,7 +3113,9 @@ impl HttpClient {
     // ============================================================
 
     /// Get reactions configuration
-    pub async fn get_reactions_config_public(&self) -> Result<models::ExtendedReactionsConfig, String> {
+    pub async fn get_reactions_config_public(
+        &self,
+    ) -> Result<models::ExtendedReactionsConfig, String> {
         self.get_reactions_config().await
     }
 
@@ -3548,7 +3538,11 @@ impl HttpClient {
                 .map_err(|e| format!("Sticker packs CDN parse failed: {}", e))?;
 
             if json.get("status").and_then(|s| s.as_str()) == Some("error") {
-                log::warn!("Sticker packs CDN error for {:?}: {:?}", chunk, json.get("data"));
+                log::warn!(
+                    "Sticker packs CDN error for {:?}: {:?}",
+                    chunk,
+                    json.get("data")
+                );
                 continue;
             }
 

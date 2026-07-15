@@ -248,10 +248,7 @@ impl ScheduledPanel {
     }
 
     fn show_popover(&self) {
-        let popover = Popover::builder()
-            .has_arrow(false)
-            .autohide(true)
-            .build();
+        let popover = Popover::builder().has_arrow(false).autohide(true).build();
         popover.set_css_classes(&["send-at-popover"]);
 
         let container = GtkBox::new(Orientation::Vertical, 12);

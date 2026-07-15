@@ -388,11 +388,7 @@ impl ChatListPanel {
                 .map(|c| c.to_uppercase().to_string())
                 .collect::<String>();
             let initials = if initials.is_empty() {
-                label
-                    .chars()
-                    .take(2)
-                    .collect::<String>()
-                    .to_uppercase()
+                label.chars().take(2).collect::<String>().to_uppercase()
             } else {
                 initials
             };
@@ -424,8 +420,7 @@ impl ChatListPanel {
                             user_avatar_clone.remove(&child);
                         }
                         for i in 0..8 {
-                            user_avatar_clone
-                                .remove_css_class(&format!("avatar-gradient-{}", i));
+                            user_avatar_clone.remove_css_class(&format!("avatar-gradient-{}", i));
                         }
                         let bytes_glib = glib::Bytes::from(&bytes);
                         if let Ok(texture) = gtk::gdk::Texture::from_bytes(&bytes_glib) {
@@ -441,8 +436,7 @@ impl ChatListPanel {
                         .css_classes(vec!["avatar-label".to_string()])
                         .build();
                     user_avatar_clone.append(&label);
-                    user_avatar_clone
-                        .add_css_class(&format!("avatar-gradient-{}", hash_clone % 8));
+                    user_avatar_clone.add_css_class(&format!("avatar-gradient-{}", hash_clone % 8));
                 });
             } else {
                 let label = Label::builder()
@@ -824,13 +818,13 @@ impl ChatListPanel {
         let avatar_id = chat.avatar_id.clone().unwrap_or_default();
         if !avatar_id.is_empty() {
             let cache = get_avatar_cache();
-            
+
             // Check cache entry
             let entry = {
                 let map = cache.lock().unwrap();
                 map.get(&avatar_id).cloned()
             };
-            
+
             match entry {
                 Some(AvatarCacheEntry::Success(texture)) => {
                     avatar.set_custom_image(Some(&texture));
@@ -899,10 +893,10 @@ impl ChatListPanel {
                                 log::info!("Successfully loaded texture for {}", avatar_id_clone);
                                 // Put in static cache!
                                 let cache = get_avatar_cache();
-                                cache
-                                    .lock()
-                                    .unwrap()
-                                    .insert(avatar_id_clone, AvatarCacheEntry::Success(texture.clone()));
+                                cache.lock().unwrap().insert(
+                                    avatar_id_clone,
+                                    AvatarCacheEntry::Success(texture.clone()),
+                                );
 
                                 // Check if the avatar is still bound to the same chat
                                 if avatar_clone.widget_name() == expected_chat_id {
@@ -910,7 +904,11 @@ impl ChatListPanel {
                                 }
                             }
                             Err(e) => {
-                                log::warn!("Failed to parse texture for {}: {}", avatar_id_clone, e);
+                                log::warn!(
+                                    "Failed to parse texture for {}: {}",
+                                    avatar_id_clone,
+                                    e
+                                );
                                 let cache = get_avatar_cache();
                                 cache
                                     .lock()
@@ -928,7 +926,11 @@ impl ChatListPanel {
                             .insert(avatar_id_clone, AvatarCacheEntry::Failed);
                     }
                     Err(join_err) => {
-                        log::error!("Join error downloading avatar {}: {}", avatar_id_clone, join_err);
+                        log::error!(
+                            "Join error downloading avatar {}: {}",
+                            avatar_id_clone,
+                            join_err
+                        );
                         let cache = get_avatar_cache();
                         cache
                             .lock()
@@ -1004,10 +1006,7 @@ impl ChatListPanel {
         let menu = GtkBox::new(Orientation::Vertical, 2);
         menu.add_css_class("chat-context-menu");
 
-        let popover = Popover::builder()
-            .has_arrow(false)
-            .autohide(true)
-            .build();
+        let popover = Popover::builder().has_arrow(false).autohide(true).build();
 
         let actions: Vec<(&str, &str)> = vec![
             ("Отметить как прочитанное", "mark_read"),

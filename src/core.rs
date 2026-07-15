@@ -502,7 +502,9 @@ impl AppController {
         log::info!("Sending typing event to chat {}", chat_id);
     }
 
-    pub async fn get_reactions_config(&self) -> Result<crate::models::ExtendedReactionsConfig, String> {
+    pub async fn get_reactions_config(
+        &self,
+    ) -> Result<crate::models::ExtendedReactionsConfig, String> {
         self.http.get_reactions_config_public().await
     }
 
@@ -517,7 +519,12 @@ impl AppController {
     }
 
     pub async fn remove_reaction(&self, message_id: &str, emoji: &str) -> Result<(), String> {
-        if self.ws.send_remove_reaction(message_id, emoji).await.is_ok() {
+        if self
+            .ws
+            .send_remove_reaction(message_id, emoji)
+            .await
+            .is_ok()
+        {
             return Ok(());
         }
         self.http.remove_reaction_public(message_id, emoji).await

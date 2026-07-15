@@ -338,16 +338,20 @@ fn create_app_layout(
 
                 // 2. Load cached messages first
                 let start_cached = std::time::Instant::now();
-                let cached = ctrl
-                    .get_cached_messages_async(chat_id_future.clone())
-                    .await;
-                eprintln!("[PERF] get_cached_messages_async took {:?}", start_cached.elapsed());
+                let cached = ctrl.get_cached_messages_async(chat_id_future.clone()).await;
+                eprintln!(
+                    "[PERF] get_cached_messages_async took {:?}",
+                    start_cached.elapsed()
+                );
 
                 let current_id = cv.current_chat_id();
                 if current_id == Some(chat_id_future.clone()) && !cached.is_empty() {
                     let start_set = std::time::Instant::now();
                     cv.set_messages(cached.clone());
-                    eprintln!("[PERF] set_messages (cached) took {:?}", start_set.elapsed());
+                    eprintln!(
+                        "[PERF] set_messages (cached) took {:?}",
+                        start_set.elapsed()
+                    );
                 }
 
                 // 3. Fetch fresh messages
@@ -372,7 +376,11 @@ fn create_app_layout(
                         }
                     }
                     Err(e) => {
-                        eprintln!("[PERF] select_chat failed after {:?}: {}", start_select.elapsed(), e);
+                        eprintln!(
+                            "[PERF] select_chat failed after {:?}: {}",
+                            start_select.elapsed(),
+                            e
+                        );
                         eprintln!("Failed to load messages for chat {}: {}", chat_id_future, e);
                     }
                 }

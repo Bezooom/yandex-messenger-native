@@ -92,9 +92,7 @@ impl Chat {
     }
 
     pub fn display_name(&self) -> String {
-        self.title
-            .clone()
-            .unwrap_or_else(|| "Чат".to_string())
+        self.title.clone().unwrap_or_else(|| "Чат".to_string())
     }
 }
 
@@ -106,8 +104,16 @@ pub fn messages_equivalent(a: &[Message], b: &[Message]) -> bool {
 
     let mut sorted_a: Vec<&Message> = a.iter().collect();
     let mut sorted_b: Vec<&Message> = b.iter().collect();
-    sorted_a.sort_by(|left, right| left.created.cmp(&right.created).then_with(|| left.id.cmp(&right.id)));
-    sorted_b.sort_by(|left, right| left.created.cmp(&right.created).then_with(|| left.id.cmp(&right.id)));
+    sorted_a.sort_by(|left, right| {
+        left.created
+            .cmp(&right.created)
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    sorted_b.sort_by(|left, right| {
+        left.created
+            .cmp(&right.created)
+            .then_with(|| left.id.cmp(&right.id))
+    });
 
     sorted_a.iter().zip(sorted_b.iter()).all(|(left, right)| {
         left.id == right.id

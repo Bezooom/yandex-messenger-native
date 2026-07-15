@@ -13,9 +13,9 @@ use crate::api::auth::AuthManager;
 use crate::core::voice_recorder::VoiceRecorder;
 use crate::models::scheduled_message::MessageSchedule;
 use crate::models::{Chat, ExtendedReactionsConfig, Message, MessageType, Poll, Reaction};
-use crate::ui::reaction_panel::ReactionPanel;
 use crate::ui::bot_panel::BotPanel;
 use crate::ui::emoji_picker::EmojiPicker;
+use crate::ui::reaction_panel::ReactionPanel;
 
 /// Which composer popover should stay open when switching tools.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -547,10 +547,7 @@ impl ChatView {
         }
 
         let poll_creator = PollCreator::new();
-        let popover = Popover::builder()
-            .has_arrow(false)
-            .autohide(true)
-            .build();
+        let popover = Popover::builder().has_arrow(false).autohide(true).build();
         popover.add_css_class("poll-creator-popover");
         popover.set_child(Some(poll_creator.container()));
         popover.set_parent(&self.attach_btn);
@@ -740,10 +737,7 @@ impl ChatView {
     }
 
     fn show_reaction_picker(self: &Arc<Self>, msg: &Message, target: &impl IsA<gtk::Widget>) {
-        let message_id = msg
-            .message_id
-            .clone()
-            .unwrap_or_else(|| msg.id.clone());
+        let message_id = msg.message_id.clone().unwrap_or_else(|| msg.id.clone());
         let panel = ReactionPanel::new(message_id.clone());
         panel.set_reactions(msg.reactions.clone());
         if let Some(config) = self.reactions_config.lock().unwrap().clone() {
@@ -778,10 +772,7 @@ impl ChatView {
         row.add_css_class("message-reactions");
         row.set_halign(if is_sent { Align::End } else { Align::Start });
 
-        let message_id = msg
-            .message_id
-            .clone()
-            .unwrap_or_else(|| msg.id.clone());
+        let message_id = msg.message_id.clone().unwrap_or_else(|| msg.id.clone());
 
         for reaction in &msg.reactions {
             let label = if reaction.count > 1 {
@@ -990,10 +981,7 @@ impl ChatView {
             }
         }
 
-        let popover = Popover::builder()
-            .has_arrow(false)
-            .autohide(true)
-            .build();
+        let popover = Popover::builder().has_arrow(false).autohide(true).build();
         popover.set_parent(&self.attach_btn);
         popover.set_position(gtk::PositionType::Top);
         popover.add_css_class("attach-menu-popover");
@@ -1057,10 +1045,7 @@ impl ChatView {
     }
 
     fn show_header_menu(self: &Arc<Self>) {
-        let popover = Popover::builder()
-            .has_arrow(false)
-            .autohide(true)
-            .build();
+        let popover = Popover::builder().has_arrow(false).autohide(true).build();
         popover.set_parent(&self.menu_btn);
         popover.set_position(gtk::PositionType::Bottom);
         popover.add_css_class("header-menu-popover");
@@ -1179,10 +1164,7 @@ impl ChatView {
         }
 
         let emoji_picker = EmojiPicker::new();
-        let popover = Popover::builder()
-            .has_arrow(false)
-            .autohide(true)
-            .build();
+        let popover = Popover::builder().has_arrow(false).autohide(true).build();
         popover.add_css_class("emoji-picker-popover");
         popover.set_child(Some(emoji_picker.container()));
         popover.set_parent(&self.emoji_btn);
@@ -1235,10 +1217,7 @@ impl ChatView {
         }
 
         let sticker_panel = StickerPanel::new(vec![]);
-        let popover = Popover::builder()
-            .has_arrow(false)
-            .autohide(true)
-            .build();
+        let popover = Popover::builder().has_arrow(false).autohide(true).build();
         popover.add_css_class("sticker-panel-popover");
         popover.set_child(Some(sticker_panel.container()));
         popover.set_parent(&self.sticker_btn);
@@ -1713,7 +1692,11 @@ impl ChatView {
 
         let old_count = self.messages_store.n_items();
         self.messages_store.splice(0, old_count, &new_objects);
-        eprintln!("[PERF] render_messages splice of {} items took {:?}", new_objects.len(), start_time.elapsed());
+        eprintln!(
+            "[PERF] render_messages splice of {} items took {:?}",
+            new_objects.len(),
+            start_time.elapsed()
+        );
 
         if messages.is_empty() {
             return;
@@ -1769,8 +1752,9 @@ impl ChatView {
             .as_deref()
             .map(|t| t.starts_with("stickers/") || t.contains("/stickers/"))
             .unwrap_or(false);
-        let is_sticker =
-            msg.type_ == MessageType::Sticker || sticker_payload.is_some() || looks_like_sticker_path;
+        let is_sticker = msg.type_ == MessageType::Sticker
+            || sticker_payload.is_some()
+            || looks_like_sticker_path;
         if is_sticker {
             if let Some(ref payload) = sticker_payload {
                 let packs = self.sticker_packs.lock().unwrap();
@@ -1809,7 +1793,8 @@ impl ChatView {
                     }
                     // Path-style sticker id from history
                     if sticker_url.is_none()
-                        && (text_val.starts_with("stickers/") || text_val.contains("stickers/images/"))
+                        && (text_val.starts_with("stickers/")
+                            || text_val.contains("stickers/images/"))
                     {
                         let id = text_val.trim_start_matches('/');
                         sticker_url = Some(format!(
@@ -2402,10 +2387,7 @@ impl ChatView {
             return;
         }
 
-        let popover = Popover::builder()
-            .has_arrow(false)
-            .autohide(true)
-            .build();
+        let popover = Popover::builder().has_arrow(false).autohide(true).build();
         popover.set_css_classes(&["send-at-popover"]);
         popover.set_parent(&self.attach_btn);
         popover.set_position(gtk::PositionType::Top);
@@ -2631,7 +2613,10 @@ impl ChatView {
             .wrap(true)
             .max_width_chars(36)
             .width_chars(1)
-            .css_classes(vec!["dim-label".to_string(), "empty-chat-subtitle".to_string()])
+            .css_classes(vec![
+                "dim-label".to_string(),
+                "empty-chat-subtitle".to_string(),
+            ])
             .build();
         text.set_natural_wrap_mode(gtk::NaturalWrapMode::None);
 
@@ -2870,15 +2855,18 @@ fn format_message_text(text: &str) -> String {
     escaped = re_list.replace_all(&escaped, "\n$1. **").to_string();
 
     // Bold
-    let re_bold = RE_BOLD.get_or_init(|| regex::Regex::new(r"\*\*([^\*\s]|[^\*\s][^\*]*?[^\*\s])\*\*").unwrap());
+    let re_bold = RE_BOLD
+        .get_or_init(|| regex::Regex::new(r"\*\*([^\*\s]|[^\*\s][^\*]*?[^\*\s])\*\*").unwrap());
     escaped = re_bold.replace_all(&escaped, "<b>$1</b>").to_string();
 
     // Italic
-    let re_italic = RE_ITALIC.get_or_init(|| regex::Regex::new(r"\*([^\*\s]|[^\*\s][^\*]*?[^\*\s])\*").unwrap());
+    let re_italic = RE_ITALIC
+        .get_or_init(|| regex::Regex::new(r"\*([^\*\s]|[^\*\s][^\*]*?[^\*\s])\*").unwrap());
     escaped = re_italic.replace_all(&escaped, "<i>$1</i>").to_string();
 
     // Code block
-    let re_code_block = RE_CODE_BLOCK.get_or_init(|| regex::Regex::new(r"```([\s\S]+?)```").unwrap());
+    let re_code_block =
+        RE_CODE_BLOCK.get_or_init(|| regex::Regex::new(r"```([\s\S]+?)```").unwrap());
     escaped = re_code_block
         .replace_all(&escaped, "<tt>$1</tt>")
         .to_string();

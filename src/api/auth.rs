@@ -1127,13 +1127,11 @@ impl AuthManager {
         let name = user
             .display_name
             .clone()
-            .or_else(|| {
-                match (&user.first_name, &user.last_name) {
-                    (Some(f), Some(l)) => Some(format!("{} {}", f, l)),
-                    (Some(f), None) => Some(f.clone()),
-                    (None, Some(l)) => Some(l.clone()),
-                    _ => None,
-                }
+            .or_else(|| match (&user.first_name, &user.last_name) {
+                (Some(f), Some(l)) => Some(format!("{} {}", f, l)),
+                (Some(f), None) => Some(f.clone()),
+                (None, Some(l)) => Some(l.clone()),
+                _ => None,
             })
             .or_else(|| user.username.clone())
             .or_else(|| user.email.clone());
