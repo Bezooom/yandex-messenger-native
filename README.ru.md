@@ -87,7 +87,7 @@ sudo apt update
 sudo apt install -y \
   build-essential pkg-config cargo \
   libgtk-4-dev libadwaita-1-dev libsqlite3-dev \
-  libssl-dev libnotify-dev libwebkitgtk-6.0-dev
+  libssl-dev libnotify-dev libdbus-1-dev libwebkitgtk-6.0-dev
 ```
 
 *Примечание: для поддержки записи голосовых сообщений рекомендуется установить пакеты GStreamer (`libgstreamer1.0-dev`, `libgstreamer-plugins-base1.0-dev`).*

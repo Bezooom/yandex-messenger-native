@@ -17,7 +17,7 @@ sudo apt update
 sudo apt install -y \
   build-essential pkg-config cargo devscripts debhelper librsvg2-bin \
   libgtk-4-dev libadwaita-1-dev libsqlite3-dev libssl-dev libnotify-dev \
-  libwebkitgtk-6.0-dev
+  libdbus-1-dev libwebkitgtk-6.0-dev
 ```
 
 Для записи голоса (опционально, UI всё ещё заглушка):

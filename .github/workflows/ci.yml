@@ -23,6 +23,7 @@ jobs:
             libssl-dev \
             libglib2.0-dev \
             libnotify-dev \
+            libdbus-1-dev \
             libwebkitgtk-6.0-dev \
             xvfb
 
