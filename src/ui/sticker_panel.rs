@@ -592,9 +592,7 @@ fn load_texture_via_pixbuf(bytes: &[u8]) -> Result<gtk::gdk::Texture, String> {
     loader
         .write(bytes)
         .map_err(|e| format!("pixbuf write: {}", e))?;
-    loader
-        .close()
-        .map_err(|e| format!("pixbuf close: {}", e))?;
+    loader.close().map_err(|e| format!("pixbuf close: {}", e))?;
     let pixbuf = loader
         .pixbuf()
         .ok_or_else(|| "pixbuf loader returned no image (missing webp loader?)".to_string())?;

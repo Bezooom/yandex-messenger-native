@@ -82,10 +82,7 @@ impl TelemostClient {
     }
 
     /// Получение информации о конференции
-    pub async fn get_conference(
-        &self,
-        conference_id: &str,
-    ) -> Result<TelemostConference, String> {
+    pub async fn get_conference(&self, conference_id: &str) -> Result<TelemostConference, String> {
         let url = format!(
             "{}/v1/telemost/conferences/{}",
             self.cloud_api_base, conference_id
@@ -192,10 +189,7 @@ impl TelemostClient {
     }
 
     /// Получить ссылку для присоединения к конференции
-    pub async fn get_join_link(
-        &self,
-        conference_id: &str,
-    ) -> Result<String, String> {
+    pub async fn get_join_link(&self, conference_id: &str) -> Result<String, String> {
         let conference = self.get_conference(conference_id).await?;
 
         if let Some(link) = conference.join_url {

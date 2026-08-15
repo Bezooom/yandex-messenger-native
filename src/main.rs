@@ -196,7 +196,7 @@ fn create_app_layout(
         .resize_start_child(false) // extra window width goes to chat
         .resize_end_child(true)
         .shrink_start_child(false) // NEVER squeeze dialogs column
-        .shrink_end_child(true)    // chat absorbs pressure
+        .shrink_end_child(true) // chat absorbs pressure
         .hexpand(true)
         .vexpand(true)
         .build();
@@ -311,10 +311,7 @@ fn create_app_layout(
             ui::settings::show_settings_window(&win_for_settings, store, move |s| {
                 ui::notifications::set_notifications_enabled(s.notifications_enabled);
                 ui::settings::apply_reduced_motion(s.reduced_motion);
-                min_tray.store(
-                    s.minimize_to_tray,
-                    std::sync::atomic::Ordering::Relaxed,
-                );
+                min_tray.store(s.minimize_to_tray, std::sync::atomic::Ordering::Relaxed);
             });
             // Also refresh saved messages in background so «Избранное» panel stays warm
             glib::spawn_future_local(async move {
@@ -350,12 +347,7 @@ fn create_app_layout(
                     }
                 }
                 match ctrl
-                    .send_text_message_ex(
-                        &chat_id,
-                        &text,
-                        reply_to.as_deref(),
-                        edit_id.as_deref(),
-                    )
+                    .send_text_message_ex(&chat_id, &text, reply_to.as_deref(), edit_id.as_deref())
                     .await
                 {
                     Ok(msg) => {
@@ -384,7 +376,12 @@ fn create_app_layout(
             });
         },
         move |chat_id: String, bytes: Vec<u8>, filename: String| {
-            log::info!("Attach file {} ({} bytes) to chat {}", filename, bytes.len(), chat_id);
+            log::info!(
+                "Attach file {} ({} bytes) to chat {}",
+                filename,
+                bytes.len(),
+                chat_id
+            );
             let ctrl = ctrl_send_for_file.clone();
             let cv = cv_for_send_for_file.clone();
             glib::spawn_future_local(async move {
@@ -522,8 +519,7 @@ fn create_app_layout(
                             .map(|s| format!(".{}", s.to_string_lossy()))
                             .unwrap_or_default();
                         for i in 1..100 {
-                            let candidate =
-                                downloads.join(format!("{} ({}){}", stem, i, ext));
+                            let candidate = downloads.join(format!("{} ({}){}", stem, i, ext));
                             if !candidate.exists() {
                                 path = candidate;
                                 break;
@@ -534,9 +530,7 @@ fn create_app_layout(
                         Ok(()) => {
                             log::info!("Saved file to {}", path.display());
                             if open_after {
-                                let _ = std::process::Command::new("xdg-open")
-                                    .arg(&path)
-                                    .spawn();
+                                let _ = std::process::Command::new("xdg-open").arg(&path).spawn();
                                 cv.show_toast(&format!("Открыто: {}", path.display()));
                             } else {
                                 cv.show_toast(&format!("Сохранено: {}", path.display()));
@@ -952,96 +946,99 @@ fn create_app_layout(
     let cl_for_actions = chat_list.clone();
     let tray_for_actions = tray.clone();
     let cv_for_actions = chat_view.clone();
-    chat_list.lock().unwrap().connect_chat_action(move |chat_id, action| {
-        let ctrl = ctrl_actions.clone();
-        let cl = cl_for_actions.clone();
-        let tray = tray_for_actions.clone();
-        let cv = cv_for_actions.clone();
-        glib::spawn_future_local(async move {
-            let result = match action.as_str() {
-                "mark_read" => {
-                    let r = ctrl.mark_chat_read(&chat_id).await;
-                    if r.is_ok() {
+    chat_list
+        .lock()
+        .unwrap()
+        .connect_chat_action(move |chat_id, action| {
+            let ctrl = ctrl_actions.clone();
+            let cl = cl_for_actions.clone();
+            let tray = tray_for_actions.clone();
+            let cv = cv_for_actions.clone();
+            glib::spawn_future_local(async move {
+                let result = match action.as_str() {
+                    "mark_read" => {
+                        let r = ctrl.mark_chat_read(&chat_id).await;
+                        if r.is_ok() {
+                            cl.lock().unwrap().apply_chat_flags(
+                                &chat_id,
+                                None,
+                                None,
+                                None,
+                                Some(0),
+                            );
+                        }
+                        r
+                    }
+                    "mute" => {
+                        let currently = ctrl.is_chat_muted(&chat_id).await;
+                        let r = ctrl.set_chat_muted(&chat_id, !currently).await;
+                        // Always apply local flag even if API fails (responsive UI)
+                        cl.lock().unwrap().apply_chat_flags(
+                            &chat_id,
+                            Some(!currently),
+                            None,
+                            None,
+                            None,
+                        );
+                        r
+                    }
+                    "pin" => {
+                        let chats_arc = cl.lock().unwrap().chats().clone();
+                        let pinned = chats_arc
+                            .lock()
+                            .unwrap()
+                            .iter()
+                            .find(|c| c.id == chat_id)
+                            .map(|c| c.pinned)
+                            .unwrap_or(false);
+                        let r = ctrl.set_chat_pinned(&chat_id, !pinned).await;
+                        cl.lock().unwrap().apply_chat_flags(
+                            &chat_id,
+                            None,
+                            Some(!pinned),
+                            None,
+                            None,
+                        );
+                        r
+                    }
+                    "archive" => {
+                        let chats_arc = cl.lock().unwrap().chats().clone();
+                        let archived = chats_arc
+                            .lock()
+                            .unwrap()
+                            .iter()
+                            .find(|c| c.id == chat_id)
+                            .map(|c| c.archived)
+                            .unwrap_or(false);
+                        let r = ctrl.set_chat_archived(&chat_id, !archived).await;
                         cl.lock().unwrap().apply_chat_flags(
                             &chat_id,
                             None,
                             None,
+                            Some(!archived),
                             None,
-                            Some(0),
                         );
+                        r
                     }
-                    r
-                }
-                "mute" => {
-                    let currently = ctrl.is_chat_muted(&chat_id).await;
-                    let r = ctrl.set_chat_muted(&chat_id, !currently).await;
-                    // Always apply local flag even if API fails (responsive UI)
-                    cl.lock().unwrap().apply_chat_flags(
-                        &chat_id,
-                        Some(!currently),
-                        None,
-                        None,
-                        None,
-                    );
-                    r
-                }
-                "pin" => {
-                    let chats_arc = cl.lock().unwrap().chats().clone();
-                    let pinned = chats_arc
-                        .lock()
-                        .unwrap()
-                        .iter()
-                        .find(|c| c.id == chat_id)
-                        .map(|c| c.pinned)
-                        .unwrap_or(false);
-                    let r = ctrl.set_chat_pinned(&chat_id, !pinned).await;
-                    cl.lock().unwrap().apply_chat_flags(
-                        &chat_id,
-                        None,
-                        Some(!pinned),
-                        None,
-                        None,
-                    );
-                    r
-                }
-                "archive" => {
-                    let chats_arc = cl.lock().unwrap().chats().clone();
-                    let archived = chats_arc
-                        .lock()
-                        .unwrap()
-                        .iter()
-                        .find(|c| c.id == chat_id)
-                        .map(|c| c.archived)
-                        .unwrap_or(false);
-                    let r = ctrl.set_chat_archived(&chat_id, !archived).await;
-                    cl.lock().unwrap().apply_chat_flags(
-                        &chat_id,
-                        None,
-                        None,
-                        Some(!archived),
-                        None,
-                    );
-                    r
-                }
-                "delete" => {
-                    let r = ctrl.delete_chat(&chat_id).await;
-                    cl.lock().unwrap().remove_chat(&chat_id);
-                    if cv.current_chat_id().as_deref() == Some(chat_id.as_str()) {
-                        cv.set_empty();
+                    "delete" => {
+                        let r = ctrl.delete_chat(&chat_id).await;
+                        cl.lock().unwrap().remove_chat(&chat_id);
+                        if cv.current_chat_id().as_deref() == Some(chat_id.as_str()) {
+                            cv.set_empty();
+                        }
+                        r
                     }
-                    r
+                    other => {
+                        log::warn!("Unknown chat action: {}", other);
+                        Ok(())
+                    }
+                };
+                if let Err(e) = result {
+                    log::warn!("Chat action '{}' failed: {}", action, e);
                 }
-                other => {
-                    log::warn!("Unknown chat action: {}", other);
-                    Ok(())
-                }
-            };
-            if let Err(e) = result {
-                log::warn!("Chat action '{}' failed: {}", action, e);
-            }
-            tray.set_unread_count(ctrl.total_unread().await);
+                tray.set_unread_count(ctrl.total_unread().await);
+            });
         });
-    });
 
     // Periodic outbox retry (every 45s)
     let ctrl_outbox = controller.clone();
@@ -1295,13 +1292,8 @@ fn create_app_layout(
                         }
                     }
                     // Delivery / read ticks
-                    "message_status"
-                    | "status_update"
-                    | "delivery_update"
-                    | "message_delivered"
-                    | "message_read"
-                    | "read"
-                    | "read_update" => {
+                    "message_status" | "status_update" | "delivery_update"
+                    | "message_delivered" | "message_read" | "read" | "read_update" => {
                         if let Some(update) =
                             crate::api::HttpClient::parse_status_update_payload(&ws_msg.message)
                         {

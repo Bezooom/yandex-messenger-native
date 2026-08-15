@@ -1069,9 +1069,7 @@ fn harvest_and_save_session_from_webview(webview: &webkit6::WebView) -> bool {
 }
 
 #[cfg(feature = "in_app_webview")]
-fn harvest_cookies_sync(
-    cm: &webkit6::CookieManager,
-) -> std::collections::HashMap<String, String> {
+fn harvest_cookies_sync(cm: &webkit6::CookieManager) -> std::collections::HashMap<String, String> {
     use std::cell::{Cell, RefCell};
     use std::rc::Rc;
 

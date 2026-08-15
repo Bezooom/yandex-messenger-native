@@ -559,9 +559,7 @@ impl ChatView {
                 cv_key.handle_send();
                 return glib::Propagation::Stop;
             }
-            if is_primary
-                && (keyval == gtk::gdk::Key::v || keyval == gtk::gdk::Key::V)
-            {
+            if is_primary && (keyval == gtk::gdk::Key::v || keyval == gtk::gdk::Key::V) {
                 // Prefer image paste; if no image, let TextView handle text paste
                 if cv_key.try_paste_clipboard_image() {
                     return glib::Propagation::Stop;
@@ -811,10 +809,10 @@ impl ChatView {
         }
 
         let mut messages = self.messages.lock().unwrap();
-        if let Some(existing) = messages.iter_mut().find(|m| {
-            m.id == msg.id
-                || (m.message_id.is_some() && m.message_id == msg.message_id)
-        }) {
+        if let Some(existing) = messages
+            .iter_mut()
+            .find(|m| m.id == msg.id || (m.message_id.is_some() && m.message_id == msg.message_id))
+        {
             let mut need_rerender = false;
             if !msg.reactions.is_empty() {
                 existing.reactions = msg.reactions.clone();
@@ -1042,10 +1040,7 @@ impl ChatView {
             } else {
                 reaction.emoji.clone()
             };
-            let mut classes = vec![
-                "reaction-chip".to_string(),
-                "reaction-pop".to_string(),
-            ];
+            let mut classes = vec!["reaction-chip".to_string(), "reaction-pop".to_string()];
             if reaction.selected {
                 classes.push("selected".to_string());
             }
@@ -1202,8 +1197,7 @@ impl ChatView {
         *self.reply_to_msg_id.lock().unwrap() = None;
         *self.edit_msg_id.lock().unwrap() = None;
         self.send_btn.set_visible(false);
-        self.voice_btn
-            .set_visible(crate::config::ym_enable_voice());
+        self.voice_btn.set_visible(crate::config::ym_enable_voice());
 
         if let Some(cb) = self.on_send.lock().unwrap().as_ref() {
             cb(chat_id, text, reply_id, edit_id);
@@ -1639,10 +1633,7 @@ impl ChatView {
     }
 
     /// Callback for file download/open: (file_id, url, filename, open_after).
-    pub fn on_file_download(
-        &self,
-        callback: impl Fn(String, String, String, bool) + 'static,
-    ) {
+    pub fn on_file_download(&self, callback: impl Fn(String, String, String, bool) + 'static) {
         *self.on_file_download.lock().unwrap() = Some(StdBox::new(callback));
     }
 
@@ -1700,7 +1691,10 @@ impl ChatView {
         self.status_label.set_label(&status_text);
 
         // Show the call button when a chat is selected (except for channels)
-        self.call_btn.set_visible(chat.chat_type != crate::models::ChatType::Channel && crate::config::ym_enable_telemost_ui());
+        self.call_btn.set_visible(
+            chat.chat_type != crate::models::ChatType::Channel
+                && crate::config::ym_enable_telemost_ui(),
+        );
 
         // Show composer bar (TG layout: attach + full-width text + emoji + send/voice)
         self.input_area.set_visible(true);
@@ -1715,7 +1709,8 @@ impl ChatView {
             buffer.text(&start, &end, false).trim().is_empty()
         };
         self.send_btn.set_visible(!is_empty);
-        self.voice_btn.set_visible(is_empty && crate::config::ym_enable_voice());
+        self.voice_btn
+            .set_visible(is_empty && crate::config::ym_enable_voice());
 
         // Loading skeleton until messages arrive
         if is_new_chat {
@@ -1986,12 +1981,7 @@ impl ChatView {
                 if media.url.is_empty() {
                     "Файл".to_string()
                 } else {
-                    media
-                        .url
-                        .rsplit('/')
-                        .next()
-                        .unwrap_or("file")
-                        .to_string()
+                    media.url.rsplit('/').next().unwrap_or("file").to_string()
                 }
             });
         let name_label = Label::builder()
@@ -2094,7 +2084,8 @@ impl ChatView {
     /// Drag-and-drop files + paste images into the chat.
     fn setup_file_drop_and_paste(self: &Arc<Self>) {
         // DnD target on the whole chat container
-        let drop_target = gtk::DropTarget::new(gio::File::static_type(), gtk::gdk::DragAction::COPY);
+        let drop_target =
+            gtk::DropTarget::new(gio::File::static_type(), gtk::gdk::DragAction::COPY);
         let this = self.clone();
         drop_target.connect_drop(move |_target, value, _x, _y| {
             let Ok(file) = value.get::<gio::File>() else {
@@ -2245,11 +2236,14 @@ impl ChatView {
                     this.paste_clipboard_uri_file();
                     // Soft feedback if nothing works shortly
                     let toast = this.clone();
-                    glib::timeout_add_local_once(std::time::Duration::from_millis(600), move || {
-                        // Only show if still no recent attach (best-effort hint)
-                        log::debug!("clipboard paste chain finished without guaranteed image");
-                        let _ = toast;
-                    });
+                    glib::timeout_add_local_once(
+                        std::time::Duration::from_millis(600),
+                        move || {
+                            // Only show if still no recent attach (best-effort hint)
+                            log::debug!("clipboard paste chain finished without guaranteed image");
+                            let _ = toast;
+                        },
+                    );
                 }
             },
         );
@@ -2983,7 +2977,8 @@ impl ChatView {
                         }
                     }
 
-                    if let Err(e) = load_inline_image(&img_clone, &url_clone, Some(&file_id)).await {
+                    if let Err(e) = load_inline_image(&img_clone, &url_clone, Some(&file_id)).await
+                    {
                         log::warn!("Failed to load inline image: {}", e);
                     }
                 });
@@ -4019,15 +4014,16 @@ async fn load_inline_image(
                     img_clone.set_pixel_size(240);
                     Ok(())
                 }
-                Err(e) => match load_texture_via_pixbuf_scaled(&preview_png, INLINE_PREVIEW_MAX_SIDE)
-                {
-                    Ok(texture) => {
-                        img_clone.set_from_paintable(Some(&texture));
-                        img_clone.set_pixel_size(240);
-                        Ok(())
+                Err(e) => {
+                    match load_texture_via_pixbuf_scaled(&preview_png, INLINE_PREVIEW_MAX_SIDE) {
+                        Ok(texture) => {
+                            img_clone.set_from_paintable(Some(&texture));
+                            img_clone.set_pixel_size(240);
+                            Ok(())
+                        }
+                        Err(e2) => Err(format!("texture: {}; pixbuf: {}", e, e2)),
                     }
-                    Err(e2) => Err(format!("texture: {}; pixbuf: {}", e, e2)),
-                },
+                }
             }
         }
         Ok(Err(e)) => Err(e),
@@ -4056,9 +4052,7 @@ fn load_texture_via_pixbuf_scaled(
     loader
         .write(bytes)
         .map_err(|e| format!("pixbuf write: {}", e))?;
-    loader
-        .close()
-        .map_err(|e| format!("pixbuf close: {}", e))?;
+    loader.close().map_err(|e| format!("pixbuf close: {}", e))?;
     let pixbuf = loader
         .pixbuf()
         .ok_or_else(|| "pixbuf loader empty".to_string())?;

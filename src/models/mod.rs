@@ -195,7 +195,12 @@ pub struct Message {
 
 impl Message {
     pub fn preview(&self) -> String {
-        if let Some(text) = self.text.as_ref().map(|t| t.trim()).filter(|t| !t.is_empty()) {
+        if let Some(text) = self
+            .text
+            .as_ref()
+            .map(|t| t.trim())
+            .filter(|t| !t.is_empty())
+        {
             let truncated: String = text.chars().take(100).collect();
             return if text.chars().count() > 100 {
                 format!("{}…", truncated)
@@ -232,7 +237,10 @@ impl Message {
             MessageType::Call | MessageType::Telemost | MessageType::ScreenShare => {
                 "📞 Звонок".to_string()
             }
-            MessageType::System | MessageType::Pin | MessageType::Unpin | MessageType::Kick
+            MessageType::System
+            | MessageType::Pin
+            | MessageType::Unpin
+            | MessageType::Kick
             | MessageType::Invite => "ℹ️ Системное сообщение".to_string(),
             MessageType::Link => "🔗 Ссылка".to_string(),
             MessageType::Forward => "↪ Пересланное сообщение".to_string(),

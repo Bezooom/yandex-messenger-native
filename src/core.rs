@@ -78,15 +78,10 @@ impl AppController {
             Ok(d) => Arc::new(d),
             Err(e) => {
                 log::error!("SQLite cache open failed ({}): using temp fallback", e);
-                let path = std::env::temp_dir().join(format!(
-                    "ym-cache-fallback-{}.db",
-                    std::process::id()
-                ));
-                let conn = rusqlite::Connection::open(&path)
-                    .expect("temp sqlite open");
-                Arc::new(
-                    Database::from_connection(conn).expect("temp sqlite schema"),
-                )
+                let path = std::env::temp_dir()
+                    .join(format!("ym-cache-fallback-{}.db", std::process::id()));
+                let conn = rusqlite::Connection::open(&path).expect("temp sqlite open");
+                Arc::new(Database::from_connection(conn).expect("temp sqlite schema"))
             }
         };
         Self {
@@ -576,7 +571,9 @@ impl AppController {
             self.http.edit_message(chat_id, mid, text).await?;
             let mut state = self.state.lock().await;
             if let Some(msgs) = state.messages_by_chat.get_mut(chat_id) {
-                if let Some(msg) = msgs.iter_mut().find(|m| m.id == mid || m.message_id.as_deref() == Some(mid))
+                if let Some(msg) = msgs
+                    .iter_mut()
+                    .find(|m| m.id == mid || m.message_id.as_deref() == Some(mid))
                 {
                     msg.text = Some(text.to_string());
                     msg.edited = true;
@@ -588,11 +585,7 @@ impl AppController {
             return Ok(Message {
                 id: mid.to_string(),
                 chat_id: chat_id.to_string(),
-                from_id: self
-                    .auth
-                    .get_current_account_id()
-                    .await
-                    .unwrap_or_default(),
+                from_id: self.auth.get_current_account_id().await.unwrap_or_default(),
                 message_id: Some(mid.to_string()),
                 rmid: None,
                 type_: crate::models::MessageType::Text,
@@ -647,15 +640,13 @@ impl AppController {
             }
             Err(e) => {
                 log::warn!("Send failed, queuing outbox: {}", e);
-                let item = self.outbox.enqueue(chat_id, text, reply_to, Some(e.clone()));
+                let item = self
+                    .outbox
+                    .enqueue(chat_id, text, reply_to, Some(e.clone()));
                 let pending = Message {
                     id: item.id.clone(),
                     chat_id: chat_id.to_string(),
-                    from_id: self
-                        .auth
-                        .get_current_account_id()
-                        .await
-                        .unwrap_or_default(),
+                    from_id: self.auth.get_current_account_id().await.unwrap_or_default(),
                     message_id: Some(item.id.clone()),
                     rmid: None,
                     type_: crate::models::MessageType::Text,
@@ -760,10 +751,7 @@ impl AppController {
                 .and_then(|m| m.last())
                 .map(|m| m.id.clone())
         };
-        let res = self
-            .http
-            .mark_chat_read(chat_id, last_id.as_deref())
-            .await;
+        let res = self.http.mark_chat_read(chat_id, last_id.as_deref()).await;
         if let Ok(()) = res {
             let mut state = self.state.lock().await;
             if let Some(chat) = state.chats.iter_mut().find(|c| c.id == chat_id) {
@@ -847,10 +835,7 @@ impl AppController {
 
     /// Apply delivery/read status to messages in memory (and SQLite best-effort).
     /// Returns list of message ids that changed.
-    pub async fn apply_status_update(
-        &self,
-        update: crate::api::StatusUpdate,
-    ) -> Vec<String> {
+    pub async fn apply_status_update(&self, update: crate::api::StatusUpdate) -> Vec<String> {
         let mut changed = Vec::new();
         let mut state = self.state.lock().await;
 
@@ -987,11 +972,7 @@ impl AppController {
     }
 
     /// Download attachment bytes (prefer file id, fall back to URL).
-    pub async fn download_attachment(
-        &self,
-        file_id: &str,
-        url: &str,
-    ) -> Result<Vec<u8>, String> {
+    pub async fn download_attachment(&self, file_id: &str, url: &str) -> Result<Vec<u8>, String> {
         if !file_id.is_empty() && !file_id.starts_with("http") {
             match self.download_file(file_id).await {
                 Ok(b) if !b.is_empty() => return Ok(b),
@@ -1354,7 +1335,9 @@ fn image_dimensions_fast(data: &[u8]) -> (Option<u32>, Option<u32>) {
 fn cache_outgoing_image_preview(file_data: &[u8], file_id: &str) -> Option<String> {
     use std::io::Cursor;
 
-    let cache = dirs::cache_dir()?.join("yandex-messenger-native").join("previews");
+    let cache = dirs::cache_dir()?
+        .join("yandex-messenger-native")
+        .join("previews");
     std::fs::create_dir_all(&cache).ok()?;
     let safe: String = file_id
         .chars()

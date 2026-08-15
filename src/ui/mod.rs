@@ -27,5 +27,5 @@ pub mod voice_message_player;
 pub use auth_dialog::AuthDialog;
 pub use chat_list::ChatListPanel;
 pub use chat_view::ChatView;
-pub use thread_view::ThreadView;
 pub use telemost_window::TelemostWindow;
+pub use thread_view::ThreadView;

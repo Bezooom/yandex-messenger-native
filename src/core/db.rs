@@ -121,9 +121,8 @@ impl Database {
 
     pub fn get_chats(&self) -> SqlResult<Vec<Chat>> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(
-            "SELECT raw_json FROM chats ORDER BY pinned DESC, updated_at DESC",
-        )?;
+        let mut stmt =
+            conn.prepare("SELECT raw_json FROM chats ORDER BY pinned DESC, updated_at DESC")?;
         let rows = stmt.query_map([], |row| {
             let raw: String = row.get(0)?;
             Ok(raw)

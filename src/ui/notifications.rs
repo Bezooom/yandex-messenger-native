@@ -64,7 +64,10 @@ pub fn send_notification_for_chat(
 
     if let Err(e) = builder.show() {
         // Fallback so we still see something in logs / headless CI
-        eprintln!("[notification] {}: {} (desktop notify failed: {})", summary, body, e);
+        eprintln!(
+            "[notification] {}: {} (desktop notify failed: {})",
+            summary, body, e
+        );
     }
 }
 

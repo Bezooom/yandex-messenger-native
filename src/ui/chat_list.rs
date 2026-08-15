@@ -1007,12 +1007,9 @@ impl ChatListPanel {
 
             let avatar_clone = avatar.clone();
             // Use shared URL resolver (yapic CDN + files.messenger for chat/dialogs)
-            let avatar_url = crate::models::Account::resolve_avatar_url(&avatar_id)
-                .unwrap_or_else(|| {
-                    format!(
-                        "https://files.messenger.yandex.ru/{}?size=small",
-                        avatar_id
-                    )
+            let avatar_url =
+                crate::models::Account::resolve_avatar_url(&avatar_id).unwrap_or_else(|| {
+                    format!("https://files.messenger.yandex.ru/{}?size=small", avatar_id)
                 });
             let needs_auth = avatar_url.contains("files.messenger.yandex.");
 
@@ -1042,23 +1039,22 @@ impl ChatListPanel {
                     Ok(Ok(bytes)) if !bytes.is_empty() => {
                         // Decode + downscale off UI path to avoid freezes/crashes on large avatars
                         let raw = bytes.to_vec();
-                        let preview = tokio::task::spawn_blocking(move || {
-                            downscale_avatar_bytes(&raw, 128)
-                        })
-                        .await
-                        .ok()
-                        .and_then(|r| r.ok());
+                        let preview =
+                            tokio::task::spawn_blocking(move || downscale_avatar_bytes(&raw, 128))
+                                .await
+                                .ok()
+                                .and_then(|r| r.ok());
 
                         let texture = if let Some(png) = preview {
                             let g = glib::Bytes::from(&png);
-                            gtk::gdk::Texture::from_bytes(&g).ok().or_else(|| {
-                                load_avatar_texture_pixbuf(&png)
-                            })
+                            gtk::gdk::Texture::from_bytes(&g)
+                                .ok()
+                                .or_else(|| load_avatar_texture_pixbuf(&png))
                         } else {
                             let g = glib::Bytes::from(&bytes);
-                            gtk::gdk::Texture::from_bytes(&g).ok().or_else(|| {
-                                load_avatar_texture_pixbuf(&bytes)
-                            })
+                            gtk::gdk::Texture::from_bytes(&g)
+                                .ok()
+                                .or_else(|| load_avatar_texture_pixbuf(&bytes))
                         };
 
                         match texture {
@@ -1172,10 +1168,7 @@ impl ChatListPanel {
         gesture
     }
 
-    fn show_context_menu(
-        chat: Chat,
-        action_cb: Arc<Mutex<Option<Box<dyn Fn(String, String)>>>>,
-    ) {
+    fn show_context_menu(chat: Chat, action_cb: Arc<Mutex<Option<Box<dyn Fn(String, String)>>>>) {
         let menu = GtkBox::new(Orientation::Vertical, 2);
         menu.add_css_class("chat-context-menu");
 

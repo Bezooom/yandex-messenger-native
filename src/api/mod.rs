@@ -7,8 +7,8 @@ pub mod group;
 pub mod saved_message;
 pub mod scheduled_message;
 pub mod session_store;
-pub mod translation;
 pub mod telemost;
+pub mod translation;
 
 /// Delivery/read status update from WebSocket or history.
 #[derive(Debug, Clone)]
@@ -311,19 +311,15 @@ impl WebSocketClient {
     /// Perform a single WebSocket connection attempt
     async fn do_connect(&self) -> Result<(), String> {
         let (cookies_str, uid) = Self::get_session_cookies_and_uid().ok_or_else(|| {
-            "Failed to load session cookies/UID from session.json. Please re-login."
-                .to_string()
+            "Failed to load session cookies/UID from session.json. Please re-login.".to_string()
         })?;
 
         // OAuth is REQUIRED for push.yandex.ru — cookies alone → close 4401 "no credentials"
-        let oauth = self
-            .auth
-            .get_access_token()
-            .map_err(|e| {
-                format!(
-                    "No OAuth access token ({e}). Re-login so messenger can open the push WebSocket."
-                )
-            })?;
+        let oauth = self.auth.get_access_token().map_err(|e| {
+            format!(
+                "No OAuth access token ({e}). Re-login so messenger can open the push WebSocket."
+            )
+        })?;
         let auth_header = if oauth.starts_with("OAuth ") {
             oauth
         } else {
@@ -596,8 +592,7 @@ impl WebSocketClient {
                                             .unwrap_or_else(|| {
                                                 chrono::Utc::now().timestamp_millis()
                                             });
-                                        let created_secs =
-                                            normalize_unix_timestamp_secs(timestamp);
+                                        let created_secs = normalize_unix_timestamp_secs(timestamp);
 
                                         if !chat_id.is_empty() && !text.is_empty() {
                                             method = "new_message";
@@ -1016,8 +1011,7 @@ impl WebSocketClient {
         drop(counter);
 
         let yuid = Self::get_yuid_from_session().ok_or_else(|| {
-            "Нет session yuid (session.json). Перелогиньтесь, чтобы отправлять файлы."
-                .to_string()
+            "Нет session yuid (session.json). Перелогиньтесь, чтобы отправлять файлы.".to_string()
         })?;
         let custom_payload_json = serde_json::json!({
             "service": {
@@ -1570,10 +1564,13 @@ impl HttpClient {
         params: serde_json::Value,
     ) -> Result<serde_json::Value, String> {
         let cookies_guard = self.session_cookies.lock().unwrap();
-        let cookies = cookies_guard.as_ref().ok_or_else(|| {
-            "No session cookies. Re-login in the app (session is captured automatically)."
-                .to_string()
-        })?.clone();
+        let cookies = cookies_guard
+            .as_ref()
+            .ok_or_else(|| {
+                "No session cookies. Re-login in the app (session is captured automatically)."
+                    .to_string()
+            })?
+            .clone();
         drop(cookies_guard);
 
         let body = serde_json::json!({
@@ -2711,7 +2708,11 @@ impl HttpClient {
                 return (true, false);
             }
             // views > 0 often means read in channels
-            if let Some(views) = src.get("views").or_else(|| src.get("Views")).and_then(|v| v.as_u64()) {
+            if let Some(views) = src
+                .get("views")
+                .or_else(|| src.get("Views"))
+                .and_then(|v| v.as_u64())
+            {
                 if views > 0 {
                     return (true, true);
                 }
@@ -2722,9 +2723,7 @@ impl HttpClient {
     }
 
     /// Parse a status-update WS payload → (message_id, delivered, read) or chat-wide read.
-    pub fn parse_status_update_payload(
-        payload: &serde_json::Value,
-    ) -> Option<StatusUpdate> {
+    pub fn parse_status_update_payload(payload: &serde_json::Value) -> Option<StatusUpdate> {
         let msg_id = payload
             .get("message_id")
             .or_else(|| payload.get("messageId"))
@@ -2878,7 +2877,10 @@ impl HttpClient {
             "message_id": message_id,
             "text": text,
         });
-        match self.session_rpc_request("edit_message", params.clone()).await {
+        match self
+            .session_rpc_request("edit_message", params.clone())
+            .await
+        {
             Ok(_) => Ok(()),
             Err(e1) => {
                 // Alternate param casing used by some clients
@@ -3019,7 +3021,10 @@ impl HttpClient {
         let attempts = [
             ("leave", serde_json::json!({"chat_id": chat_id})),
             ("delete_chat", serde_json::json!({"chat_id": chat_id})),
-            ("hide_chat", serde_json::json!({"chat_id": chat_id, "hide": true})),
+            (
+                "hide_chat",
+                serde_json::json!({"chat_id": chat_id, "hide": true}),
+            ),
         ];
         let mut last_err = String::new();
         for (method, params) in attempts {
@@ -3119,10 +3124,7 @@ impl HttpClient {
 
         let mime = Self::guess_mime_type(safe_name);
         // Prefer private host (web template: filePrivateHost), then public.
-        let hosts = [
-            config::FILE_PRIVATE_HOST,
-            config::FILE_PUBLIC_HOST,
-        ];
+        let hosts = [config::FILE_PRIVATE_HOST, config::FILE_PUBLIC_HOST];
 
         let mut last_err = String::new();
         for host in hosts {
@@ -3162,7 +3164,12 @@ impl HttpClient {
                 .map_err(|e| format!("Upload read failed: {}", e))?;
 
             if !status.is_success() {
-                last_err = format!("HTTP {} from {}: {}", status, host, &text[..text.len().min(200)]);
+                last_err = format!(
+                    "HTTP {} from {}: {}",
+                    status,
+                    host,
+                    &text[..text.len().min(200)]
+                );
                 log::warn!("media_upload failed: {}", last_err);
                 continue;
             }
@@ -3180,10 +3187,7 @@ impl HttpClient {
                 .pointer("/data/file_id")
                 .and_then(|v| v.as_str())
                 .or_else(|| json.get("file_id").and_then(|v| v.as_str()))
-                .or_else(|| {
-                    json.pointer("/data/file_ids/0")
-                        .and_then(|v| v.as_str())
-                })
+                .or_else(|| json.pointer("/data/file_ids/0").and_then(|v| v.as_str()))
                 .or_else(|| json.get("fileId").and_then(|v| v.as_str()))
                 .map(|s| s.to_string());
 
@@ -3192,7 +3196,10 @@ impl HttpClient {
                 return Ok(id);
             }
 
-            last_err = format!("No file_id in upload response: {}", &text[..text.len().min(200)]);
+            last_err = format!(
+                "No file_id in upload response: {}",
+                &text[..text.len().min(200)]
+            );
         }
 
         Err(format!("File upload failed: {}", last_err))
@@ -4415,7 +4422,9 @@ mod tests {
         // Default OAuth client_id is empty — set via YANDEX_CLIENT_ID (32-char hex).
         assert!(
             config::OAUTH_CLIENT_ID.is_empty()
-                || config::OAUTH_CLIENT_ID.chars().all(|c| c.is_ascii_hexdigit()),
+                || config::OAUTH_CLIENT_ID
+                    .chars()
+                    .all(|c| c.is_ascii_hexdigit()),
             "OAUTH_CLIENT_ID must be empty or a hex OAuth app id, not a package name"
         );
         assert_eq!(config::TELEMOST_URL, "https://telemost.yandex.ru");

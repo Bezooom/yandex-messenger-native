@@ -105,7 +105,10 @@ pub fn save_session(data: &SessionData) -> Result<(), String> {
     log::info!(
         "Session saved ({} cookies, csrf={})",
         data.cookies.len(),
-        data.csrf_token.as_ref().map(|s| !s.is_empty()).unwrap_or(false)
+        data.csrf_token
+            .as_ref()
+            .map(|s| !s.is_empty())
+            .unwrap_or(false)
     );
     Ok(())
 }

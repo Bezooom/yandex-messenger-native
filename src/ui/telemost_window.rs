@@ -292,8 +292,7 @@ impl TelemostWindow {
 
         // Update participant count
         let count = conference.participants.len();
-        self.participant_count_label
-            .set_text(&count.to_string());
+        self.participant_count_label.set_text(&count.to_string());
 
         // Clear and rebuild participants list (GTK4: walk first_child / next_sibling)
         while let Some(child) = self.participants_list.first_child() {
@@ -305,7 +304,10 @@ impl TelemostWindow {
         }
     }
 
-    fn create_participant_row(&self, participant: &crate::models::telemost::TelemostParticipant) -> Box {
+    fn create_participant_row(
+        &self,
+        participant: &crate::models::telemost::TelemostParticipant,
+    ) -> Box {
         let row = Box::new(Orientation::Horizontal, 12);
         row.set_margin_bottom(4);
 
