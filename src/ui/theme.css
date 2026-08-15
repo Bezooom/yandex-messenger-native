@@ -1,73 +1,94 @@
 /* ============================================================
-   Yandex Messenger — Premium Dark Theme v2
-   Production-grade, highly polished, strict dark surfaces.
+   Yandex Messenger — Telegram Desktop–inspired layout & tokens
+   Source of truth (palette keys):
+     telegramdesktop/tdesktop → night.tdesktop-theme / colors.tdesktop-theme
+   Layout patterns:
+     Nheko-Reborn/nheko → ChatPage.qml SplitView + RoomList.qml row geometry
+   Brand yellow kept only for app identity (icon / rare accents).
    ============================================================ */
 
 /* ==========================================================
-   Color Palette & Spacing Tokens
+   Color Palette — mapped from TG night.tdesktop-theme
    ========================================================== */
 
+/* Brand (Yandex identity, not primary chrome) */
 @define-color brand_yellow         #ffcc00;
-@define-color brand_yellow_hover   #ffb300;
-@define-color brand_yellow_active  #e6a100;
-@define-color brand_yellow_fg      #1a1a24;
+@define-color brand_yellow_hover   #ffd633;
+@define-color brand_yellow_active  #e6b800;
+@define-color brand_yellow_fg      #17212b;
 
-@define-color bg_root              #09090b;  /* Obsidian */
-@define-color bg_sidebar           #111116;  /* Deep clean slate */
-@define-color bg_chat              #09090b;  /* Obsidian */
-@define-color bg_header            #111116;
-@define-color bg_hover             rgba(255, 255, 255, 0.04);
-@define-color bg_selected          rgba(255, 255, 255, 0.08);
-@define-color bg_active            rgba(255, 255, 255, 0.12);
-@define-color bg_composer          #14141c;
-@define-color bg_elevated          #1a1a24;
+/* windowBg / windowFg */
+@define-color bg_root              #17212b;
+@define-color bg_sidebar           #17212b; /* dialogs share windowBg in night */
+@define-color bg_chat              #0e1621; /* classic TG chat canvas (slightly deeper) */
+@define-color bg_header            #17212b; /* topBarBg */
+@define-color bg_hover             #202b36; /* dialogsBgOver */
+@define-color bg_selected          #2b5278; /* dialogsBgActive — solid, not tint */
+@define-color bg_active            #232e3c; /* windowBgOver */
+@define-color bg_composer          #242f3d; /* filterInputInactiveBg / compose field */
+@define-color bg_elevated          #242f3d;
+@define-color bg_list_sep          rgba(255, 255, 255, 0.04);
 
-@define-color border_color         rgba(255, 255, 255, 0.04);
-@define-color border_light         rgba(255, 255, 255, 0.08);
-@define-color border_faint         rgba(255, 255, 255, 0.02);
-@define-color border_active        #2f80ed;
+@define-color border_color         #232f39; /* menuSeparatorFg */
+@define-color border_light         #2c3847;
+@define-color border_faint         rgba(255, 255, 255, 0.03);
+@define-color border_active        #2f6ea5; /* activeButtonBg */
 
-@define-color text_primary         #f4f4f7;
-@define-color text_secondary       #a1a1aa;
-@define-color text_tertiary        #71717a;
-@define-color text_muted           #52525b;
-@define-color text_dim             #3f3f46;
-@define-color text_on_brand        #1a1a24;
+@define-color text_primary         #f5f5f5; /* windowFg / dialogsNameFg */
+@define-color text_secondary       #7f91a4; /* dialogsTextFg */
+@define-color text_tertiary        #708499; /* windowSubTextFg */
+@define-color text_muted           #6d7f8f; /* msgInDateFg */
+@define-color text_dim             #576673;
+@define-color text_on_brand        #ffffff;
+@define-color text_on_selected     #ffffff;
+@define-color text_date            #8696a8; /* dialogsDateFg */
+@define-color text_link            #70baf5; /* historyLinkInFg */
+@define-color text_accent          #6ab3f3; /* windowActiveTextFg */
 
-@define-color bubble_received      #1e1e28;
-@define-color bubble_sent          #2f80ed;
-@define-color bubble_sent_hover    #3897ff;
-@define-color bubble_received_hover #242432;
+/* Bubbles — msgInBg / msgOutBg */
+@define-color bubble_received      #182533;
+@define-color bubble_sent          #2b5278;
+@define-color bubble_sent_hover    #315a80;
+@define-color bubble_received_hover #1c2b3a;
+@define-color tick_read            #72bcfd; /* dialogsSentIconFg */
+@define-color tick_delivered       #72bcfd;
+@define-color tick_pending         #647d96; /* dialogsSendingIconFg */
 
-@define-color status_online        #10b981;
-@define-color status_away          #f59e0b;
-@define-color status_offline       #71717a;
-@define-color status_dnd           #ef4444;
+@define-color status_online        #4fae4e;
+@define-color status_away          #fcbe05;
+@define-color status_offline       #708499;
+@define-color status_dnd           #ff525d;
 
-@define-color accent_blue          #2f80ed;
-@define-color accent_red           #ef4444;
-@define-color accent_green         #10b981;
-@define-color danger               #ef4444;
-@define-color warning              #f59e0b;
+/* activeButtonBg */
+@define-color accent_blue          #2f6ea5;
+@define-color accent_blue_hover    #3476ab;
+@define-color accent_red           #e92539;
+@define-color accent_green         #4fae4e;
+@define-color danger               #e92539;
+@define-color warning              #fcbe05;
+@define-color unread_bg            #4082bc; /* dialogsUnreadBg */
+@define-color unread_muted_bg      #3e546a; /* dialogsUnreadBgMuted */
+@define-color service_bg           #213040; /* msgServiceBg (approx, no alpha in GTK) */
 
-@define-color scrollbar_track      rgba(0, 0, 0, 0.02);
-@define-color scrollbar_handle     rgba(255, 255, 255, 0.08);
-@define-color scrollbar_handle_hover rgba(255, 255, 255, 0.16);
-@define-color scrollbar_handle_active rgba(255, 255, 255, 0.24);
+@define-color scrollbar_track      transparent;
+@define-color scrollbar_handle     rgba(255, 255, 255, 0.28); /* scrollBarBg-ish */
+@define-color scrollbar_handle_hover rgba(255, 255, 255, 0.40);
+@define-color scrollbar_handle_active rgba(255, 255, 255, 0.50);
 
-@define-color popover_bg           #181822;
-@define-color popover_border       rgba(255, 255, 255, 0.06);
-@define-color popover_shadow       rgba(0, 0, 0, 0.6);
+@define-color popover_bg           #17212b; /* menuBg */
+@define-color popover_border       #232f39;
+@define-color popover_shadow       rgba(0, 0, 0, 0.45);
 
 /* ==========================================================
    Global Transitions & Typography
    ========================================================== */
 
 * {
-  transition-duration: 250ms;
-  transition-timing-function: cubic-bezier(0.2, 0.0, 0.0, 1.0); /* motionEasingEmphasized (Yandex Android) */
-  font-family: "YS Text", "Inter", "Geist", "Roboto", "Helvetica Neue", sans-serif;
-  letter-spacing: -0.1px;
+  transition-duration: 120ms;
+  transition-timing-function: ease;
+  /* TG Desktop uses system UI font; prefer clean sans */
+  font-family: "Inter", "Segoe UI", "Ubuntu", "Cantarell", "Roboto", sans-serif;
+  letter-spacing: 0;
 }
 
 /* ==========================================================
@@ -172,7 +193,7 @@ button {
 
 button:hover {
   background-color: @bg_hover;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: none;
 }
 
 button:active {
@@ -206,38 +227,43 @@ button:active {
 /* Primary action button */
 
 button.primary-action {
-  background-image: linear-gradient(135deg, @brand_yellow, @brand_yellow_hover);
+  background-color: @brand_yellow;
+  background-image: none;
   color: @text_on_brand;
-  font-weight: 700;
+  font-weight: 600;
   font-size: 15px;
-  border-radius: 12px;
-  padding: 14px 28px;
+  border-radius: 10px;
+  padding: 12px 22px;
   border: none;
-  box-shadow: 0 4px 16px rgba(255, 179, 0, 0.25);
+  box-shadow: none;
 }
 
 button.primary-action:hover {
-  background-image: linear-gradient(135deg, @brand_yellow_hover, @brand_yellow_active);
-  box-shadow: 0 6px 20px rgba(255, 179, 0, 0.4);
+  background-color: @brand_yellow_hover;
+  background-image: none;
+  box-shadow: none;
 }
 
 button.primary-action:active {
-  background-image: linear-gradient(135deg, @brand_yellow_active, @brand_yellow_active);
+  background-color: @brand_yellow_active;
+  background-image: none;
   box-shadow: none;
 }
 
 button.suggested-action {
-  background-image: linear-gradient(135deg, @brand_yellow, @brand_yellow_hover);
+  background-color: @brand_yellow;
+  background-image: none;
   color: @text_on_brand;
   font-weight: 600;
-  border-radius: 10px;
-  padding: 8px 16px;
+  border-radius: 8px;
+  padding: 8px 14px;
   border: none;
-  box-shadow: 0 2px 8px rgba(255, 179, 0, 0.15);
+  box-shadow: none;
 }
 
 button.suggested-action:hover {
-  background-image: linear-gradient(135deg, @brand_yellow_hover, @brand_yellow_active);
+  background-color: @brand_yellow_hover;
+  background-image: none;
 }
 
 button.danger {
@@ -263,9 +289,9 @@ entry {
 }
 
 entry:focus {
-  border-color: @border_active;
+  border-color: @border_light;
   background-color: rgba(255, 255, 255, 0.05);
-  box-shadow: 0 0 0 1px rgba(52, 152, 219, 0.25);
+  box-shadow: none;
   outline: none;
 }
 
@@ -279,26 +305,27 @@ entry > text {
 
 /* Search bar entry */
 
+/* TG filterInputInactiveBg — pill search, no border ring */
 .search-bar {
-  background-color: rgba(255, 255, 255, 0.03);
-  border-radius: 12px; /* radius token */
-  border: 1px solid @border_color;
-  padding: 10px 14px;
+  background-color: @bg_composer;
+  border-radius: 22px;
+  border: none;
+  padding: 8px 14px;
   color: @text_primary;
-  min-height: 44px;
+  min-height: 36px;
   font-size: 14px;
-  transition: all 180ms cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 120ms ease;
 }
 
 .search-bar:hover {
-  background-color: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.12);
+  background-color: #2a3645;
+  border: none;
 }
 
 .search-bar:focus {
-  border-color: @accent_blue;
-  background-color: rgba(255, 255, 255, 0.05);
-  box-shadow: 0 0 0 1px rgba(52, 152, 219, 0.25);
+  border: none;
+  background-color: @bg_composer;
+  box-shadow: none;
   outline: none;
 }
 
@@ -359,11 +386,50 @@ separator {
 
 .sidebar {
   background-color: @bg_sidebar;
-  border-right: 1px solid rgba(255, 255, 255, 0.03);
+  border-right: 1px solid @border_color;
 }
 
-.chat-list {
-  background-color: transparent;
+.chat-list,
+.chat-list-panel,
+.chat-list-root,
+.sidebar-stack,
+.sidebar-stack > * {
+  background-color: @bg_sidebar;
+}
+
+/* Rows fill fixed column; titles ellipsize — never force paned min */
+.chat-row,
+.chat-title,
+.chat-preview {
+  min-width: 0;
+}
+
+listview,
+listview > row {
+  min-width: 0;
+}
+
+/* Main split: TG-like 1px divider (not a fat handle) */
+.main-paned > separator {
+  background-color: @border_color;
+  min-width: 1px;
+  margin: 0;
+}
+
+/* Libadwaita titlebar → match topBarBg */
+headerbar,
+.top-bar,
+.titlebar {
+  background-color: @bg_header;
+  background-image: none;
+  border-bottom: 1px solid @border_color;
+  box-shadow: none;
+  color: @text_primary;
+}
+
+headerbar:backdrop,
+.titlebar:backdrop {
+  background-color: @bg_header;
 }
 
 /* Chat list navigation sidebar */
@@ -390,25 +456,51 @@ listview > row:hover {
 
 /* Chat Row */
 
+/*
+ * Dialogs list (TG): full-bleed rows, no dividers.
+ * Height ≈ avatar + padding (nheko: avatarSize + 2*paddingMedium; TG ~62–72).
+ * Active: solid dialogsBgActive #2b5278, light text — not a yellow tint.
+ */
 .chat-row {
-  padding: 10px 12px;
-  border-radius: 14px;
-  margin: 2px 6px;
-  border: 1px solid transparent;
+  padding: 6px 8px;
+  border-radius: 0;
+  margin: 0;
+  border: none;
+  border-bottom: none;
   background-color: transparent;
-  transition: background-color 180ms cubic-bezier(0.2, 0.0, 0.0, 1.0),
-              border-color 180ms cubic-bezier(0.2, 0.0, 0.0, 1.0);
+  transition: background-color 80ms ease;
+  min-height: 56px;
 }
 
 .chat-row:hover {
-  background-color: rgba(255, 255, 255, 0.04);
+  background-color: @bg_hover; /* dialogsBgOver */
 }
 
 .chat-row:selected,
 .chat-row:active {
-  background-color: rgba(47, 128, 237, 0.12);
-  border: 1px solid rgba(47, 128, 237, 0.18);
+  background-color: @bg_selected; /* dialogsBgActive */
+  border-bottom-color: transparent;
   box-shadow: none;
+}
+
+.chat-row:selected .chat-title,
+.chat-row:selected .chat-preview,
+.chat-row:selected .chat-time,
+.chat-row:selected label {
+  color: @text_on_selected;
+}
+
+.chat-row:selected .chat-preview {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.chat-row:selected .chat-time {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.chat-row:selected .unread-badge {
+  background-color: #ffffff;
+  color: #2b5278; /* dialogsUnreadFgActive */
 }
 
 /* ==========================================================
@@ -421,7 +513,7 @@ listview > row:hover {
   color: @text_primary;
   font-weight: 600;
   font-size: 16px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+  box-shadow: none;
 }
 
 .avatar-label {
@@ -441,41 +533,48 @@ listview > row:hover {
   border-radius: 50%;
   min-width: 52px;
   min-height: 52px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+  box-shadow: none;
 }
 
-/* Avatar Gradients (avatar-gradient-0 through avatar-gradient-7) */
-
+/* TG historyPeer*UserpicBg palette (solid, no glow) */
 .avatar-gradient-0 {
-  background-image: linear-gradient(135deg, #ffcc00, #ff8a00);
+  background-color: #ff845e;
+  background-image: none;
 }
 
 .avatar-gradient-1 {
-  background-image: linear-gradient(135deg, #6366f1, #3b82f6);
+  background-color: #9ad164;
+  background-image: none;
 }
 
 .avatar-gradient-2 {
-  background-image: linear-gradient(135deg, #14b8a6, #0d9488);
+  background-color: #e5ca77;
+  background-image: none;
 }
 
 .avatar-gradient-3 {
-  background-image: linear-gradient(135deg, #ff7043, #ff4500);
+  background-color: #5caffa;
+  background-image: none;
 }
 
 .avatar-gradient-4 {
-  background-image: linear-gradient(135deg, #10b981, #059669);
+  background-color: #b694f9;
+  background-image: none;
 }
 
 .avatar-gradient-5 {
-  background-image: linear-gradient(135deg, #d946ef, #a855f7);
+  background-color: #ff8aac;
+  background-image: none;
 }
 
 .avatar-gradient-6 {
-  background-image: linear-gradient(135deg, #0ea5e9, #0284c7);
+  background-color: #5bcbe3;
+  background-image: none;
 }
 
 .avatar-gradient-7 {
-  background-image: linear-gradient(135deg, #84cc16, #65a30d);
+  background-color: #febb5b;
+  background-image: none;
 }
 
 /* Avatar rounded image support */
@@ -494,22 +593,23 @@ listview > row:hover {
 
 .online-dot {
   background: @status_online;
-  border: 2px solid #171721;
+  border: 2px solid @bg_sidebar;
   border-radius: 50%;
-  box-shadow: 0 0 6px rgba(46, 204, 113, 0.4);
+  box-shadow: none;
 }
 
 .away-dot {
   background: @status_away;
-  border: 2px solid #171721;
+  border: 2px solid @bg_sidebar;
   border-radius: 50%;
-  box-shadow: 0 0 6px rgba(241, 196, 15, 0.4);
+  box-shadow: none;
 }
 
 .offline-dot {
   background: @status_offline;
-  border: 2px solid #171721;
+  border: 2px solid @bg_sidebar;
   border-radius: 50%;
+  box-shadow: none;
 }
 
 /* ==========================================================
@@ -524,18 +624,19 @@ listview > row:hover {
 
 /* Unread Badge */
 
+/* dialogsUnreadBg */
 .unread-badge {
-  background-color: @brand_yellow;
-  color: @text_on_brand;
-  font-size: 10px;
-  font-weight: 800;
-  border-radius: 10px;
-  padding: 1px 5px;
-  min-width: 16px;
-  min-height: 16px;
+  background-color: @unread_bg;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 12px;
+  padding: 1px 7px;
+  min-width: 20px;
+  min-height: 20px;
 }
 
-/* Chat List Row — Title / Preview / Time */
+/* Chat List Row — Title / Preview / Time (TG typography) */
 
 .chat-title {
   font-size: 14px;
@@ -544,13 +645,13 @@ listview > row:hover {
 }
 
 .chat-preview {
-  font-size: 12px;
-  color: @text_secondary;
+  font-size: 13px;
+  color: @text_secondary; /* dialogsTextFg */
 }
 
 .chat-time {
-  font-size: 11px;
-  color: @text_tertiary;
+  font-size: 12px;
+  color: @text_date; /* dialogsDateFg */
   min-width: 36px;
 }
 
@@ -558,24 +659,26 @@ listview > row:hover {
    Chat Area Header
    ========================================================== */
 
+/* topBarBg — flat bar, hairline bottom like TG */
 .chat-header {
-  background-color: rgba(23, 23, 33, 0.88);
+  background-color: @bg_header;
   border-bottom: 1px solid @border_color;
-  padding: 0 20px;
-  min-height: 48px;
-  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.15);
+  padding: 0 8px 0 14px;
+  min-height: 54px;
+  box-shadow: none;
 }
 
 .chat-header-title {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
-  color: #FFFFFF;
+  color: @text_primary;
+  letter-spacing: 0;
 }
 
 .chat-status {
   font-size: 13px;
-  font-weight: 500;
-  color: @accent_blue;
+  font-weight: 400;
+  color: @text_accent; /* online-ish link blue */
 }
 
 /* ==========================================================
@@ -588,10 +691,14 @@ listview > row:hover {
 }
 
 .chat-scrolled-window {
+  /* Flat Android chat canvas — no fancy gradients */
   background-color: @bg_chat;
-  background-image:
-    radial-gradient(ellipse 80% 50% at 50% 0%, rgba(47, 128, 237, 0.05) 0%, transparent 60%),
-    radial-gradient(circle at 50% 100%, rgba(255, 204, 0, 0.02) 0%, transparent 40%);
+  background-image: none;
+}
+
+.sidebar {
+  background-color: @bg_sidebar;
+  border-right: 1px solid @border_color;
 }
 
 .empty-chat-state {
@@ -620,113 +727,143 @@ listview > row:hover {
    Message Bubble — улучшенные тени
    ========================================================== */
 
+/* TG bubble geometry: large radius, slightly sharper "tail" corner */
 .message-bubble {
-  padding: 11px 16px;
-  margin: 3px 0;
+  padding: 8px 11px 5px 11px;
+  margin: 1px 0;
   color: @text_primary;
-  font-size: 15px;
-  line-height: 1.65;
-  border-radius: 16px;
-  /* GTK CSS does not support max-width — constrain via Label.max_width_chars in code */
+  font-size: 14.5px;
+  line-height: 1.35;
+  border-radius: 12px;
 }
 
 .message-bubble label {
-  line-height: 1.65;
+  line-height: 1.35;
 }
 
 .message-text {
-  /* width constrained in code via max_width_chars */
 }
 
+/* msgInBg */
 .bubble-received {
   background-color: @bubble_received;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 18px 18px 18px 6px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+  border: none;
+  border-radius: 12px 12px 12px 4px;
+  box-shadow: none;
 }
 
 .bubble-received:hover {
   background-color: @bubble_received_hover;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
 }
 
+/* msgOutBg — cool blue-gray, not saturated brand blue */
 .bubble-sent {
-  /* Closer to official YM solid blue bubble */
-  background-color: #2f80ed;
+  background-color: @bubble_sent;
   background-image: none;
-  color: #FFFFFF;
-  border-radius: 18px 18px 6px 18px;
+  color: #e4ecf2; /* historyTextOutFg */
+  border-radius: 12px 12px 4px 12px;
   border: none;
-  box-shadow: 0 1px 6px rgba(47, 128, 237, 0.28);
+  box-shadow: none;
 }
 
 .bubble-sent:hover {
-  background-color: #3897ff;
+  background-color: @bubble_sent_hover;
   background-image: none;
-  box-shadow: 0 2px 10px rgba(47, 128, 237, 0.35);
 }
 
 .bubble-sent .message-text,
 .bubble-sent label {
-  color: #FFFFFF;
+  color: #e4ecf2;
 }
 
-/* Message Time Label */
+/* Meta footer: time + ticks */
+.message-meta {
+  margin-top: 2px;
+  opacity: 0.92;
+}
 
 .message-time {
-  font-size: 10px;
+  font-size: 10.5px;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.35);
-  margin-top: 4px;
+  color: @text_tertiary;
+  letter-spacing: 0.1px;
 }
 
 .bubble-sent .message-time {
-  color: rgba(255, 255, 255, 0.55);
+  color: #7da8d3; /* msgOutDateFg */
 }
 
+.bubble-received .message-time {
+  color: #6d7f8f; /* msgInDateFg */
+}
+
+.message-edited {
+  font-size: 10px;
+  font-style: italic;
+  color: @text_tertiary;
+  margin-end: 2px;
+}
+
+.bubble-sent .message-edited {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.message-ticks {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: -1px;
+  min-width: 14px;
+}
+
+.ticks-pending {
+  color: @tick_pending;
+  opacity: 0.9;
+}
+
+.ticks-delivered {
+  color: @tick_delivered;
+}
+
+.ticks-read {
+  color: @tick_read;
+}
+
+.bubble-sent .ticks-pending { color: rgba(255, 255, 255, 0.4); }
+.bubble-sent .ticks-delivered { color: rgba(255, 255, 255, 0.7); }
+.bubble-sent .ticks-read { color: #cce8ff; }
+
+/* msgServiceBg pill */
 .date-separator {
-  background-color: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.65);
+  background-color: @service_bg;
+  color: rgba(255, 255, 255, 0.85);
   font-size: 12px;
-  font-weight: 600;
-  padding: 6px 14px;
-  border-radius: 14px;
-  margin: 16px 0;
-  border: 1px solid rgba(255, 255, 255, 0.02);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  font-weight: 500;
+  padding: 3px 10px;
+  border-radius: 11px;
+  margin: 10px 0 6px 0;
+  border: none;
+  letter-spacing: 0;
 }
 
 /* ==========================================================
    Input Area — скрыть при невыбранном чате
    ========================================================== */
 
-box.message-input-area,
-.message-input-area,
-window box.message-input-area {
-  background-color: transparent;
-  border: none;
-  border-width: 0;
-  border-style: none;
-  outline: none;
-  box-shadow: none;
-  padding: 0;
-  margin: 0;
-}
+/* Do not zero padding here — that used to fight the real composer style below */
 
 paned > separator,
 window paned > separator,
 paned separator {
-  background-color: rgba(255, 255, 255, 0.04);
+  background-color: @border_color;
   outline: none;
   box-shadow: none;
   border: none;
-  border-width: 0;
-  border-style: none;
+  min-width: 1px;
 }
 
+/* Never hide composer via opacity — use set_visible only */
 .message-input-area:disabled {
-  opacity: 0;
-  transition: opacity 0.2s ease;
+  opacity: 1;
 }
 
 .message-entry {
@@ -745,21 +882,82 @@ paned separator {
   outline: none;
 }
 
+/* historyComposeAreaBg — always visible when chat is open */
+.message-input-area,
+box.message-input-area {
+  background-color: @bg_header;
+  border-top: 1px solid @border_color;
+  padding: 6px 8px 8px 8px;
+  margin: 0;
+  min-height: 52px;
+}
+
 .input-pill {
-  background-color: #161620;
-  border-radius: 24px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  padding: 8px 16px;
-  margin: 12px 16px 20px 16px;
-  min-height: 48px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-  transition: all 250ms cubic-bezier(0.2, 0.0, 0.0, 1.0);
+  background-color: @bg_composer; /* filter/compose field */
+  border-radius: 20px;
+  border: none;
+  padding: 2px 6px;
+  margin: 0;
+  min-height: 42px;
+  min-width: 0;
+  box-shadow: none;
+  transition: background-color 120ms ease;
 }
 
 .input-pill:focus-within {
-  border-color: rgba(47, 128, 237, 0.40);
-  box-shadow: 0 8px 28px rgba(47, 128, 237, 0.15);
-  background-color: #191924;
+  border: none;
+  box-shadow: none;
+  background-color: #2a3645;
+}
+
+/* Text field must eat remaining width (not stay content-sized) */
+.input-pill scrolledwindow,
+.input-pill overlay,
+.message-entry-view {
+  min-width: 0;
+}
+
+.message-entry-view {
+  background: transparent;
+  color: @text_primary;
+  font-size: 15px;
+}
+
+.placeholder-label {
+  color: @text_tertiary;
+  font-size: 15px;
+}
+
+/* TG send: activeButton blue circle, not brand yellow */
+.send-btn-premium {
+  color: #ffffff;
+  background-color: @accent_blue;
+  background-image: none;
+  min-width: 38px;
+  min-height: 38px;
+  border-radius: 50%;
+  box-shadow: none;
+}
+
+.send-btn-premium:hover {
+  background-color: @accent_blue_hover;
+  background-image: none;
+  color: #ffffff;
+  box-shadow: none;
+}
+
+.send-btn-premium image {
+  color: #ffffff;
+}
+
+.icon-btn {
+  color: @text_secondary;
+}
+
+.icon-btn:hover {
+  background-color: @bg_hover;
+  color: @text_primary;
+  border-radius: 50%;
 }
 
 .input-pill scrolledwindow,
@@ -838,9 +1036,9 @@ popover {
 popover > contents {
   background-color: @popover_bg;
   border: 1px solid @popover_border;
-  border-radius: 14px;
-  box-shadow: 0 12px 32px @popover_shadow;
-  padding: 6px;
+  border-radius: 10px;
+  box-shadow: none;
+  padding: 4px;
   outline: none;
 }
 
@@ -1227,7 +1425,7 @@ popover > contents > .send-at-body {
 
 .reaction-chip:hover {
   background-color: @bg_hover;
-  transform: scale(1.04);
+  transform: scale(1.06);
 }
 
 .reaction-chip.selected {
@@ -1239,6 +1437,63 @@ popover > contents > .send-at-body {
   min-width: 24px;
   padding: 2px 6px;
   color: @text_secondary;
+}
+
+/* Reaction pop-in (staggered) */
+@keyframes reaction-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.35);
+  }
+  55% {
+    opacity: 1;
+    transform: scale(1.18);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.reaction-pop {
+  animation: reaction-pop 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.reaction-delay-0 { animation-delay: 0ms; }
+.reaction-delay-1 { animation-delay: 30ms; }
+.reaction-delay-2 { animation-delay: 55ms; }
+.reaction-delay-3 { animation-delay: 80ms; }
+.reaction-delay-4 { animation-delay: 100ms; }
+.reaction-delay-5 { animation-delay: 120ms; }
+
+.reaction-btn.reaction-pop {
+  animation: reaction-pop 0.28s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.reaction-btn.pressed {
+  transform: scale(0.88);
+  transition: transform 0.1s ease;
+}
+
+/* Pagination loading bar */
+.pagination-bar {
+  background-color: @bg_header;
+  border: 1px solid @border_color;
+  border-radius: 8px;
+  padding: 6px 12px;
+  margin: 4px 12px;
+  box-shadow: none;
+}
+
+.pagination-label {
+  font-size: 12px;
+  font-weight: 550;
+  color: @text_secondary;
+}
+
+.pagination-spinner {
+  min-width: 14px;
+  min-height: 14px;
 }
 
 /* ==========================================================
@@ -1373,16 +1628,10 @@ popover > contents > .send-at-body {
 
 .auth-window {
   background-color: @bg_sidebar;
-  background-image: radial-gradient(
-      circle at 50% -10%,
-      rgba(255, 204, 0, 0.12) 0%,
-      rgba(255, 138, 0, 0.04) 28%,
-      rgba(20, 20, 24, 0) 55%
-    );
-  border-radius: 24px;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.8),
-              inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background-image: none;
+  border-radius: 16px;
+  box-shadow: none;
+  border: 1px solid @border_color;
 }
 
 .auth-logo {
@@ -1425,9 +1674,9 @@ popover > contents > .send-at-body {
 }
 
 .auth-entry:focus {
-  border-color: @brand_yellow;
+  border-color: @border_light;
   background-color: rgba(255, 255, 255, 0.02);
-  box-shadow: 0 0 0 3px rgba(255, 204, 0, 0.18);
+  box-shadow: none;
 }
 
 .auth-expander {
@@ -1441,31 +1690,33 @@ popover > contents > .send-at-body {
 }
 
 button.auth-primary {
-  padding: 14px 20px;
+  padding: 12px 18px;
   font-size: 15px;
   font-weight: 600;
-  border-radius: 14px;
-  background-image: linear-gradient(135deg, #FFCC00, #FF8A00);
+  border-radius: 10px;
+  background-color: @brand_yellow;
+  background-image: none;
   color: @text_on_brand;
-  box-shadow: 0 10px 24px rgba(255, 138, 0, 0.22),
-              inset 0 1px 0 rgba(255, 255, 255, 0.25);
-  transition: transform 0.12s ease, box-shadow 0.2s ease, filter 0.2s ease;
+  box-shadow: none;
+  transition: background-color 0.12s ease;
 }
 
 button.auth-primary:hover {
-  filter: brightness(1.04);
-  box-shadow: 0 14px 32px rgba(255, 138, 0, 0.3),
-              inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  filter: none;
+  background-color: @brand_yellow_hover;
+  box-shadow: none;
 }
 
 button.auth-primary:active {
-  transform: translateY(1px);
-  filter: brightness(0.96);
+  transform: none;
+  filter: none;
+  background-color: @brand_yellow_active;
 }
 
 button.auth-primary:disabled {
-  filter: grayscale(0.2) brightness(0.85);
+  filter: grayscale(0.25) brightness(0.85);
   box-shadow: none;
+  opacity: 0.7;
 }
 
 .auth-account-btn {
@@ -1507,14 +1758,12 @@ button.auth-primary:disabled {
 }
 
 .empty-chat-logo {
-  font-size: 64px;
+  font-size: 48px;
   font-weight: 700;
-  margin-bottom: 16px;
-  background: linear-gradient(135deg, #FFCC00, #FF8A00);
+  margin-bottom: 12px;
+  background: none;
   color: @brand_yellow;
-  color: @brand_yellow;
-  color: transparent;
-  letter-spacing: -1px;
+  letter-spacing: -0.5px;
 }
 
 .empty-chat-title {
@@ -1662,34 +1911,117 @@ switch slider {
 .skeleton {
   background: linear-gradient(
     90deg,
-    rgba(255, 255, 255, 0.04) 25%,
-    rgba(255, 255, 255, 0.08) 50%,
-    rgba(255, 255, 255, 0.04) 75%
+    rgba(255, 255, 255, 0.04) 0%,
+    rgba(255, 255, 255, 0.09) 40%,
+    rgba(255, 255, 255, 0.04) 80%
   );
   background-size: 200% 100%;
-  animation: skeleton-loading 1.5s ease-in-out infinite;
+  animation: skeleton-loading 1.35s ease-in-out infinite;
   border-radius: 8px;
+  min-height: 10px;
 }
 
 .skeleton-row {
-  margin: 4px 6px;
+  margin: 2px 4px;
+  animation: slide-up 0.35s ease-out both;
+}
+
+.skeleton-avatar {
+  border-radius: 50%;
+  min-width: 44px;
+  min-height: 44px;
 }
 
 .skeleton-title {
-  margin-top: 8px;
-  border-radius: 4px;
+  border-radius: 6px;
+  min-height: 12px;
+  max-width: 70%;
 }
 
 .skeleton-preview {
-  margin-top: 6px;
-  border-radius: 4px;
+  border-radius: 6px;
+  min-height: 10px;
+  max-width: 90%;
+  opacity: 0.85;
+}
+
+.skeleton-bubble {
+  border-radius: 14px;
+  min-height: 40px;
+  animation: message-fade-in 0.4s ease-out both;
+}
+
+.skeleton-panel,
+.skeleton-messages {
+  padding: 8px 0;
+}
+
+/* Empty list (sidebar) */
+.empty-list-state {
+  padding: 32px 20px;
+  animation: slide-up 0.35s ease-out;
+}
+
+.empty-list-icon {
+  font-size: 36px;
+  opacity: 0.55;
+  margin-bottom: 4px;
+}
+
+.empty-list-title {
+  font-size: 15px;
+  font-weight: 650;
+  color: @text_primary;
+  letter-spacing: -0.2px;
+}
+
+.empty-list-subtitle {
+  font-size: 12.5px;
+  color: @text_tertiary;
+  line-height: 1.45;
+  max-width: 200px;
+}
+
+/* Welcome / empty conversation */
+.welcome-state,
+.empty-conversation {
+  animation: slide-up 0.4s cubic-bezier(0.2, 0.0, 0.0, 1.0);
+}
+
+.empty-chat-logo {
+  font-size: 56px;
+  font-weight: 800;
+  color: @brand_yellow;
+  margin-bottom: 4px;
+  text-shadow: 0 4px 24px rgba(255, 204, 0, 0.25);
+}
+
+.empty-chat-icon {
+  font-size: 42px;
+  opacity: 0.7;
+  margin-bottom: 4px;
+}
+
+.empty-chat-title {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+}
+
+.empty-chat-subtitle {
+  font-size: 13.5px;
+  color: @text_tertiary;
+  max-width: 280px;
+  line-height: 1.5;
 }
 
 /* Message fade-in */
 
 .message-fade-in {
-  animation: message-fade-in 0.3s ease-out;
+  animation: message-fade-in 0.28s cubic-bezier(0.2, 0.0, 0.0, 1.0);
 }
+
+/* Avoid animating every ListView rebind (jank on scroll) */
 
 /* Pulse indicator */
 
@@ -1716,10 +2048,11 @@ switch slider {
 tooltip {
   background-color: @bg_elevated;
   color: @text_primary;
-  border-radius: 8px;
+  border-radius: 6px;
   padding: 6px 10px;
   font-size: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  box-shadow: none;
+  border: 1px solid @border_color;
 }
 
 tooltip > label {
@@ -1785,6 +2118,167 @@ tooltip > label {
 .call-btn.call-end {
   background-color: @accent_red;
   color: white;
+}
+
+/* Video Area */
+
+.video-area {
+  background-color: @bg_root;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: none;
+  border: 1px solid @border_color;
+}
+
+.video-placeholder {
+  background-color: @bg_elevated;
+  border-radius: 16px;
+  border: 2px dashed @border_color;
+  transition: all 0.3s ease;
+}
+
+.video-placeholder:hover {
+  border-color: @border_active;
+  background-color: rgba(47, 128, 237, 0.05);
+}
+
+.video-connected {
+  background-color: @bg_root;
+  border-radius: 12px;
+  box-shadow: none;
+}
+
+.video-content {
+  background-color: transparent;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+/* Call Timer */
+
+.call-timer {
+  font-family: "SF Mono", "Monaco", "Menlo", monospace;
+  font-size: 14px;
+  font-weight: 600;
+  color: @text_secondary;
+  letter-spacing: 0.5px;
+}
+
+/* Participant List */
+
+.participants-panel {
+  background-color: @bg_elevated;
+  border-radius: 10px;
+  padding: 12px;
+  box-shadow: none;
+  border: 1px solid @border_color;
+}
+
+.participant-row {
+  padding: 8px 12px;
+  border-radius: 10px;
+  margin: 2px 0;
+  transition: background-color 0.15s ease;
+}
+
+.participant-row:hover {
+  background-color: @bg_hover;
+}
+
+.participant-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: @text_primary;
+}
+
+.participant-status {
+  font-size: 12px;
+  color: @text_secondary;
+}
+
+.participant-avatar {
+  border-radius: 50%;
+  min-width: 36px;
+  min-height: 36px;
+  background: linear-gradient(135deg, #6366F1, #8B5CF6);
+  color: white;
+  font-weight: 600;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.participant-avatar.online {
+  background: linear-gradient(135deg, #10B981, #059669);
+}
+
+.participant-avatar.offline {
+  background: linear-gradient(135deg, #71717A, #52525B);
+}
+
+/* Call Controls */
+
+.call-control-btn {
+  border-radius: 50%;
+  width: 56px;
+  height: 56px;
+  background: rgba(255, 255, 255, 0.08);
+  border: none;
+  color: @text_primary;
+  transition: all 0.2s ease;
+}
+
+.call-control-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  transform: scale(1.05);
+}
+
+.call-control-btn:active {
+  transform: scale(0.95);
+}
+
+.call-control-btn.active {
+  background: @accent_blue;
+  color: white;
+}
+
+.call-control-btn.active:hover {
+  background: @accent_blue;
+}
+
+.call-control-btn.end-call {
+  background: @accent_red;
+  color: white;
+  width: auto;
+  padding: 12px 24px;
+  border-radius: 28px;
+}
+
+.call-control-btn.end-call:hover {
+  background: #dc2626;
+  transform: scale(1.05);
+}
+
+/* Top Bar */
+
+.call-top-bar {
+  background-color: rgba(10, 10, 12, 0.95);
+  border-radius: 12px;
+  padding: 12px 20px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.call-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: @text_primary;
+}
+
+.call-subtitle {
+  font-size: 13px;
+  color: @text_secondary;
+  margin-top: 2px;
 }
 
 /* ==========================================================
@@ -1994,11 +2488,12 @@ tooltip > label {
 
 .bot-avatar {
    border-radius: 50%;
-   background: linear-gradient(135deg, #6366F1, #8B5CF6);
+   background-color: #4f46e5;
+   background-image: none;
    color: #ffffff;
    font-weight: 700;
    font-size: 16px;
-   box-shadow: 0 2px 12px rgba(99, 102, 241, 0.35);
+   box-shadow: none;
 }
 
 .bot-header {
@@ -2111,16 +2606,16 @@ tooltip > label {
 .start-button {
    background-color: @brand_yellow;
    color: @text_on_brand;
-   font-weight: 700;
-   border-radius: 12px;
-   padding: 10px 24px;
+   font-weight: 600;
+   border-radius: 10px;
+   padding: 10px 20px;
    margin-top: 12px;
-   box-shadow: 0 4px 12px rgba(255, 204, 0, 0.15);
+   box-shadow: none;
 }
 
 .start-button:hover {
    background-color: @brand_yellow_hover;
-   box-shadow: 0 4px 20px rgba(255, 204, 0, 0.35);
+   box-shadow: none;
 }
 
 .start-button:active {
@@ -2326,11 +2821,12 @@ tooltip > label {
 
 .group-avatar {
    border-radius: 50%;
-   background: linear-gradient(135deg, #EC4899, #F472B6);
+   background-color: #db2777;
+   background-image: none;
    color: #ffffff;
    font-weight: 700;
    font-size: 16px;
-   box-shadow: 0 2px 12px rgba(236, 72, 153, 0.35);
+   box-shadow: none;
 }
 
 .group-title {
@@ -2439,46 +2935,55 @@ tooltip > label {
    Minimalist Flat UI Enhancements & Yandex Blue URLs
    ========================================================== */
 
-/* Premium Active Chat Selected Row Style with Left Blue Indicator */
+/* Selected dialog — solid dialogsBgActive (TG) */
 listview > row:selected .chat-row {
-  background-color: rgba(52, 152, 219, 0.08); /* 8% accent blue tint */
-  border-left: 3px solid @accent_blue;
-  border-radius: 0 14px 14px 0;
-  margin-left: 0; /* snap left edge for clean indicator boundary */
+  background-color: @bg_selected;
+  border-left: none;
+  border-radius: 0;
+  margin-left: 0;
 }
 
 listview > row:selected .chat-row .chat-title {
-  color: @text_primary;
+  color: @text_on_selected;
 }
 
 listview > row:selected .chat-row .chat-preview {
-  color: @text_secondary;
+  color: rgba(255, 255, 255, 0.78);
 }
 
 listview > row:selected .chat-row .chat-time {
-  color: @text_secondary;
+  color: rgba(255, 255, 255, 0.72);
 }
 
-/* Simplified Solid Send Button */
+listview > row:selected .chat-row .unread-badge {
+  background-color: #ffffff;
+  color: #2b5278;
+}
+
+/* Send — activeButtonBg circle */
 .send-btn-premium {
-  background-image: linear-gradient(135deg, #3498db, #1d76b8);
+  background-color: @accent_blue;
+  background-image: none;
   color: #ffffff;
   border-radius: 50%;
-  min-width: 36px;
-  min-height: 36px;
+  min-width: 38px;
+  min-height: 38px;
   padding: 0;
-  margin-left: 8px;
-  transition: all 180ms cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 2px 8px rgba(29, 118, 184, 0.3);
+  margin-left: 4px;
+  transition: background-color 100ms ease;
+  box-shadow: none;
 }
 
 .send-btn-premium:hover {
-  background-image: linear-gradient(135deg, #4fb0ff, #2481cc);
-  box-shadow: 0 4px 12px rgba(29, 118, 184, 0.45);
+  background-color: @accent_blue_hover;
+  background-image: none;
+  color: #ffffff;
+  box-shadow: none;
 }
 
 .send-btn-premium:active {
-  background-image: linear-gradient(135deg, #1d76b8, #1a5e95);
+  background-color: #3b7cb1;
+  background-image: none;
   box-shadow: none;
 }
 
@@ -2524,9 +3029,9 @@ entry:hover {
 }
 
 entry:focus {
-  border-color: @accent_blue;
+  border-color: @border_light;
   background-color: rgba(255, 255, 255, 0.06);
-  box-shadow: 0 0 0 1px rgba(47, 140, 255, 0.20);
+  box-shadow: none;
 }
 
 entry > text > placeholder,
@@ -2586,18 +3091,107 @@ a:active {
 }
 
 /* ==========================================================
-   Sidebar Compact Mode, Stickers & Emoji-Only Messages
+   Sidebar compact (disabled visual hide — was "eating" text)
+   Stickers & emoji-only
    ========================================================== */
 
+/* Keep titles visible even when column is narrow — ellipsize instead */
 .sidebar-stack.compact .chat-row .chat-title,
-.sidebar-stack.compact .chat-row .chat-preview,
-.sidebar-stack.compact .chat-row .chat-time,
-.sidebar-stack.compact .chat-row .unread-badge,
-.sidebar-stack.compact .chat-row label {
-  opacity: 0;
-  min-width: 0;
-  margin: 0;
-  padding: 0;
+.sidebar-stack.compact .chat-row .chat-preview {
+  opacity: 1;
+}
+
+.file-attachment {
+  background-color: rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+  padding: 8px 10px;
+  min-width: 220px;
+}
+
+.bubble-sent .file-attachment {
+  background-color: rgba(0, 0, 0, 0.15);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.file-attachment-name {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.file-action-btn {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 8px;
+  color: @accent_blue;
+}
+
+.bubble-sent .file-action-btn {
+  color: #e8f3ff;
+}
+
+.file-action-btn:hover {
+  background-color: rgba(47, 128, 237, 0.14);
+}
+
+.bubble-sent .file-action-btn:hover {
+  background-color: rgba(255, 255, 255, 0.12);
+}
+
+/* Unread — solid brand yellow like Android */
+.unread-badge {
+  background-color: @brand_yellow;
+  background-image: none;
+  color: @text_on_brand;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 10px;
+  min-width: 18px;
+  padding: 1px 6px;
+  box-shadow: none;
+}
+
+.chat-title {
+  font-size: 15px;
+  font-weight: 500;
+  color: @text_primary;
+}
+
+.chat-preview {
+  font-size: 13px;
+  color: @text_tertiary;
+}
+
+.chat-time {
+  font-size: 11px;
+  color: @text_muted;
+}
+
+/* Date chips — Android style muted pills */
+.date-separator {
+  background-color: rgba(255, 255, 255, 0.08);
+  color: @text_secondary;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 12px;
+  border-radius: 12px;
+  margin: 10px 0 6px 0;
+  border: none;
+  box-shadow: none;
+}
+
+/* Sidebar search */
+.search-bar, entry.search-bar {
+  border-radius: 12px;
+  min-height: 36px;
+  font-size: 13px;
+}
+
+/* Softer list separators */
+.sidebar separator {
+  background-color: rgba(255, 255, 255, 0.04);
+  min-height: 1px;
 }
 
 .bubble-sticker {

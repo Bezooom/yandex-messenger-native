@@ -21,7 +21,6 @@ impl MessageObject {
 
 mod imp {
     use super::*;
-    use gtk::glib::subclass::prelude::*;
 
     #[derive(Default)]
     pub struct MessageObject {

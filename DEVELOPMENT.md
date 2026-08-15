@@ -1,5 +1,9 @@
 # Yandex Messenger Native — Development Guide
 
+[Русская версия](DEVELOPMENT.ru.md)
+
+Current release: **2.173.0**.
+
 ## 1. Goal
 
 Deliver a production-ready Linux desktop client for Yandex Messenger built with Rust and GTK4, featuring:
@@ -36,8 +40,9 @@ Each widget is a standalone GTK widget with isolated rendering logic.
 `ChatView` renders messages, has an input field, and triggers attachments or calls.
 `AuthDialog` manages the OAuth authentication flow using an embedded WebView (under the `in_app_webview` feature flag).
 `TelemostWindow` acts as an embedded wrapper for Yandex Telemost.
-`settings.rs` handles persistent JSON configuration (dark theme toggle, tray minimization).
-Theme styling is implemented through a global CSS provider (`theme.css`) with dark mode integration.
+`settings.rs` handles persistent JSON configuration (dark theme, tray, notifications, reduce animations).
+Theme styling is a global CSS provider (`theme.css`) with Telegram Desktop night tokens.
+Persistence helpers: `src/core/db.rs` (SQLite), `drafts.rs`, `outbox.rs`, `src/api/session_store.rs`.
 
 ### Core Layer (`src/core.rs`)
 

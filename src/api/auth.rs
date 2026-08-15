@@ -132,6 +132,16 @@ impl AuthManager {
         config::OAUTH_CLIENT_ID.to_string()
     }
 
+    /// True if client_id looks like a real OAuth app id (not a package name like ru.yandex.yamb).
+    pub fn has_valid_oauth_client_id(&self) -> bool {
+        let id = self.effective_client_id();
+        // Yandex OAuth application ids are 32 hex chars (sometimes with dashes stripped).
+        let hex = id.chars().all(|c| c.is_ascii_hexdigit()) && id.len() >= 32;
+        // Reject package-style ids that produce "Unknown client with such client_id"
+        let package_like = id.contains('.') || id.is_empty();
+        hex && !package_like
+    }
+
     fn effective_redirect_uri(&self) -> Option<String> {
         if let Ok(v) = std::env::var("YANDEX_REDIRECT_URI") {
             let trimmed = v.trim();
@@ -345,10 +355,16 @@ impl AuthManager {
         )
     }
 
-    /// OAuth code flow URL for desktop apps.
+    /// OAuth implicit-flow URL for desktop apps (requires a real OAuth client_id).
     pub fn auth_code_url(&self) -> String {
         if let Some(proxy_url) = self.effective_auth_proxy_url() {
             return format!("{}/oauth/start", proxy_url);
+        }
+
+        if !self.has_valid_oauth_client_id() {
+            // Do not hit OAuth with package-name client_id → 400 Unknown client.
+            // AuthDialog will open Passport / chat session login instead.
+            return config::CHAT_WEB_URL.to_string();
         }
 
         let state = uuid::Uuid::new_v4().to_string();
@@ -375,6 +391,15 @@ impl AuthManager {
         }
 
         format!("{}?{}", self.effective_authorize_url(), params.join("&"))
+    }
+
+    /// Passport login URL that returns to Messenger web (for Session_id cookies).
+    pub fn passport_session_url(&self) -> String {
+        format!(
+            "{}?retpath={}&noreturn=1",
+            config::PASSPORT_AUTH_URL,
+            urlencoding::encode(config::CHAT_WEB_URL)
+        )
     }
 
     /// Parse access token from redirect URL, validating state if provided.

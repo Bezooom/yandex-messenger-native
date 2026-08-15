@@ -1,6 +1,8 @@
 # Yandex Messenger Native
 
-A native Linux desktop client for Yandex Messenger built with Rust, GTK4, and Libadwaita. The project offers high performance, low resource consumption, and a premium Obsidian-style dark theme.
+**Version 2.173.0** — native Linux desktop client for Yandex Messenger, built with Rust, GTK4, and Libadwaita. Fast, light, with a Telegram Desktop night theme and an nheko-style dense chat list.
+
+[Русская версия](README.ru.md)
 
 > ⚠️ **Project Status: Active Development / Unfinished**
 > This is an open-source project that is currently unfinished and under active development. While the core backend API integrations and messaging components are functional, the user interface (UI) requires significant polishing, refinement, and bug fixing. 
@@ -8,6 +10,42 @@ A native Linux desktop client for Yandex Messenger built with Rust, GTK4, and Li
 > We would be absolutely thrilled to have your help! If you are interested in Rust, GTK4, Libadwaita, or reverse-engineering APIs, we warmly welcome any contributions, bug reports, and pull requests. Check out our [Contributing Guidelines](CONTRIBUTING.md) to get started!
 > 
 > **Important Disclaimer**: This is an **unofficial, community-driven client** for Yandex Messenger. It is not affiliated with, endorsed by, or associated in any way with Yandex LLC or its affiliates. The developers of this project do not claim any rights to Yandex trademarks, branding, or media assets. Use this software at your own risk.
+
+## Feature Status Matrix
+
+| Feature | Status | Description |
+|---|---|---|
+| OAuth / Login | Beta | OAuth + **in-app session cookie capture** (no Python script) |
+| Chat List | Beta | nheko-style dense list, 54px avatars, RU previews; mute/pin/archive/mark_read/delete |
+| Text Messaging | Beta | Send + reply/edit + outbox + drafts + history pagination + **delivery/read ticks** |
+| Files & Attachments | Beta | Upload→send; **Download / Open**; **DnD** files; **Ctrl+V** images |
+| Voice Messages | Stub | Hidden without `YM_ENABLE_VOICE`; playback stub |
+| Video Playback | Stub | No player |
+| Calls (Telemost) | Stub | UI shell with `YM_ENABLE_TELEMOST_UI`, no WebRTC |
+| Desktop Notifications | Beta | `notify-rust`, respects mute + settings |
+| System Tray | Beta | StatusNotifierItem (`ksni`), close-to-tray, unread badge |
+| Settings | Beta | Notifications / tray / dark theme / reduce animations |
+| Offline Cache | Beta | SQLite (`cache.db`) upsert + JSON L2; cold-start hydrate |
+| Theme | Beta | Telegram Desktop night tokens, adaptive sidebar (~32% / max 420px) |
+
+### Feature Flags
+
+Two new environment variables control whether stub UI elements are visible:
+
+| Flag | Default | Description |
+|---|---|---|
+| `YM_ENABLE_VOICE` | `false` | Show voice messages UI (waveform, play/record buttons) |
+| `YM_ENABLE_TELEMOST_UI` | `false` | Show Telemost (video calls) UI elements in chat header |
+
+When a flag is off, the corresponding stub elements are hidden from the interface so users see a cleaner UI until the feature is fully implemented.
+
+### Known Limitations
+
+- **Session cookies**: captured on WebView login; `scripts/login_browser.py` remains as fallback
+- **Voice / Telemost**: stubs, hidden without feature flags (no WebRTC)
+- **Video player**: not implemented
+- **Chat actions API**: best-effort reverse-engineered RPC names
+- **WS status events**: depend on server payload; history flags best-effort
 
 ## Features
 
@@ -23,7 +61,7 @@ A native Linux desktop client for Yandex Messenger built with Rust, GTK4, and Li
 * **Adaptive Layout**: Uses `gtk::Paned` as a separator supporting a compact sidebar mode (collapses text when width is < 180px).
 * **Chat Lists**: Sorted chat entries (pinned chats remain at the top, others are sorted by the latest message time), pin indicators 📌, and avatars rendered using `adw::Avatar`.
 * **Performance**: Asynchronous caching of avatar textures in RAM (`AVATAR_CACHE`) to prevent flickering/re-downloads, instant L2 JSON cache-based history loading (`load_cache_l2_async`) upon selecting a chat, and background network updates.
-* **Premium Dark Theme**: Dark Obsidian-like styling with smooth transitions, custom thin scrollbars (expanding on hover), and blur effects.
+* **Night Theme**: Telegram Desktop night tokens (`dialogsBg`, `msgIn` / `msgOut`), nheko-style dense sidebar, solid selection, custom thin scrollbars.
 
 ### Messaging & Interactivity
 * **Input Editor**: Multi-line input field (`TextView`) with automatic height adjustment (up to 120px). Messages are sent by pressing `Enter`, while a new line is inserted with `Shift+Enter`.
@@ -31,7 +69,8 @@ A native Linux desktop client for Yandex Messenger built with Rust, GTK4, and Li
 * **Date Separators**: Logical chat message grouping by days ("Today", "Yesterday", and formatted dates).
 * **Special Formats**: Rendering of sticker images (128x128px) and "emoji-only" mode (large 40px emoji size without a chat bubble when sending 1 to 3 emojis).
 * **Context Menu**: Actions available on right-click (reply, copy, delete, edit).
-* **Attachments Menu**: A unified attachment popover (file picker, poll creator, message scheduling).
+* **Attachments**: File picker, drag-and-drop into the chat, Ctrl+V for clipboard images, Download / Open via `xdg-open`.
+* **Drafts & Outbox**: Per-chat drafts survive chat switches; unsent messages retry after reconnect.
 * **Media Viewer**: Full-screen image gallery with swipe gesture navigation and downloads to the `Downloads` directory.
 * **Voice Messages**: Audio recording and waveform visualization using an optional GStreamer pipeline.
 * **Global Search**: Quick search overlay triggered with `Ctrl+K` for global message and contact filtering.
@@ -108,12 +147,16 @@ The client can be configured using the following environment variables:
 
 ## Development & Documentation
 
-* **Architecture Specification**: [ARCHITECTURE.md](ARCHITECTURE.md) ([Russian version](ARCHITECTURE.ru.md))
-* **Development Guide**: [DEVELOPMENT.md](DEVELOPMENT.md) ([Russian version](DEVELOPMENT.ru.md))
-* **Security Auditing**: [SECURITY.md](SECURITY.md)
-* **API Specification**: [API.md](API.md) ([Russian version](API.ru.md))
-* **Changelog**: [CHANGELOG.md](CHANGELOG.md) ([Russian version](CHANGELOG.ru.md))
-* **Roadmap**: [ROADMAP.md](ROADMAP.md) ([Russian version](ROADMAP.ru.md))
+* **Architecture**: [ARCHITECTURE.md](ARCHITECTURE.md) · [ARCHITECTURE.ru.md](ARCHITECTURE.ru.md)
+* **Development**: [DEVELOPMENT.md](DEVELOPMENT.md) · [DEVELOPMENT.ru.md](DEVELOPMENT.ru.md)
+* **Security**: [SECURITY.md](SECURITY.md) · [SECURITY.ru.md](SECURITY.ru.md)
+* **API**: [API.md](API.md) · [API.ru.md](API.ru.md)
+* **Install**: [INSTALL.md](INSTALL.md) · [INSTALL.ru.md](INSTALL.ru.md)
+* **Test plan**: [TESTPLAN.md](TESTPLAN.md) · [TESTPLAN.ru.md](TESTPLAN.ru.md)
+* **Changelog**: [CHANGELOG.md](CHANGELOG.md) · [CHANGELOG.ru.md](CHANGELOG.ru.md)
+* **Roadmap**: [ROADMAP.md](ROADMAP.md) · [ROADMAP.ru.md](ROADMAP.ru.md)
+* **Detailed roadmap**: [ROADMAP_DETAILED.md](ROADMAP_DETAILED.md) · [ROADMAP_DETAILED.ru.md](ROADMAP_DETAILED.ru.md)
+* **Contributing**: [CONTRIBUTING.md](CONTRIBUTING.md) · [CONTRIBUTING.ru.md](CONTRIBUTING.ru.md)
 
 ## License
 

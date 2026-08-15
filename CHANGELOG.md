@@ -1,7 +1,138 @@
 # Changelog
 
+[Русская версия](CHANGELOG.ru.md)
+
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
+
+Current release: **2.173.0** (2026-08-15).
+
+## 2.173.0 - 2026-08-15
+
+### Added
+- **Telegram Desktop night theme**: color tokens from `night.tdesktop-theme` (`dialogsBg`, `msgIn` / `msgOut`, blue send button).
+- **nheko-style split**: dialog list ~32% width (max 420px), dense rows, 54px avatars.
+- **Solid selection** (`dialogsBgActive`) instead of glow chrome.
+- **Adaptive sidebar**: shrinks and clamps instead of overflowing.
+- **Auto-scroll** to the latest message when opening a chat.
+
+### Changed
+- Default visual language is now Telegram/nheko night, not the older Obsidian-like glow theme.
+
+### Known Limitations
+- Voice messages and Telemost WebRTC remain stubs (hidden unless feature flags are set).
+- Video player is not implemented.
+- Chat-action RPC names are best-effort reverse-engineered; the local UI still updates.
+
+---
+
+## 2.172.0 - 2026-08-08
+
+### Added
+- **New brand icon** in Yandex style: yellow squircle, dark bubble, «Я»; hicolor 16–512 plus scalable SVG.
+- **Reaction pop-in**: staggered scale/opacity animation on chips and picker buttons.
+- **Pagination loader**: spinner + “Loading history…” when scrolling up.
+- **Reduce animations** setting (`reduced_motion`) disables decorative CSS.
+- Package `yandex-messenger-native_2.172.0-1_amd64.deb` + tar.gz.
+
+---
+
+## 2.171.0 - 2026-08-08
+
+### Added
+- **Skeleton loaders**: chat list (8 rows) and message feed (bubble placeholders) with shimmer.
+- **Empty states**: welcome (no chat selected), empty conversation, no chats / no search results.
+- **Stack transitions**: crossfade list ↔ skeleton ↔ empty; message fade-in / slide-up / pop-in.
+
+---
+
+## 2.170.0 - 2026-08-08
+
+### Added
+- **Delivery / read ticks**: ◔ pending → ✓ delivered → ✓✓ read; parsed from history/WS; live update without a full refresh when possible.
+- **Design v3**: YM-like palette, gradient sent bubbles, meta footer, ticks, denser list, composer/header polish, file cards.
+
+---
+
+## 2.169.0 - 2026-08-08
+
+### Added
+- **Download / Open** on document/file attachments: download to `~/Downloads`, open via `xdg-open`.
+- **SQLite cache** (`cache.db`): upsert chats and messages; cold start from SQLite; fallback on network errors.
+
+---
+
+## 2.168.0 - 2026-08-08
+
+### Added
+- **History pagination**: scroll up → `load_older_messages` (session RPC `from_message_id`).
+- **Drafts**: per-chat text in `drafts.json`, saved on chat switch, cleared after send.
+- **File drag-and-drop** into the chat window + **Ctrl+V** for clipboard images → attach pipeline.
+
+---
+
+## 2.167.0 - 2026-08-08
+
+### Added
+- **In-login session capture** (no Python): WebView login stores Passport cookies (`session.json`) + CSRF; loads `yandex.ru/chat` when needed.
+- **Outbox**: unsent messages written to disk (`outbox.json`), retried on WS Connected and every 45s; UI shows a pending bubble (`sent=false`).
+
+### Changed
+- `HttpClient.session_cookies` — Mutex + `reload_session()` / `apply_session()`.
+- Startup hint when a session is missing.
+
+---
+
+## 2.166.0 - 2026-08-08
+
+### Added
+- **Reply / Edit**: replies and edits are sent to the server (`send_text_message_ex`).
+- **Desktop notifications** via `notify-rust` (per-chat mute + global settings flag).
+- **System tray** (StatusNotifierItem / `ksni`): show, quit, unread badge, close-to-tray.
+- **Chat actions**: mark read / mute / pin / archive / delete (session RPC, best-effort) + local UI.
+- **Mark as read** when opening a chat.
+- **Settings window**: notifications, tray, dark theme.
+- **RU message previews** (`📷 Photo`, `No messages`, …).
+- **Phase 2 Telemost shell**: `webkit6` WebView (`in_app_webview`), Mute / Video / End bar, participant sidebar, fallback “Open in browser”.
+
+### Fixed
+- Hardcoded yuid fallback removed — send fails explicitly without a session yuid.
+- Telemost UI build (GTK4 children API).
+
+### Known Limitations
+- `session.json` is still required for full history/WS/files.
+- Voice / video / Telemost WebRTC remain stubs.
+- Chat-action RPC names may not match the server — the UI still updates locally.
+
+---
+
+## 2.165.0 - 2026-08-08
+
+### Added
+* **Feature Flags for Voice and Telemost**:
+  - Added `YM_ENABLE_VOICE` environment variable to show/hide voice message UI elements (waveform, play/record buttons).
+  - Added `YM_ENABLE_TELEMOST_UI` environment variable to show/hide Telemost (video calls) UI elements in the chat header.
+  - When a flag is off, the corresponding stub UI elements are hidden so users see a cleaner interface.
+* **Stubs marked with comments**:
+  - All stub implementations are now annotated with `// STUB:` comments for easy identification during development.
+* **Smoke tests for message preview and settings**:
+  - Added smoke tests covering message preview rendering and settings persistence.
+* **Code cleanup**:
+  - Removed unused imports across the codebase.
+  - Added `#[allow]` attributes to resolve lint warnings.
+
+### Changed
+* 0 build warnings, 13 tests passing.
+
+### Known Limitations
+* **Voice messages**: stub (hidden by default, enable with `YM_ENABLE_VOICE`)
+* **Video calls (Telemost)**: stub (hidden by default, enable with `YM_ENABLE_TELEMOST_UI`)
+* **Notifications**: stub (stdout/stderr only, no desktop notifications)
+* **System tray**: stub (not implemented)
+* **Chat list context menus**: stub (not implemented)
+* **File upload/download**: not implemented
+* **Call history**: not implemented
+* **Message reactions**: not implemented
 
 ---
 

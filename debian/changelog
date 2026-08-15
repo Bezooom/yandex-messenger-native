@@ -1,3 +1,23 @@
+yandex-messenger-native (2.173.0-1) unstable; urgency=medium
+
+  * UI: Telegram Desktop night theme tokens (night.tdesktop-theme)
+  * UI: nheko-style split (dialogs ~32% / max 420, dense rows, 54px avatars)
+  * UI: dialogsBgActive solid selection, msgIn/msgOut bubbles, blue send
+  * UI: adaptive sidebar (shrink/clamp), remove glow chrome
+  * Auto-scroll to latest on chat open
+
+ -- BeZoom <bezoom@local>  Mon, 10 Aug 2026 13:30:00 +0300
+
+yandex-messenger-native (2.172.0-1) unstable; urgency=medium
+
+  * New Yandex-yellow brand icon (squircle + bubble + «Я»)
+  * Session-in-login, outbox, SQLite cache, file open/save
+  * Delivery ticks, design polish, skeleton/empty states
+  * Reaction pop-in, pagination loader, reduced-motion setting
+  * Install full hicolor icon set (16–512)
+
+ -- BeZoom <bezoom@local>  Fri, 08 Aug 2026 22:00:00 +0300
+
 yandex-messenger-native (2.163.0-1) unstable; urgency=medium
 
   * Fix GTK CSS errors: remove unsupported max-width/max-height

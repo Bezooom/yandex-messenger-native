@@ -40,11 +40,18 @@ pub struct ChatView {
     messages: Mutex<Vec<Message>>,
     messages_store: gtk::gio::ListStore,
     message_list_view: gtk::ListView,
+    /// Stack: list | empty | skeleton | welcome
+    content_stack: gtk::Stack,
+    empty_messages_box: GtkBox,
+    welcome_box: GtkBox,
+    skeleton_messages: GtkBox,
     title_label: Label,
     status_label: Label,
     search_btn: Button,
     search_entry: Entry,
     search_query: Mutex<String>,
+    /// Whole composer bar (must be shown/hidden as a unit)
+    input_area: GtkBox,
     input_entry: TextView,
     message_rows: Mutex<std::collections::HashMap<(String, bool), gtk::Box>>,
     send_btn: Button,
@@ -54,13 +61,16 @@ pub struct ChatView {
     menu_btn: Button,
     /// Shared AuthManager — used for user_id lookups and avatar URLs
     auth: Arc<AuthManager>,
-    on_send: Arc<Mutex<Option<StdBox<dyn Fn(String, String)>>>>,
+    /// (chat_id, text, reply_to_msg_id, edit_msg_id)
+    on_send: Arc<Mutex<Option<StdBox<dyn Fn(String, String, Option<String>, Option<String>)>>>>,
     on_attach: Arc<Mutex<Option<StdBox<dyn Fn(String, Vec<u8>, String)>>>>,
     on_call: Arc<Mutex<Option<StdBox<dyn Fn(String)>>>>,
     on_thread_open: Arc<Mutex<Option<StdBox<dyn Fn(String, String)>>>>,
     on_voice_send: Arc<Mutex<Option<StdBox<dyn Fn(String, Vec<u8>, f64, Vec<f32>)>>>>,
     on_translate: Arc<Mutex<Option<StdBox<dyn Fn(String, String)>>>>,
     on_image_open: Arc<Mutex<Option<StdBox<dyn Fn(String, String, Vec<(String, String)>)>>>>,
+    /// (file_id, url, filename, open_after)
+    on_file_download: Arc<Mutex<Option<StdBox<dyn Fn(String, String, String, bool)>>>>,
     on_typing: Arc<Mutex<Option<StdBox<dyn Fn(String)>>>>,
     last_typing_time: Arc<Mutex<i64>>,
     current_thread_view: Mutex<Option<Arc<crate::ui::ThreadView>>>,
@@ -128,10 +138,20 @@ pub struct ChatView {
     on_schedule: Arc<Mutex<Option<StdBox<dyn Fn(String, String, chrono::DateTime<chrono::Utc>)>>>>,
     /// Callback for canceling a scheduled message
     on_cancel_schedule: Arc<Mutex<Option<StdBox<dyn Fn(String, String)>>>>,
+    /// Load older history: (chat_id, oldest_message_id)
+    on_load_older: Arc<Mutex<Option<StdBox<dyn Fn(String, String)>>>>,
+    /// Prevent concurrent pagination requests
+    loading_older: Mutex<bool>,
+    /// Whether more history may exist above
+    has_more_history: Mutex<bool>,
+    /// Top bar: spinner while loading older messages
+    pagination_bar: GtkBox,
+    /// Stick viewport to newest messages after open / append (async layout-safe).
+    stick_to_bottom: Mutex<bool>,
 }
 
 impl ChatView {
-    pub fn new(auth: Arc<AuthManager>) -> Self {
+    pub fn new(auth: Arc<AuthManager>) -> Arc<Self> {
         let container = GtkBox::new(Orientation::Vertical, 0);
         container.set_hexpand(true);
         container.set_vexpand(true);
@@ -152,28 +172,132 @@ impl ChatView {
         search_entry.set_margin_top(4);
         search_entry.set_margin_bottom(4);
 
-        // Messages area
+        // Messages area — must NOT publish natural width to paned (causes sidebar squeeze)
         let scrolled = ScrolledWindow::builder()
             .hexpand(true)
             .vexpand(true)
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .vscrollbar_policy(gtk::PolicyType::Automatic)
+            .propagate_natural_width(false)
+            .propagate_natural_height(false)
             .build();
         scrolled.add_css_class("chat-scrolled-window");
+        scrolled.set_kinetic_scrolling(true);
+        scrolled.set_overlay_scrolling(true);
+        scrolled.set_min_content_width(0);
 
         let messages_store = gtk::gio::ListStore::new::<crate::ui::message_object::MessageObject>();
         let selection = gtk::NoSelection::new(Some(messages_store.clone()));
         let message_list_view = gtk::ListView::new(Some(selection), None::<gtk::ListItemFactory>);
         message_list_view.set_css_classes(&["messages-list"]);
 
-        message_list_view.set_margin_start(16);
-        message_list_view.set_margin_end(16);
-        message_list_view.set_margin_top(8);
+        // TG history padding: moderate side margins, space above composer
+        message_list_view.set_margin_start(12);
+        message_list_view.set_margin_end(12);
+        message_list_view.set_margin_top(6);
+        message_list_view.set_margin_bottom(10);
         message_list_view.set_hexpand(true);
         message_list_view.set_vexpand(true);
         message_list_view.set_halign(gtk::Align::Fill);
 
-        // Empty state
-
         scrolled.set_child(Some(&message_list_view));
+
+        // Welcome (no chat selected)
+        let welcome_box = GtkBox::new(Orientation::Vertical, 12);
+        welcome_box.add_css_class("empty-chat");
+        welcome_box.add_css_class("welcome-state");
+        welcome_box.set_vexpand(true);
+        welcome_box.set_hexpand(true);
+        welcome_box.set_valign(Align::Center);
+        welcome_box.set_halign(Align::Center);
+        let welcome_logo = Label::builder()
+            .label("Я")
+            .css_classes(vec!["empty-chat-logo".to_string(), "pop-in".to_string()])
+            .build();
+        let welcome_title = Label::builder()
+            .label("Yandex Messenger")
+            .css_classes(vec!["empty-chat-title".to_string()])
+            .build();
+        let welcome_sub = Label::builder()
+            .label("Выберите чат слева, чтобы начать переписку")
+            .justify(gtk::Justification::Center)
+            .wrap(true)
+            .css_classes(vec!["empty-chat-subtitle".to_string()])
+            .build();
+        welcome_box.append(&welcome_logo);
+        welcome_box.append(&welcome_title);
+        welcome_box.append(&welcome_sub);
+
+        // Empty conversation
+        let empty_messages_box = GtkBox::new(Orientation::Vertical, 10);
+        empty_messages_box.add_css_class("empty-chat");
+        empty_messages_box.add_css_class("empty-conversation");
+        empty_messages_box.set_vexpand(true);
+        empty_messages_box.set_hexpand(true);
+        empty_messages_box.set_valign(Align::Center);
+        empty_messages_box.set_halign(Align::Center);
+        let empty_icon = gtk::Image::from_icon_name("mail-send-symbolic");
+        empty_icon.set_pixel_size(48);
+        empty_icon.add_css_class("empty-chat-icon");
+        empty_icon.add_css_class("pop-in");
+        let empty_title = Label::builder()
+            .label("Пока нет сообщений")
+            .css_classes(vec!["empty-chat-title".to_string()])
+            .build();
+        let empty_sub = Label::builder()
+            .label("Напишите первое сообщение —\nистория появится здесь")
+            .justify(gtk::Justification::Center)
+            .wrap(true)
+            .css_classes(vec!["empty-chat-subtitle".to_string()])
+            .build();
+        empty_messages_box.append(&empty_icon);
+        empty_messages_box.append(&empty_title);
+        empty_messages_box.append(&empty_sub);
+
+        // Message skeleton
+        let skeleton_messages = GtkBox::new(Orientation::Vertical, 10);
+        skeleton_messages.add_css_class("skeleton-messages");
+        skeleton_messages.set_vexpand(true);
+        skeleton_messages.set_margin_start(24);
+        skeleton_messages.set_margin_end(24);
+        skeleton_messages.set_margin_top(24);
+        for i in 0..6 {
+            let row = GtkBox::new(Orientation::Horizontal, 0);
+            row.set_hexpand(true);
+            let bubble = gtk::Box::new(Orientation::Vertical, 6);
+            bubble.add_css_class("skeleton");
+            bubble.add_css_class("skeleton-bubble");
+            if i % 2 == 0 {
+                bubble.set_halign(Align::Start);
+                bubble.set_size_request(180 + (i * 20) as i32, 48);
+                row.set_margin_end(80);
+            } else {
+                bubble.set_halign(Align::End);
+                bubble.set_size_request(140 + (i * 15) as i32, 40);
+                row.set_margin_start(80);
+            }
+            row.append(&bubble);
+            skeleton_messages.append(&row);
+        }
+
+        let content_stack = gtk::Stack::builder()
+            .transition_type(gtk::StackTransitionType::Crossfade)
+            .transition_duration(200)
+            .vexpand(true)
+            .hexpand(true)
+            .build();
+        // Critical: stack must shrink so composer is not pushed off the window
+        content_stack.set_vexpand(true);
+        content_stack.set_hexpand(true);
+        content_stack.set_size_request(-1, 80);
+        content_stack.add_named(&scrolled, Some("list"));
+        content_stack.add_named(&welcome_box, Some("welcome"));
+        content_stack.add_named(&empty_messages_box, Some("empty"));
+        content_stack.add_named(&skeleton_messages, Some("skeleton"));
+        content_stack.set_visible_child_name("welcome");
+        // Scrolled history absorbs remaining height
+        scrolled.set_vexpand(true);
+        scrolled.set_propagate_natural_height(false);
 
         // Input area
         let (
@@ -282,26 +406,53 @@ impl ChatView {
             *pending_row_clone.lock().unwrap() = None;
         });
 
+        // Pagination loading indicator (above message stack)
+        let pagination_bar = GtkBox::new(Orientation::Horizontal, 8);
+        pagination_bar.add_css_class("pagination-bar");
+        pagination_bar.set_halign(Align::Center);
+        pagination_bar.set_hexpand(true);
+        pagination_bar.set_visible(false);
+        pagination_bar.set_margin_top(6);
+        pagination_bar.set_margin_bottom(2);
+        let pag_spinner = gtk::Spinner::new();
+        pag_spinner.set_spinning(true);
+        pag_spinner.add_css_class("pagination-spinner");
+        let pag_label = Label::builder()
+            .label("Загрузка истории…")
+            .css_classes(vec!["pagination-label".to_string()])
+            .build();
+        pagination_bar.append(&pag_spinner);
+        pagination_bar.append(&pag_label);
+
         container.append(&header);
         container.append(&search_entry);
         container.append(&pinned_box);
-        container.append(&scrolled);
+        container.append(&pagination_bar);
+        container.append(&content_stack);
         container.append(&reply_preview_box);
         container.append(&undo_bar);
         container.append(&input);
 
-        Self {
+        // Hide composer on welcome
+        input.set_visible(false);
+
+        let view = Self {
             container,
             scrolled: scrolled.clone(),
             chat: Mutex::new(None),
             messages: Mutex::new(Vec::new()),
             messages_store,
             message_list_view,
+            content_stack,
+            empty_messages_box,
+            welcome_box,
+            skeleton_messages,
             title_label,
             status_label,
             search_btn,
             search_entry,
             search_query: Mutex::new(String::new()),
+            input_area: input.clone(),
             input_entry,
             message_rows: Mutex::new(std::collections::HashMap::new()),
             send_btn,
@@ -317,6 +468,7 @@ impl ChatView {
             on_voice_send: Arc::new(Mutex::new(None)),
             on_translate: Arc::new(Mutex::new(None)),
             on_image_open: Arc::new(Mutex::new(None)),
+            on_file_download: Arc::new(Mutex::new(None)),
             on_typing: Arc::new(Mutex::new(None)),
             last_typing_time: Arc::new(Mutex::new(0)),
             current_thread_view: Mutex::new(None),
@@ -362,7 +514,18 @@ impl ChatView {
             on_keyboard_click: std::sync::Arc::new(std::sync::Mutex::new(None)),
             on_command_click: std::sync::Arc::new(std::sync::Mutex::new(None)),
             keyboard_area: Mutex::new(None),
-        }
+            on_load_older: Arc::new(Mutex::new(None)),
+            loading_older: Mutex::new(false),
+            has_more_history: Mutex::new(true),
+            pagination_bar,
+            stick_to_bottom: Mutex::new(false),
+        };
+
+        let this = Arc::new(view);
+        this.setup_history_scroll();
+        this.setup_stick_to_bottom();
+        this.setup_file_drop_and_paste();
+        this
     }
 
     /// Инициализирует poll creator popover (вызывать после создания ChatView)
@@ -380,18 +543,32 @@ impl ChatView {
             cv_schedule.show_send_at_popover();
         });
 
+        // Capture phase so TextView does not eat Enter / Ctrl+V first
         let key_controller = gtk::EventControllerKey::new();
+        key_controller.set_propagation_phase(gtk::PropagationPhase::Capture);
         let cv_key = self.clone();
-        let send_btn_key = self.send_btn.clone();
 
         key_controller.connect_key_pressed(move |_controller, keyval, _keycode, state| {
             let is_shift = state.contains(gtk::gdk::ModifierType::SHIFT_MASK);
-            if keyval == gtk::gdk::Key::Return || keyval == gtk::gdk::Key::KP_Enter {
-                if !is_shift {
-                    send_btn_key.emit_clicked();
+            let is_ctrl = state.contains(gtk::gdk::ModifierType::CONTROL_MASK)
+                || state.contains(gtk::gdk::ModifierType::CONTROL_MASK);
+            // Some layouts report Super+V; primary modifier mask covers Ctrl on most desktops
+            let is_primary = state.contains(gtk::gdk::ModifierType::CONTROL_MASK);
+
+            if (keyval == gtk::gdk::Key::Return || keyval == gtk::gdk::Key::KP_Enter) && !is_shift {
+                cv_key.handle_send();
+                return glib::Propagation::Stop;
+            }
+            if is_primary
+                && (keyval == gtk::gdk::Key::v || keyval == gtk::gdk::Key::V)
+            {
+                // Prefer image paste; if no image, let TextView handle text paste
+                if cv_key.try_paste_clipboard_image() {
                     return glib::Propagation::Stop;
                 }
-            } else if keyval == gtk::gdk::Key::Up {
+                return glib::Propagation::Proceed;
+            }
+            if keyval == gtk::gdk::Key::Up {
                 let is_empty = {
                     let buffer = cv_key.input_entry.buffer();
                     let (start, end) = buffer.bounds();
@@ -402,6 +579,7 @@ impl ChatView {
                     return glib::Propagation::Stop;
                 }
             }
+            let _ = is_ctrl;
             glib::Propagation::Proceed
         });
         self.input_entry.add_controller(key_controller);
@@ -440,7 +618,7 @@ impl ChatView {
 
         // Initial state
         send_btn_clone.set_visible(false);
-        voice_btn_clone.set_visible(true);
+        voice_btn_clone.set_visible(crate::config::ym_enable_voice());
 
         self.input_entry.buffer().connect_changed(move |buffer| {
             let (start, end) = buffer.bounds();
@@ -448,7 +626,7 @@ impl ChatView {
             let is_empty = text.trim().is_empty();
 
             send_btn_clone.set_visible(!is_empty);
-            voice_btn_clone.set_visible(is_empty);
+            voice_btn_clone.set_visible(is_empty && crate::config::ym_enable_voice());
 
             let now = chrono::Utc::now().timestamp_millis();
             let mut last_time = cv_typing.last_typing_time.lock().unwrap();
@@ -569,7 +747,7 @@ impl ChatView {
             if let Some(chat_id) = &chat_id_opt {
                 if let Some(ref cb) = on_send.lock().unwrap().as_ref() {
                     if let Ok(json) = serde_json::to_string(&poll) {
-                        cb(chat_id.clone(), json);
+                        cb(chat_id.clone(), json, None, None);
                     }
                 }
             }
@@ -611,7 +789,7 @@ impl ChatView {
                     "answer_ids": answer_ids,
                 });
                 if let Ok(json) = serde_json::to_string(&vote_data) {
-                    cb(chat_id.clone(), json);
+                    cb(chat_id.clone(), json, None, None);
                 }
             }
         });
@@ -633,22 +811,106 @@ impl ChatView {
         }
 
         let mut messages = self.messages.lock().unwrap();
-        if let Some(existing) = messages.iter_mut().find(|m| m.id == msg.id) {
+        if let Some(existing) = messages.iter_mut().find(|m| {
+            m.id == msg.id
+                || (m.message_id.is_some() && m.message_id == msg.message_id)
+        }) {
+            let mut need_rerender = false;
             if !msg.reactions.is_empty() {
                 existing.reactions = msg.reactions.clone();
+                need_rerender = true;
             }
-            if msg.read {
+            if msg.read && !existing.read {
                 existing.read = true;
-            }
-            if msg.delivered {
                 existing.delivered = true;
+                need_rerender = true;
+            }
+            if msg.delivered && !existing.delivered {
+                existing.delivered = true;
+                need_rerender = true;
+            }
+            if msg.sent && !existing.sent {
+                existing.sent = true;
+                need_rerender = true;
+            }
+            if need_rerender {
+                let snapshot = messages.clone();
+                drop(messages);
+                self.message_rows.lock().unwrap().clear();
+                *self.messages.lock().unwrap() = snapshot;
+                self.render_messages();
             }
             return;
         }
 
         messages.push(msg.clone());
+        drop(messages);
+        // Leaving empty conversation → show list
+        if self.content_stack.visible_child_name().as_deref() == Some("empty")
+            || self.content_stack.visible_child_name().as_deref() == Some("skeleton")
+            || self.content_stack.visible_child_name().as_deref() == Some("welcome")
+        {
+            self.show_messages_list();
+        }
         let obj = crate::ui::message_object::MessageObject::new(msg);
         self.messages_store.append(&obj);
+        // New message → stick to bottom (latest messages visible)
+        self.scroll_to_latest();
+    }
+
+    /// Update delivery/read ticks for one or many messages and re-render.
+    pub fn apply_status_updates(&self, updates: &[(String, bool, bool)]) {
+        if updates.is_empty() {
+            return;
+        }
+        let mut messages = self.messages.lock().unwrap();
+        let mut dirty = false;
+        for (mid, delivered, read) in updates {
+            for msg in messages.iter_mut() {
+                let match_id = msg.id == *mid
+                    || msg.message_id.as_deref() == Some(mid.as_str())
+                    || msg.id.ends_with(&format!("_{}", mid));
+                if !match_id {
+                    continue;
+                }
+                if *delivered && !msg.delivered {
+                    msg.delivered = true;
+                    dirty = true;
+                }
+                if *read && !msg.read {
+                    msg.read = true;
+                    msg.delivered = true;
+                    dirty = true;
+                }
+            }
+        }
+        if dirty {
+            let snapshot = messages.clone();
+            drop(messages);
+            self.message_rows.lock().unwrap().clear();
+            *self.messages.lock().unwrap() = snapshot;
+            self.render_messages();
+        }
+    }
+
+    /// Mark all currently shown outgoing messages as read (peer read the chat).
+    pub fn mark_all_outgoing_read(&self) {
+        let mut messages = self.messages.lock().unwrap();
+        let mut dirty = false;
+        for msg in messages.iter_mut() {
+            if (msg.sent || msg.delivered) && !msg.read {
+                msg.read = true;
+                msg.delivered = true;
+                dirty = true;
+            }
+        }
+        if dirty {
+            let snapshot = messages.clone();
+            drop(messages);
+            self.message_rows.lock().unwrap().clear();
+            *self.messages.lock().unwrap() = snapshot;
+            self.render_messages();
+        }
     }
 
     pub fn set_reactions_config(&self, config: ExtendedReactionsConfig) {
@@ -774,16 +1036,21 @@ impl ChatView {
 
         let message_id = msg.message_id.clone().unwrap_or_else(|| msg.id.clone());
 
-        for reaction in &msg.reactions {
+        for (i, reaction) in msg.reactions.iter().enumerate() {
             let label = if reaction.count > 1 {
                 format!("{} {}", reaction.emoji, reaction.count)
             } else {
                 reaction.emoji.clone()
             };
-            let mut classes = vec!["reaction-chip".to_string()];
+            let mut classes = vec![
+                "reaction-chip".to_string(),
+                "reaction-pop".to_string(),
+            ];
             if reaction.selected {
                 classes.push("selected".to_string());
             }
+            // Stagger pop-in slightly
+            classes.push(format!("reaction-delay-{}", i.min(5)));
 
             let chip = Button::builder().label(&label).css_classes(classes).build();
             let emoji = reaction.emoji.clone();
@@ -801,7 +1068,11 @@ impl ChatView {
 
         let add_btn = Button::builder()
             .label("+")
-            .css_classes(vec!["reaction-chip".to_string(), "add".to_string()])
+            .css_classes(vec![
+                "reaction-chip".to_string(),
+                "add".to_string(),
+                "reaction-pop".to_string(),
+            ])
             .build();
         let msg_clone = msg.clone();
         let view = self.clone();
@@ -858,16 +1129,21 @@ impl ChatView {
 
     fn format_timestamp(dt: &chrono::DateTime<chrono::Utc>) -> String {
         let now = chrono::Utc::now();
+        // Guard bad epochs (1970 / far future) from broken unit conversion
+        let year: i32 = dt.format("%Y").to_string().parse().unwrap_or(0);
+        if !(2000..=2100).contains(&year) {
+            return format!("{}", now.with_timezone(&chrono::Local).format("%H:%M"));
+        }
         let diff = now.signed_duration_since(*dt);
 
-        if diff.num_days() == 0 {
-            format!("{}", dt.format("%H:%M"))
-        } else if diff.num_days() == 1 {
+        if diff.num_seconds().abs() < 86400 && diff.num_days() == 0 {
+            format!("{}", dt.with_timezone(&chrono::Local).format("%H:%M"))
+        } else if diff.num_days() == 1 || (diff.num_hours() >= 24 && diff.num_hours() < 48) {
             "Вчера".to_string()
-        } else if diff.num_days() < 7 {
+        } else if (0..7).contains(&diff.num_days()) {
             format!("{} дн. назад", diff.num_days())
         } else {
-            format!("{}", dt.format("%d.%m.%Y"))
+            format!("{}", dt.with_timezone(&chrono::Local).format("%d.%m.%Y"))
         }
     }
 
@@ -883,34 +1159,54 @@ impl ChatView {
 
     fn handle_send(&self) {
         log::info!("handle_send called");
-        if let Some(ref chat) = *self.chat.lock().unwrap() {
-            log::info!("Chat found: {}", chat.id);
-            let text = {
-                let buffer = self.input_entry.buffer();
-                let (start, end) = buffer.bounds();
-                buffer.text(&start, &end, false).to_string()
-            };
-            if text.trim().is_empty() {
+        let chat_id = match self.current_chat_id() {
+            Some(id) => id,
+            None => {
+                log::warn!("handle_send: no chat selected");
+                self.show_error("Сначала выберите чат");
                 return;
             }
+        };
 
-            let reply_id = self.reply_to_msg_id.lock().unwrap().clone();
-            let edit_id = self.edit_msg_id.lock().unwrap().clone();
+        let text = {
+            let buffer = self.input_entry.buffer();
+            let (start, end) = buffer.bounds();
+            buffer.text(&start, &end, false).to_string()
+        };
+        let text = text.trim().to_string();
+        if text.is_empty() {
+            return;
+        }
 
-            if let Some(id) = &edit_id {
-                log::info!("Editing message {}: {}", id, text);
-            } else if let Some(id) = &reply_id {
-                log::info!("Replying to message {}: {}", id, text);
-            }
+        let reply_id = self.reply_to_msg_id.lock().unwrap().clone();
+        let edit_id = self.edit_msg_id.lock().unwrap().clone();
 
-            if let Some(cb) = self.on_send.lock().unwrap().as_ref() {
-                cb(chat.id.clone(), text.clone());
-            }
+        log::info!(
+            "Sending to {}: {} chars (reply={:?}, edit={:?})",
+            chat_id,
+            text.len(),
+            reply_id,
+            edit_id
+        );
 
-            self.input_entry.buffer().set_text("");
-            self.reply_preview_box.set_visible(false);
-            *self.reply_to_msg_id.lock().unwrap() = None;
-            *self.edit_msg_id.lock().unwrap() = None;
+        let has_cb = self.on_send.lock().unwrap().is_some();
+        if !has_cb {
+            log::error!("handle_send: on_send callback is not bound");
+            self.show_error("Отправка не инициализирована");
+            return;
+        }
+
+        // Clear UI first so Enter cannot double-send
+        self.input_entry.buffer().set_text("");
+        self.reply_preview_box.set_visible(false);
+        *self.reply_to_msg_id.lock().unwrap() = None;
+        *self.edit_msg_id.lock().unwrap() = None;
+        self.send_btn.set_visible(false);
+        self.voice_btn
+            .set_visible(crate::config::ym_enable_voice());
+
+        if let Some(cb) = self.on_send.lock().unwrap().as_ref() {
+            cb(chat_id, text, reply_id, edit_id);
         }
     }
 
@@ -993,11 +1289,7 @@ impl ChatView {
         vbox.set_margin_bottom(4);
         vbox.add_css_class("attach-menu");
 
-        let btn_file = gtk::Button::builder()
-            .label("📎 Отправить файл")
-            .css_classes(vec!["flat".to_string(), "attach-menu-btn".to_string()])
-            .halign(gtk::Align::Fill)
-            .build();
+        let btn_file = menu_row_button("mail-attachment-symbolic", "Отправить файл");
         let this_file = self.clone();
         let pop_clone = popover.clone();
         btn_file.connect_clicked(move |_| {
@@ -1005,11 +1297,15 @@ impl ChatView {
             this_file.handle_attach();
         });
 
-        let btn_poll = gtk::Button::builder()
-            .label("📊 Создать опрос")
-            .css_classes(vec!["flat".to_string(), "attach-menu-btn".to_string()])
-            .halign(gtk::Align::Fill)
-            .build();
+        let btn_sticker = menu_row_button("face-smile-symbolic", "Стикеры");
+        let this_sticker = self.clone();
+        let pop_st = popover.clone();
+        btn_sticker.connect_clicked(move |_| {
+            pop_st.popdown();
+            this_sticker.sticker_btn.emit_clicked();
+        });
+
+        let btn_poll = menu_row_button("view-list-symbolic", "Создать опрос");
         let this_poll = self.clone();
         let pop_clone2 = popover.clone();
         btn_poll.connect_clicked(move |_| {
@@ -1023,11 +1319,7 @@ impl ChatView {
             }
         });
 
-        let btn_sched = gtk::Button::builder()
-            .label("📅 Запланировать")
-            .css_classes(vec!["flat".to_string(), "attach-menu-btn".to_string()])
-            .halign(gtk::Align::Fill)
-            .build();
+        let btn_sched = menu_row_button("preferences-system-time-symbolic", "Запланировать");
         let this_sched = self.clone();
         let pop_clone3 = popover.clone();
         btn_sched.connect_clicked(move |_| {
@@ -1036,6 +1328,7 @@ impl ChatView {
         });
 
         vbox.append(&btn_file);
+        vbox.append(&btn_sticker);
         vbox.append(&btn_poll);
         vbox.append(&btn_sched);
 
@@ -1056,17 +1349,14 @@ impl ChatView {
         menu_vbox.set_margin_top(4);
         menu_vbox.set_margin_bottom(4);
 
-        let btn_info = Button::builder()
-            .label("ℹ️ Информация")
-            .css_classes(vec!["flat".to_string(), "attach-menu-btn".to_string()])
-            .halign(gtk::Align::Start)
-            .build();
+        let btn_info = menu_row_button("dialog-information-symbolic", "Информация");
         let cv_info = self.clone();
         let menu_pop_clone = popover.clone();
         btn_info.connect_clicked(move |_| {
             menu_pop_clone.popdown();
             if let Some(chat) = cv_info.chat.lock().unwrap().as_ref() {
                 log::info!("Chat Info requested for chat: {}", chat.id);
+                #[allow(deprecated)]
                 let dialog = gtk::MessageDialog::new(
                     None::<&gtk::Window>,
                     gtk::DialogFlags::MODAL,
@@ -1200,11 +1490,16 @@ impl ChatView {
     }
 
     pub fn show_error(&self, err_msg: &str) {
-        self.undo_label.set_text(&format!("Ошибка: {}", err_msg));
+        self.show_toast(&format!("Ошибка: {}", err_msg));
+    }
+
+    /// Transient status bar (reuse undo bar chrome).
+    pub fn show_toast(&self, msg: &str) {
+        self.undo_label.set_text(msg);
         self.undo_bar.set_visible(true);
 
         let undo_bar = self.undo_bar.clone();
-        glib::timeout_add_seconds_local(5, move || {
+        glib::timeout_add_seconds_local(4, move || {
             undo_bar.set_visible(false);
             glib::ControlFlow::Break
         });
@@ -1220,7 +1515,8 @@ impl ChatView {
         let popover = Popover::builder().has_arrow(false).autohide(true).build();
         popover.add_css_class("sticker-panel-popover");
         popover.set_child(Some(sticker_panel.container()));
-        popover.set_parent(&self.sticker_btn);
+        // Anchor on visible emoji btn (sticker icon is hidden to free composer width)
+        popover.set_parent(&self.emoji_btn);
         popover.set_position(gtk::PositionType::Top);
 
         let cv_select = self.clone();
@@ -1237,7 +1533,7 @@ impl ChatView {
                         "pack_id": pack_id,
                     });
                     if let Ok(json) = serde_json::to_string(&sticker) {
-                        cb(chat_id.clone(), json);
+                        cb(chat_id.clone(), json, None, None);
                     }
                 }
             }
@@ -1342,6 +1638,14 @@ impl ChatView {
         *self.on_image_open.lock().unwrap() = Some(StdBox::new(callback));
     }
 
+    /// Callback for file download/open: (file_id, url, filename, open_after).
+    pub fn on_file_download(
+        &self,
+        callback: impl Fn(String, String, String, bool) + 'static,
+    ) {
+        *self.on_file_download.lock().unwrap() = Some(StdBox::new(callback));
+    }
+
     pub fn on_typing(&self, callback: impl Fn(String) + 'static) {
         *self.on_typing.lock().unwrap() = Some(StdBox::new(callback));
     }
@@ -1375,6 +1679,10 @@ impl ChatView {
             self.messages_store.remove_all();
             self.messages.lock().unwrap().clear();
             self.message_rows.lock().unwrap().clear();
+            *self.has_more_history.lock().unwrap() = true;
+            *self.loading_older.lock().unwrap() = false;
+            // Next history load must land on the newest messages
+            *self.stick_to_bottom.lock().unwrap() = true;
         }
 
         // Update status based on chat type
@@ -1392,21 +1700,14 @@ impl ChatView {
         self.status_label.set_label(&status_text);
 
         // Show the call button when a chat is selected (except for channels)
-        if let Some(parent) = self.title_label.parent() {
-            if let Some(header) = parent.parent() {
-                if let Some(btn) = header.last_child() {
-                    btn.set_visible(chat.chat_type != crate::models::ChatType::Channel);
-                }
-            }
-        }
+        self.call_btn.set_visible(chat.chat_type != crate::models::ChatType::Channel && crate::config::ym_enable_telemost_ui());
 
-        // Show input area
+        // Show composer bar (TG layout: attach + full-width text + emoji + send/voice)
+        self.input_area.set_visible(true);
         self.input_entry.set_visible(true);
         self.attach_btn.set_visible(true);
         self.emoji_btn.set_visible(true);
-        self.sticker_btn.set_visible(true);
-        self.poll_btn.set_visible(true);
-        self.schedule_btn.set_visible(true);
+        // sticker/poll/schedule stay hidden anchors — opened from attach menu
 
         let is_empty = {
             let buffer = self.input_entry.buffer();
@@ -1414,18 +1715,40 @@ impl ChatView {
             buffer.text(&start, &end, false).trim().is_empty()
         };
         self.send_btn.set_visible(!is_empty);
-        self.voice_btn.set_visible(is_empty);
+        self.voice_btn.set_visible(is_empty && crate::config::ym_enable_voice());
+
+        // Loading skeleton until messages arrive
+        if is_new_chat {
+            self.show_messages_skeleton();
+        }
 
         // Check if this is a bot chat and show BotPanel
         self.handle_bot_chat(&chat);
     }
 
-    /// Hide chat view and show empty state
+    pub fn show_messages_skeleton(&self) {
+        self.content_stack.set_visible_child_name("skeleton");
+    }
+
+    pub fn show_messages_list(&self) {
+        self.content_stack.set_visible_child_name("list");
+    }
+
+    pub fn show_empty_conversation(&self) {
+        self.content_stack.set_visible_child_name("empty");
+    }
+
+    pub fn show_welcome(&self) {
+        self.content_stack.set_visible_child_name("welcome");
+    }
+
+    /// Hide chat view and show welcome empty state
     pub fn set_empty(&self) {
         *self.chat.lock().unwrap() = None;
         self.title_label.set_label("Messenger");
         self.status_label.set_label("");
-        // Hide input area
+        // Hide composer bar
+        self.input_area.set_visible(false);
         self.input_entry.set_visible(false);
         self.send_btn.set_visible(false);
         self.attach_btn.set_visible(false);
@@ -1435,9 +1758,10 @@ impl ChatView {
         self.poll_btn.set_visible(false);
         self.schedule_btn.set_visible(false);
 
-        // Clear message list
+        // Clear message list + welcome
         self.messages_store.remove_all();
         self.messages.lock().unwrap().clear();
+        self.show_welcome();
 
         // Hide bot panel
         if let Some(_bot_p) = self.bot_panel.lock().unwrap().take() {
@@ -1551,13 +1875,483 @@ impl ChatView {
             let current = self.messages.lock().unwrap();
             !crate::models::messages_equivalent(&current, &messages)
         };
+        // Even if content equivalent, still force scroll to latest when opening chat
         if !should_render {
+            if !messages.is_empty() {
+                self.show_messages_list();
+                self.scroll_to_latest();
+            }
             return;
         }
 
         self.message_rows.lock().unwrap().clear();
-        *self.messages.lock().unwrap() = messages;
+        // Assume more history if we got a full page
+        *self.has_more_history.lock().unwrap() = messages.len() >= 40;
+        *self.loading_older.lock().unwrap() = false;
+        *self.messages.lock().unwrap() = messages.clone();
+        if messages.is_empty() {
+            self.show_empty_conversation();
+        } else {
+            self.show_messages_list();
+            self.render_messages(); // ends with scroll_to_latest
+        }
+    }
+
+    pub fn set_pagination_loading(&self, loading: bool) {
+        self.pagination_bar.set_visible(loading);
+        // Keep spinner spinning while visible
+        if let Some(child) = self.pagination_bar.first_child() {
+            if let Ok(spinner) = child.downcast::<gtk::Spinner>() {
+                spinner.set_spinning(loading);
+            }
+        }
+        if !loading {
+            *self.loading_older.lock().unwrap() = false;
+        }
+    }
+
+    /// Prepend older messages (pagination) while trying to keep scroll position.
+    pub fn prepend_messages(&self, older: Vec<Message>) {
+        // Pagination is upward history — do not force bottom
+        *self.stick_to_bottom.lock().unwrap() = false;
+        if older.is_empty() {
+            *self.has_more_history.lock().unwrap() = false;
+            self.set_pagination_loading(false);
+            return;
+        }
+
+        let adj = self.scrolled.vadjustment();
+        let old_upper = adj.upper();
+        let old_value = adj.value();
+
+        {
+            let mut messages = self.messages.lock().unwrap();
+            let existing_ids: std::collections::HashSet<String> =
+                messages.iter().map(|m| m.id.clone()).collect();
+            let mut filtered: Vec<Message> = older
+                .into_iter()
+                .filter(|m| !existing_ids.contains(&m.id))
+                .collect();
+            if filtered.is_empty() {
+                *self.has_more_history.lock().unwrap() = false;
+                self.set_pagination_loading(false);
+                return;
+            }
+            *self.has_more_history.lock().unwrap() = filtered.len() >= 20;
+            filtered.append(&mut *messages);
+            filtered.sort_by(|a, b| a.created.cmp(&b.created));
+            let mut seen = std::collections::HashSet::new();
+            filtered.retain(|m| seen.insert(m.id.clone()));
+            *messages = filtered;
+        }
+
+        self.message_rows.lock().unwrap().clear();
         self.render_messages();
+
+        // Restore relative scroll after content height grows
+        let scrolled = self.scrolled.clone();
+        glib::timeout_add_local_once(std::time::Duration::from_millis(50), move || {
+            let adj = scrolled.vadjustment();
+            let new_upper = adj.upper();
+            let delta = new_upper - old_upper;
+            if delta > 0.0 {
+                adj.set_value(old_value + delta);
+            }
+        });
+        self.set_pagination_loading(false);
+    }
+
+    pub fn on_load_older(&self, callback: impl Fn(String, String) + 'static) {
+        *self.on_load_older.lock().unwrap() = Some(StdBox::new(callback));
+    }
+
+    fn build_file_attachment_row(&self, media: &crate::models::MediaAttachment) -> GtkBox {
+        let row = GtkBox::new(Orientation::Horizontal, 8);
+        row.add_css_class("file-attachment");
+        row.set_margin_top(4);
+        row.set_margin_bottom(4);
+        row.set_hexpand(true);
+
+        let icon = gtk::Image::from_icon_name("x-office-document-symbolic");
+        icon.set_pixel_size(28);
+        row.append(&icon);
+
+        let info = GtkBox::new(Orientation::Vertical, 2);
+        info.set_hexpand(true);
+        let name = media
+            .filename
+            .clone()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| {
+                if media.url.is_empty() {
+                    "Файл".to_string()
+                } else {
+                    media
+                        .url
+                        .rsplit('/')
+                        .next()
+                        .unwrap_or("file")
+                        .to_string()
+                }
+            });
+        let name_label = Label::builder()
+            .label(&name)
+            .xalign(0.0)
+            .ellipsize(gtk::pango::EllipsizeMode::End)
+            .css_classes(vec!["file-attachment-name".to_string()])
+            .build();
+        info.append(&name_label);
+        if let Some(sz) = media.size {
+            let size_label = Label::builder()
+                .label(&format_file_size(sz))
+                .xalign(0.0)
+                .css_classes(vec!["dim-label".to_string()])
+                .build();
+            info.append(&size_label);
+        }
+        row.append(&info);
+
+        let file_id = media.id.clone();
+        let url = media.url.clone();
+        let filename = name.clone();
+        let on_dl = self.on_file_download.clone();
+
+        let btn_save = Button::builder()
+            .label("Скачать")
+            .css_classes(vec!["flat".to_string(), "file-action-btn".to_string()])
+            .tooltip_text("Сохранить в Загрузки")
+            .build();
+        {
+            let on_dl = on_dl.clone();
+            let file_id = file_id.clone();
+            let url = url.clone();
+            let filename = filename.clone();
+            btn_save.connect_clicked(move |_| {
+                if let Some(ref cb) = *on_dl.lock().unwrap() {
+                    cb(file_id.clone(), url.clone(), filename.clone(), false);
+                }
+            });
+        }
+        row.append(&btn_save);
+
+        let btn_open = Button::builder()
+            .label("Открыть")
+            .css_classes(vec!["flat".to_string(), "file-action-btn".to_string()])
+            .tooltip_text("Скачать и открыть")
+            .build();
+        {
+            let on_dl = on_dl.clone();
+            btn_open.connect_clicked(move |_| {
+                if let Some(ref cb) = *on_dl.lock().unwrap() {
+                    cb(file_id.clone(), url.clone(), filename.clone(), true);
+                }
+            });
+        }
+        row.append(&btn_open);
+
+        row
+    }
+
+    fn setup_history_scroll(self: &Arc<Self>) {
+        let this = self.clone();
+        let adj = self.scrolled.vadjustment();
+        adj.connect_value_changed(move |adj| {
+            // While pinning to latest (chat open), ignore false "top" positions
+            if *this.stick_to_bottom.lock().unwrap() {
+                return;
+            }
+            // Near top of history → load older
+            if adj.value() > 80.0 {
+                return;
+            }
+            if *this.loading_older.lock().unwrap() {
+                return;
+            }
+            if !*this.has_more_history.lock().unwrap() {
+                return;
+            }
+            let chat_id = match this.current_chat_id() {
+                Some(id) => id,
+                None => return,
+            };
+            let oldest_id = {
+                let msgs = this.messages.lock().unwrap();
+                msgs.first().map(|m| m.id.clone())
+            };
+            let Some(oldest_id) = oldest_id else {
+                return;
+            };
+            *this.loading_older.lock().unwrap() = true;
+            this.set_pagination_loading(true);
+            if let Some(ref cb) = *this.on_load_older.lock().unwrap() {
+                cb(chat_id, oldest_id);
+            } else {
+                this.set_pagination_loading(false);
+            }
+        });
+    }
+
+    /// Drag-and-drop files + paste images into the chat.
+    fn setup_file_drop_and_paste(self: &Arc<Self>) {
+        // DnD target on the whole chat container
+        let drop_target = gtk::DropTarget::new(gio::File::static_type(), gtk::gdk::DragAction::COPY);
+        let this = self.clone();
+        drop_target.connect_drop(move |_target, value, _x, _y| {
+            let Ok(file) = value.get::<gio::File>() else {
+                return false;
+            };
+            let Some(path) = file.path() else {
+                return false;
+            };
+            let chat_id = match this.current_chat_id() {
+                Some(id) => id,
+                None => return false,
+            };
+            let filename = path
+                .file_name()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_else(|| "file.bin".into());
+            let bytes = std::fs::read(&path).unwrap_or_default();
+            if bytes.is_empty() {
+                return false;
+            }
+            if let Some(ref cb) = *this.on_attach.lock().unwrap() {
+                cb(chat_id, bytes, filename);
+                return true;
+            }
+            false
+        });
+        self.container.add_controller(drop_target);
+
+        // Also accept image paste on the whole chat surface (not only TextView)
+        let key = gtk::EventControllerKey::new();
+        key.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let this = self.clone();
+        key.connect_key_pressed(move |_c, keyval, _code, state| {
+            let ctrl = state.contains(gtk::gdk::ModifierType::CONTROL_MASK);
+            if !ctrl || (keyval != gtk::gdk::Key::v && keyval != gtk::gdk::Key::V) {
+                return glib::Propagation::Proceed;
+            }
+            if this.try_paste_clipboard_image() {
+                return glib::Propagation::Stop;
+            }
+            glib::Propagation::Proceed
+        });
+        self.container.add_controller(key);
+    }
+
+    /// Try to paste an image/screenshot from the system clipboard.
+    /// Returns true if an image paste was initiated (caller should stop key propagation).
+    fn try_paste_clipboard_image(self: &Arc<Self>) -> bool {
+        if self.current_chat_id().is_none() {
+            self.show_error("Сначала выберите чат");
+            return true;
+        }
+        let Some(display) = gtk::gdk::Display::default() else {
+            return false;
+        };
+        let clipboard = display.clipboard();
+        let this = self.clone();
+        log::info!("Ctrl+V: attempting clipboard image paste");
+
+        // 1) Texture path (works when compositor exposes gdk.Texture)
+        clipboard.read_texture_async(gio::Cancellable::NONE, {
+            let this = this.clone();
+            move |result| {
+                match result {
+                    Ok(Some(texture)) => {
+                        // save_to_png on huge screenshots is expensive — defer one idle tick
+                        // so the key event finishes first (reduces "UI freeze" feeling).
+                        let this2 = this.clone();
+                        glib::idle_add_local_once(move || {
+                            let w = texture.width();
+                            let h = texture.height();
+                            log::info!("clipboard texture {}x{}, encoding PNG…", w, h);
+                            // Cap enormous textures — avoid multi‑100MB PNG + process kill
+                            if w > 8192 || h > 8192 {
+                                log::warn!(
+                                    "clipboard texture too large ({}x{}), trying MIME fallback",
+                                    w,
+                                    h
+                                );
+                                this2.paste_clipboard_image_mime();
+                                return;
+                            }
+                            let bytes = texture.save_to_png_bytes().to_vec();
+                            if !bytes.is_empty() && bytes.len() < 40 * 1024 * 1024 {
+                                this2.deliver_pasted_image(bytes, "screenshot.png");
+                            } else if bytes.len() >= 40 * 1024 * 1024 {
+                                log::warn!("clipboard PNG {} bytes — MIME fallback", bytes.len());
+                                this2.paste_clipboard_image_mime();
+                            } else {
+                                this2.paste_clipboard_image_mime();
+                            }
+                        });
+                        return;
+                    }
+                    Ok(None) => log::debug!("clipboard: no texture"),
+                    Err(e) => log::debug!("clipboard texture: {}", e),
+                }
+                // 2) Fallback: raw image MIME (common for GNOME/KDE screenshots)
+                this.paste_clipboard_image_mime();
+            }
+        });
+        true
+    }
+
+    fn paste_clipboard_image_mime(self: &Arc<Self>) {
+        let Some(display) = gtk::gdk::Display::default() else {
+            return;
+        };
+        let clipboard = display.clipboard();
+        let this = self.clone();
+        let mimes = [
+            "image/png",
+            "image/jpeg",
+            "image/jpg",
+            "image/bmp",
+            "image/tiff",
+            "image/webp",
+            "image/x-png",
+        ];
+        clipboard.read_async(
+            &mimes,
+            glib::Priority::DEFAULT,
+            gio::Cancellable::NONE,
+            move |result| match result {
+                Ok((stream, mime)) => {
+                    let mime = mime.to_string();
+                    let this = this.clone();
+                    glib::spawn_future_local(async move {
+                        match read_gio_stream_bytes(stream).await {
+                            Ok(bytes) if !bytes.is_empty() => {
+                                let name = if mime.contains("jpeg") || mime.contains("jpg") {
+                                    "screenshot.jpg"
+                                } else if mime.contains("webp") {
+                                    "screenshot.webp"
+                                } else {
+                                    "screenshot.png"
+                                };
+                                this.deliver_pasted_image(bytes, name);
+                            }
+                            Ok(_) => log::debug!("clipboard image empty body"),
+                            Err(e) => log::warn!("clipboard image stream: {}", e),
+                        }
+                    });
+                }
+                Err(e) => {
+                    log::debug!("clipboard read_async image mime failed: {}", e);
+                    // 3) file:// URI list (some tools put path on clipboard)
+                    this.paste_clipboard_uri_file();
+                    // Soft feedback if nothing works shortly
+                    let toast = this.clone();
+                    glib::timeout_add_local_once(std::time::Duration::from_millis(600), move || {
+                        // Only show if still no recent attach (best-effort hint)
+                        log::debug!("clipboard paste chain finished without guaranteed image");
+                        let _ = toast;
+                    });
+                }
+            },
+        );
+    }
+
+    fn paste_clipboard_uri_file(self: &Arc<Self>) {
+        let Some(display) = gtk::gdk::Display::default() else {
+            return;
+        };
+        let clipboard = display.clipboard();
+        let this = self.clone();
+        clipboard.read_async(
+            &["text/uri-list", "text/plain"],
+            glib::Priority::DEFAULT,
+            gio::Cancellable::NONE,
+            move |result| {
+                let Ok((stream, _mime)) = result else {
+                    return;
+                };
+                let this = this.clone();
+                glib::spawn_future_local(async move {
+                    let Ok(bytes) = read_gio_stream_bytes(stream).await else {
+                        return;
+                    };
+                    let text = String::from_utf8_lossy(&bytes);
+                    let uri = text
+                        .lines()
+                        .map(str::trim)
+                        .find(|l| !l.is_empty() && !l.starts_with('#'));
+                    let Some(uri) = uri else {
+                        return;
+                    };
+                    let path = if uri.starts_with("file:") {
+                        glib::filename_from_uri(uri).ok().map(|(p, _)| p)
+                    } else if uri.starts_with('/') {
+                        Some(std::path::PathBuf::from(uri))
+                    } else {
+                        None
+                    };
+                    let Some(path) = path else {
+                        return;
+                    };
+                    let Ok(file_bytes) = std::fs::read(&path) else {
+                        return;
+                    };
+                    if file_bytes.is_empty() {
+                        return;
+                    }
+                    let name = path
+                        .file_name()
+                        .map(|s| s.to_string_lossy().to_string())
+                        .unwrap_or_else(|| "paste.bin".into());
+                    // Only treat as image if extension looks like one
+                    let lower = name.to_lowercase();
+                    if !(lower.ends_with(".png")
+                        || lower.ends_with(".jpg")
+                        || lower.ends_with(".jpeg")
+                        || lower.ends_with(".webp")
+                        || lower.ends_with(".bmp")
+                        || lower.ends_with(".gif"))
+                    {
+                        return;
+                    }
+                    this.deliver_pasted_image(file_bytes, &name);
+                });
+            },
+        );
+    }
+
+    fn deliver_pasted_image(&self, bytes: Vec<u8>, filename: &str) {
+        let chat_id = match self.current_chat_id() {
+            Some(id) => id,
+            None => {
+                self.show_error("Сначала выберите чат");
+                return;
+            }
+        };
+        log::info!(
+            "Pasting clipboard image {} ({} bytes) to {}",
+            filename,
+            bytes.len(),
+            chat_id
+        );
+        if let Some(ref cb) = *self.on_attach.lock().unwrap() {
+            cb(chat_id, bytes, filename.to_string());
+        } else {
+            self.show_error("Вложение не инициализировано");
+        }
+    }
+
+    pub fn set_input_text(&self, text: &str) {
+        self.input_entry.buffer().set_text(text);
+    }
+
+    pub fn input_text(&self) -> String {
+        let buffer = self.input_entry.buffer();
+        let (start, end) = buffer.bounds();
+        buffer.text(&start, &end, false).to_string()
+    }
+
+    pub fn clear_input(&self) {
+        self.input_entry.buffer().set_text("");
     }
 
     pub fn current_chat_id(&self) -> Option<String> {
@@ -1567,7 +2361,7 @@ impl ChatView {
 
     pub fn bind_callbacks(
         &self,
-        on_send: impl Fn(String, String) + 'static,
+        on_send: impl Fn(String, String, Option<String>, Option<String>) + 'static,
         on_attach: impl Fn(String, Vec<u8>, String) + 'static,
         on_call: impl Fn(String) + 'static,
     ) {
@@ -1597,8 +2391,8 @@ impl ChatView {
             row.set_hexpand(true);
             row.set_halign(gtk::Align::Fill);
             row.set_vexpand(false);
-            // Give the measure pass a sane minimum so wrap labels don't fight
-            row.set_size_request(200, -1);
+            // No fixed min-width — that inflated paned end-child requisition
+            row.set_size_request(-1, -1);
             list_item.set_child(Some(&row));
         });
 
@@ -1681,7 +2475,28 @@ impl ChatView {
         let messages = self.messages.lock().unwrap();
         log::info!("Rendering {} messages via ListView", messages.len());
 
+        if messages.is_empty() {
+            drop(messages);
+            if self.current_chat_id().is_some() {
+                self.show_empty_conversation();
+            } else {
+                self.show_welcome();
+            }
+            self.messages_store.remove_all();
+            return;
+        }
+
+        self.show_messages_list();
+
         let mut sorted_messages = messages.clone();
+        // Fix absurd timestamps before sort (ms/µs mix → 1970 or year 50k)
+        let now = chrono::Utc::now();
+        for m in &mut sorted_messages {
+            let y: i32 = m.created.format("%Y").to_string().parse().unwrap_or(0);
+            if y < 2000 || y > 2100 {
+                m.created = now;
+            }
+        }
         sorted_messages.sort_by(|a, b| a.created.cmp(&b.created));
 
         let start_time = std::time::Instant::now();
@@ -1698,16 +2513,89 @@ impl ChatView {
             start_time.elapsed()
         );
 
-        if messages.is_empty() {
+        // Always land on the newest messages when (re)binding a chat history.
+        self.scroll_to_latest();
+    }
+
+    /// Scroll message list to the newest message (bottom).
+    /// Marks stick-to-bottom and applies immediately + after async ListView measure.
+    pub fn scroll_to_latest(&self) {
+        let n = self.messages_store.n_items();
+        if n == 0 {
             return;
         }
+        *self.stick_to_bottom.lock().unwrap() = true;
+        self.apply_scroll_to_bottom();
 
-        // Scroll to the bottom once the list view updates
-        let scrolled_clone = self.scrolled.clone();
-        glib::timeout_add_local(std::time::Duration::from_millis(150), move || {
-            let adj = scrolled_clone.vadjustment();
-            adj.set_value(adj.upper() - adj.page_size());
-            glib::ControlFlow::Break
+        // ListView measures after splice — keep forcing bottom until layout settles
+        let this_scrolled = self.scrolled.clone();
+        let this_list = self.message_list_view.clone();
+        let last = n.saturating_sub(1);
+        for delay_ms in [1u32, 16, 32, 50, 80, 120, 200, 350, 500, 800, 1200] {
+            let list = this_list.clone();
+            let scrolled = this_scrolled.clone();
+            glib::timeout_add_local_once(
+                std::time::Duration::from_millis(delay_ms as u64),
+                move || {
+                    list.scroll_to(last, gtk::ListScrollFlags::NONE, None);
+                    let adj = scrolled.vadjustment();
+                    let target = (adj.upper() - adj.page_size()).max(0.0);
+                    if target > 0.0 {
+                        adj.set_value(target);
+                    }
+                },
+            );
+        }
+    }
+
+    fn apply_scroll_to_bottom(&self) {
+        let n = self.messages_store.n_items();
+        if n == 0 {
+            return;
+        }
+        let last = n.saturating_sub(1);
+        self.message_list_view
+            .scroll_to(last, gtk::ListScrollFlags::NONE, None);
+        let adj = self.scrolled.vadjustment();
+        let target = (adj.upper() - adj.page_size()).max(0.0);
+        if target > 0.0 || adj.upper() > adj.page_size() {
+            adj.set_value(target);
+        }
+    }
+
+    /// While stick_to_bottom is set, re-pin to the end whenever ListView height grows.
+    fn setup_stick_to_bottom(self: &Arc<Self>) {
+        let this = self.clone();
+        let adj = self.scrolled.vadjustment();
+        adj.connect_changed(move |adj| {
+            if !*this.stick_to_bottom.lock().unwrap() {
+                return;
+            }
+            // Don't fight pagination (user scrolled near top)
+            if adj.value() < 120.0 && adj.upper() > adj.page_size() + 200.0 {
+                // Still opening: if far from bottom, force bottom
+            }
+            let target = (adj.upper() - adj.page_size()).max(0.0);
+            if (adj.value() - target).abs() > 1.0 {
+                adj.set_value(target);
+            }
+            // Clear stick after we actually reached the bottom with real content height
+            if target > 1.0 && (adj.value() - target).abs() <= 2.0 {
+                // Keep stick for a short while more via scroll_to_latest timeouts;
+                // clear only when user scrolls away (handled in value_changed).
+            }
+        });
+
+        let this2 = self.clone();
+        adj.connect_value_changed(move |adj| {
+            if !*this2.stick_to_bottom.lock().unwrap() {
+                return;
+            }
+            let target = (adj.upper() - adj.page_size()).max(0.0);
+            // User scrolled up intentionally → release stick
+            if target > 50.0 && adj.value() < target - 80.0 {
+                *this2.stick_to_bottom.lock().unwrap() = false;
+            }
         });
     }
 
@@ -1715,9 +2603,11 @@ impl ChatView {
         let current_user_id = self.auth.user_id();
         let text = msg
             .text
-            .as_deref()
-            .unwrap_or("[Вложение или системное сообщение]")
-            .to_string();
+            .as_ref()
+            .map(|t| t.trim())
+            .filter(|t| !t.is_empty())
+            .map(|t| t.to_string())
+            .unwrap_or_else(|| msg.preview());
         let query = self.search_query.lock().unwrap().to_lowercase();
 
         let formatted_text = format_message_text(&text);
@@ -2069,24 +2959,31 @@ impl ChatView {
                 let img = gtk::Image::new();
                 img.set_css_classes(&["inline-image"]);
                 img.set_margin_bottom(4);
-                img.set_size_request(260, -1);
+                // Prefer max size via CSS/pixel; avoid huge min-width on the row
+                img.set_pixel_size(240);
+                img.set_size_request(-1, -1);
 
                 // Show loading placeholder (or thumbnail if available, but for now we just use a placeholder icon)
                 img.set_from_icon_name(Some("image-x-generic-symbolic"));
 
-                // Load image asynchronously
+                // Load image asynchronously (downscaled + auth — never full 4K on UI thread)
                 let img_clone = img.clone();
                 let url_clone = url.clone();
                 let thumb_url = media.thumbnail_url.clone();
+                let file_id = media.id.clone();
 
                 glib::spawn_future_local(async move {
-                    // If we have a thumbnail URL, load it first as a preview
+                    // Local / quick thumb first (outgoing pastes)
                     if let Some(t_url) = thumb_url {
-                        let _ = load_inline_image(&img_clone, &t_url).await;
+                        if load_inline_image(&img_clone, &t_url, None).await.is_ok() {
+                            // still try remote for better quality later only if not local
+                            if t_url.starts_with("file:") || t_url.starts_with('/') {
+                                return;
+                            }
+                        }
                     }
 
-                    // Then load the full image
-                    if let Err(e) = load_inline_image(&img_clone, &url_clone).await {
+                    if let Err(e) = load_inline_image(&img_clone, &url_clone, Some(&file_id)).await {
                         log::warn!("Failed to load inline image: {}", e);
                     }
                 });
@@ -2128,7 +3025,8 @@ impl ChatView {
                 let video_box = gtk::Box::new(Orientation::Vertical, 4);
                 video_box.set_css_classes(&["inline-video"]);
                 video_box.set_margin_bottom(4);
-                video_box.set_size_request(260, -1);
+                video_box.set_size_request(-1, -1);
+                video_box.set_hexpand(false);
 
                 // Video thumbnail
                 let thumbnail = gtk::Image::new();
@@ -2193,34 +3091,85 @@ impl ChatView {
             }
         }
 
-        // Voice message
-        if let Some(voice_media) = msg
-            .media
-            .iter()
-            .find(|m| m.type_ == crate::models::MediaType::Voice)
+        // Document / generic file attachments
+        for media in msg.media.iter().filter(|m| {
+            matches!(
+                m.type_,
+                crate::models::MediaType::Document
+                    | crate::models::MediaType::Unknown
+                    | crate::models::MediaType::Audio
+            ) || (m.filename.is_some()
+                && !matches!(
+                    m.type_,
+                    crate::models::MediaType::Image
+                        | crate::models::MediaType::Video
+                        | crate::models::MediaType::Voice
+                        | crate::models::MediaType::Sticker
+                        | crate::models::MediaType::AnimatedEmoji
+                ))
+        }) {
+            bubble.append(&self.build_file_attachment_row(media));
+        }
+
+        // Also MessageType::File without typed media
+        if msg.type_ == MessageType::File
+            && msg.media.is_empty()
+            && msg.text.as_ref().map(|t| t.contains('[')).unwrap_or(false)
         {
-            let duration = voice_media.duration.unwrap_or(0) as f64;
-            let waveform = voice_media.waveform.clone().unwrap_or_default();
-
-            let voice_msg = crate::models::VoiceMessage {
-                message_id: msg.id.clone(),
-                url: voice_media.url.clone(),
-                duration,
-                waveform,
-                transcribed_text: None, // Could be parsed if available
-                is_transcribing: false,
-                transcribe_error: None,
+            // Fake media from text like "[Файл: name]"
+            let name = msg
+                .text
+                .as_deref()
+                .unwrap_or("file")
+                .trim_start_matches("[Файл: ")
+                .trim_end_matches(']')
+                .to_string();
+            let fake = crate::models::MediaAttachment {
+                id: msg.id.clone(),
+                type_: crate::models::MediaType::Document,
+                url: String::new(),
+                thumbnail_url: None,
+                width: None,
+                height: None,
+                size: None,
+                duration: None,
+                filename: Some(name),
+                mime_type: None,
+                waveform: None,
             };
+            bubble.append(&self.build_file_attachment_row(&fake));
+        }
 
-            let player = crate::ui::voice_message_player::VoiceMessagePlayer::new(voice_msg);
+        // Voice message
+        if crate::config::ym_enable_voice() {
+            if let Some(voice_media) = msg
+                .media
+                .iter()
+                .find(|m| m.type_ == crate::models::MediaType::Voice)
+            {
+                let duration = voice_media.duration.unwrap_or(0) as f64;
+                let waveform = voice_media.waveform.clone().unwrap_or_default();
 
-            // Set up play callback (stub implementation just logs, could trigger playback)
-            player.on_play_click(move |id| {
-                log::info!("Play voice message clicked: {}", id);
-                // Actual GStreamer playback integration would go here
-            });
+                let voice_msg = crate::models::VoiceMessage {
+                    message_id: msg.id.clone(),
+                    url: voice_media.url.clone(),
+                    duration,
+                    waveform,
+                    transcribed_text: None, // Could be parsed if available
+                    is_transcribing: false,
+                    transcribe_error: None,
+                };
 
-            bubble.append(player.container());
+                let player = crate::ui::voice_message_player::VoiceMessagePlayer::new(voice_msg);
+
+                // Set up play callback (stub implementation just logs, could trigger playback)
+                player.on_play_click(move |id| {
+                    log::info!("Play voice message clicked: {}", id);
+                    // Actual GStreamer playback integration would go here
+                });
+
+                bubble.append(player.container());
+            }
         }
 
         if is_sticker {
@@ -2236,14 +3185,14 @@ impl ChatView {
                 let img_clone = img.clone();
                 let url_clone = url.clone();
                 glib::spawn_future_local(async move {
-                    if let Err(e) = load_inline_image(&img_clone, &url_clone).await {
+                    if let Err(e) = load_inline_image(&img_clone, &url_clone, None).await {
                         log::warn!("Failed to load sticker image: {}", e);
                     }
                 });
                 bubble.append(&img);
             } else {
                 let label = Label::builder()
-                    .label("🎟 Стикер")
+                    .label("Стикер")
                     .xalign(0.0)
                     .max_width_chars(32)
                     .build();
@@ -2282,7 +3231,7 @@ impl ChatView {
         if is_bot_msg {
             if let Some(_bot) = self.bot_info.lock().unwrap().as_ref() {
                 let bot_badge = Label::builder()
-                    .label("🤖")
+                    .label("BOT")
                     .css_classes(vec!["bot-badge-indicator".to_string()])
                     .build();
                 bubble.append(&bot_badge);
@@ -2295,26 +3244,40 @@ impl ChatView {
             .format("%H:%M")
             .to_string();
 
-        // Add read ticks for sent messages with precise Pango markup color-coding
-        let mut status_markup = String::new();
-        if is_sent {
-            if msg.read {
-                status_markup = " <span color='#33A1FF'>✓✓</span>".to_string();
-            } else if msg.delivered {
-                status_markup = " <span color='#98989D'>✓</span>".to_string();
-            } else {
-                status_markup = " <span color='#98989D'>◷</span>".to_string();
-            }
+        // Meta footer: time + delivery ticks (outgoing only)
+        let meta = GtkBox::new(Orientation::Horizontal, 4);
+        meta.set_halign(if is_sent { Align::End } else { Align::Start });
+        meta.add_css_class("message-meta");
+        if msg.edited {
+            let edited = Label::builder()
+                .label("изм.")
+                .css_classes(vec!["message-edited".to_string()])
+                .build();
+            meta.append(&edited);
         }
-
         let time_label = Label::builder()
-            .use_markup(true)
-            .label(&format!("{} {}", time_str, status_markup))
+            .label(&time_str)
             .css_classes(vec!["message-time".to_string()])
-            .xalign(1.0)
             .build();
-
-        bubble.append(&time_label);
+        meta.append(&time_label);
+        if is_sent {
+            let ticks = Label::builder()
+                .use_markup(true)
+                .label(&delivery_ticks_markup(msg.sent, msg.delivered, msg.read))
+                .css_classes(vec![
+                    "message-ticks".to_string(),
+                    if msg.read {
+                        "ticks-read".to_string()
+                    } else if msg.delivered {
+                        "ticks-delivered".to_string()
+                    } else {
+                        "ticks-pending".to_string()
+                    },
+                ])
+                .build();
+            meta.append(&ticks);
+        }
+        bubble.append(&meta);
 
         let double_click = gtk::GestureClick::new();
         let msg_for_picker = msg.clone();
@@ -2335,17 +3298,19 @@ impl ChatView {
         bubble.add_css_class("message-fade-in");
 
         if is_sent {
-            row.set_margin_start(64);
-            row.set_margin_end(12);
+            row.set_margin_start(72);
+            row.set_margin_end(10);
             bubble.set_halign(Align::End);
         } else {
-            row.set_margin_start(12);
-            row.set_margin_end(64);
+            row.set_margin_start(10);
+            row.set_margin_end(72);
             bubble.set_halign(Align::Start);
         }
+        row.set_margin_top(1);
+        row.set_margin_bottom(1);
         row.append(&bubble);
 
-        let main_box = GtkBox::new(Orientation::Vertical, 4);
+        let main_box = GtkBox::new(Orientation::Vertical, 3);
         main_box.set_hexpand(true);
         // Prevent ListView measure from treating this as infinitely tall HFW pass
         main_box.set_vexpand(false);
@@ -2593,11 +3558,10 @@ impl ChatView {
         empty.set_hexpand(true);
         empty.add_css_class("empty-chat-state");
 
-        let icon = Label::builder()
-            .label("💬")
-            .css_classes(vec!["empty-chat-icon".to_string()])
-            .halign(Align::Center)
-            .build();
+        let icon = gtk::Image::from_icon_name("user-available-symbolic");
+        icon.set_pixel_size(48);
+        icon.add_css_class("empty-chat-icon");
+        icon.set_halign(Align::Center);
 
         let title = Label::builder()
             .label("Выберите чат")
@@ -2695,46 +3659,67 @@ impl ChatView {
         Button,
         Button,
     ) {
-        let input_area = GtkBox::new(Orientation::Horizontal, 8);
+        // TG-like composer: [attach] [text expands full width] [emoji] [voice|send]
+        // Extra actions (poll/schedule/sticker) live in attach menu — not in the bar.
+        let input_area = GtkBox::new(Orientation::Horizontal, 6);
         input_area.set_hexpand(true);
         input_area.set_vexpand(false);
         input_area.set_halign(gtk::Align::Fill);
         input_area.add_css_class("message-input-area");
 
-        let input_pill = GtkBox::new(Orientation::Horizontal, 8);
+        let input_pill = GtkBox::new(Orientation::Horizontal, 4);
         input_pill.set_hexpand(true);
+        input_pill.set_halign(gtk::Align::Fill);
         input_pill.add_css_class("input-pill");
 
         let text_view = TextView::builder()
             .hexpand(true)
+            .vexpand(false)
+            .halign(gtk::Align::Fill)
             .wrap_mode(gtk::WrapMode::WordChar)
             .accepts_tab(false)
+            .left_margin(8)
+            .right_margin(8)
+            .top_margin(8)
+            .bottom_margin(8)
             .build();
         text_view.add_css_class("message-entry-view");
+        // Critical: TextView natural width is content-sized; force expand to allocated width
+        text_view.set_pixels_above_lines(0);
+        text_view.set_pixels_below_lines(0);
 
         let scrolled = gtk::ScrolledWindow::builder()
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vscrollbar_policy(gtk::PolicyType::Automatic)
             .propagate_natural_height(true)
-            .max_content_height(120) // Ограничиваем высоту примерно 5-6 строками
+            .propagate_natural_width(false) // don't shrink field to short text
+            .max_content_height(120)
             .hexpand(true)
+            .halign(gtk::Align::Fill)
+            .vexpand(false)
             .build();
         scrolled.set_child(Some(&text_view));
+        scrolled.set_min_content_width(120);
 
-        let overlay = gtk::Overlay::builder().hexpand(true).build();
+        let overlay = gtk::Overlay::builder()
+            .hexpand(true)
+            .halign(gtk::Align::Fill)
+            .vexpand(false)
+            .build();
         overlay.set_child(Some(&scrolled));
+        overlay.set_overflow(gtk::Overflow::Hidden);
 
         let placeholder = gtk::Label::builder()
             .label("Введите сообщение...")
             .halign(gtk::Align::Start)
             .valign(gtk::Align::Center)
+            .hexpand(true)
             .margin_start(12)
             .css_classes(vec!["placeholder-label".to_string()])
             .build();
         placeholder.set_can_target(false);
         overlay.add_overlay(&placeholder);
 
-        // Скрывать/показывать placeholder в зависимости от пустоты текстового буфера
         placeholder.set_visible(true);
         let ph_clone = placeholder.clone();
         text_view.buffer().connect_changed(move |buf| {
@@ -2746,35 +3731,51 @@ impl ChatView {
         let send_btn = Button::builder().icon_name("mail-send-symbolic").build();
         send_btn.add_css_class("icon-btn");
         send_btn.add_css_class("send-btn-premium");
+        send_btn.set_hexpand(false);
+        send_btn.set_halign(gtk::Align::Center);
 
         let voice_btn = Button::builder()
             .icon_name("audio-input-microphone-symbolic")
             .build();
         voice_btn.add_css_class("icon-btn");
         voice_btn.add_css_class("voice-btn-premium");
+        voice_btn.set_hexpand(false);
 
         let attach_btn = Button::builder()
             .icon_name("mail-attachment-symbolic")
             .build();
         attach_btn.add_css_class("icon-btn");
+        attach_btn.set_hexpand(false);
         let emoji_btn = Button::builder().icon_name("face-smile-symbolic").build();
         emoji_btn.add_css_class("icon-btn");
+        emoji_btn.set_hexpand(false);
+
+        // Hidden anchors for popovers (not in the bar — saves width for text)
         let sticker_btn = Button::builder().icon_name("face-cool-symbolic").build();
         sticker_btn.add_css_class("icon-btn");
+        sticker_btn.set_visible(false);
         let poll_btn = Button::builder().icon_name("view-list-symbolic").build();
         poll_btn.add_css_class("icon-btn");
+        poll_btn.set_visible(false);
         let schedule_btn = Button::builder().icon_name("clock-symbolic").build();
         schedule_btn.add_css_class("icon-btn");
         schedule_btn.add_css_class("send-schedule-btn");
+        schedule_btn.set_visible(false);
 
+        // Visible bar (Telegram-like)
         input_pill.append(&attach_btn);
-        input_pill.append(&overlay);
+        input_pill.append(&overlay); // expands
         input_pill.append(&emoji_btn);
-        input_pill.append(&sticker_btn);
         input_pill.append(&voice_btn);
         input_pill.append(&send_btn);
+        // Keep anchors in tree for popovers/set_parent
+        input_pill.append(&sticker_btn);
+        input_pill.append(&poll_btn);
+        input_pill.append(&schedule_btn);
 
         input_area.append(&input_pill);
+        input_area.set_vexpand(false);
+        input_area.set_valign(gtk::Align::End);
 
         (
             input_area,
@@ -2790,55 +3791,357 @@ impl ChatView {
     }
 }
 
-/// Asynchronously load an inline image from a URL and set it on the image widget using memory-resident textures.
-async fn load_inline_image(img: &gtk::Image, url: &str) -> Result<(), String> {
-    let url_clone = url.to_string();
+/// Max side length for chat bubble previews (keeps UI from freezing on 4K pastes).
+const INLINE_PREVIEW_MAX_SIDE: u32 = 480;
+const INLINE_DOWNLOAD_MAX_BYTES: usize = 25 * 1024 * 1024;
+
+/// Load OAuth + session cookies for files.messenger downloads (sync, cheap).
+fn messenger_auth_for_fetch() -> (Option<String>, Option<String>) {
+    let mut oauth = None;
+    let mut cookie = None;
+    if let Some(dir) = dirs::config_dir() {
+        let base = dir.join("yandex-messenger-native");
+        if let Ok(raw) = std::fs::read_to_string(base.join("token.json")) {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) {
+                if let Some(t) = v.get("access_token").and_then(|x| x.as_str()) {
+                    if !t.is_empty() {
+                        oauth = Some(if t.starts_with("OAuth ") {
+                            t.to_string()
+                        } else {
+                            format!("OAuth {}", t)
+                        });
+                    }
+                }
+            }
+        }
+        if let Ok(raw) = std::fs::read_to_string(base.join("session.json")) {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) {
+                if let Some(map) = v.get("cookies").and_then(|c| c.as_object()) {
+                    let h = map
+                        .iter()
+                        .filter_map(|(k, val)| val.as_str().map(|s| format!("{}={}", k, s)))
+                        .collect::<Vec<_>>()
+                        .join("; ");
+                    if !h.is_empty() {
+                        cookie = Some(h);
+                    }
+                }
+            }
+        }
+    }
+    (oauth, cookie)
+}
+
+/// Downscale image bytes for inline preview (runs off UI thread).
+fn downscale_image_for_preview(bytes: &[u8], max_side: u32) -> Result<Vec<u8>, String> {
+    use image::ImageReader;
+    use std::io::Cursor;
+
+    if bytes.is_empty() {
+        return Err("empty image".into());
+    }
+    // Guard against multi‑MB screenshots OOMing the process (crash after paste)
+    if bytes.len() > 40 * 1024 * 1024 {
+        return Err(format!("image too large ({} bytes)", bytes.len()));
+    }
+
+    let mut reader = ImageReader::new(Cursor::new(bytes))
+        .with_guessed_format()
+        .map_err(|e| format!("image format: {}", e))?;
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(8192);
+    limits.max_image_height = Some(8192);
+    limits.max_alloc = Some(64 * 1024 * 1024);
+    reader.limits(limits);
+    let img = reader
+        .decode()
+        .map_err(|e| format!("image decode: {}", e))?;
+    let (w, h) = (img.width(), img.height());
+    let scaled = if w > max_side || h > max_side {
+        img.thumbnail(max_side, max_side)
+    } else {
+        img
+    };
+    let mut out = Vec::new();
+    {
+        let mut cursor = Cursor::new(&mut out);
+        // PNG is lossless and Texture-friendly; previews are small after thumbnail()
+        scaled
+            .write_to(&mut cursor, image::ImageFormat::Png)
+            .map_err(|e| format!("encode preview: {}", e))?;
+    }
+    if out.is_empty() {
+        return Err("empty preview png".into());
+    }
+    Ok(out)
+}
+
+fn candidate_image_urls(url: &str, file_id: Option<&str>) -> Vec<String> {
+    let mut out = Vec::new();
+    let push_unique = |v: &mut Vec<String>, s: String| {
+        if !s.is_empty() && !v.iter().any(|x| x == &s) {
+            v.push(s);
+        }
+    };
+
+    if !url.is_empty() {
+        push_unique(&mut out, url.to_string());
+    }
+    if let Some(id) = file_id.filter(|s| !s.is_empty() && !s.starts_with("http")) {
+        let id = id.trim_start_matches('/');
+        for host in [
+            crate::config::FILE_PUBLIC_HOST,
+            crate::config::FILE_PRIVATE_HOST,
+        ] {
+            let host = host.trim_end_matches('/');
+            push_unique(&mut out, format!("{}/file_shortterm/{}", host, id));
+            push_unique(&mut out, format!("{}/{}", host, id));
+            // Some CDNs want stripped `file/` prefix
+            if let Some(rest) = id.strip_prefix("file/") {
+                push_unique(&mut out, format!("{}/file_shortterm/{}", host, rest));
+            }
+        }
+    }
+    out
+}
+
+/// Asynchronously load an inline image and set a **downscaled** texture on the widget.
+/// Decode/scale runs on a worker thread — never full 4K on the GTK main loop.
+async fn load_inline_image(
+    img: &gtk::Image,
+    url: &str,
+    file_id: Option<&str>,
+) -> Result<(), String> {
     let img_clone = img.clone();
+    let urls = candidate_image_urls(url, file_id);
+    if urls.is_empty() {
+        return Err("no image url/id".into());
+    }
+
+    let (oauth, cookie) = messenger_auth_for_fetch();
 
     let download_handle = tokio::spawn(async move {
         let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(5))
+            .timeout(std::time::Duration::from_secs(12))
             .build()
-            .map_err(|e| format!("Failed to create client: {}", e))?;
+            .map_err(|e| format!("client: {}", e))?;
 
-        let response = client
-            .get(&url_clone)
-            .header("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-            .send()
-            .await
-            .map_err(|e| format!("Failed to fetch inline image: {}", e))?;
+        for u in urls {
+            // Local file:// or absolute path (outgoing paste preview)
+            if let Some(path) = local_path_from_url(&u) {
+                let path2 = path.clone();
+                let scaled = tokio::task::spawn_blocking(move || {
+                    let bytes = std::fs::read(&path2).map_err(|e| e.to_string())?;
+                    if bytes.is_empty() {
+                        return Err("empty local file".into());
+                    }
+                    downscale_image_for_preview(&bytes, INLINE_PREVIEW_MAX_SIDE)
+                })
+                .await
+                .map_err(|e| format!("join: {}", e))?;
+                if let Ok(preview) = scaled {
+                    return Ok(preview);
+                }
+                continue;
+            }
 
-        if !response.status().is_success() {
-            return Err(format!(
-                "Inline image fetch failed: HTTP {}",
-                response.status()
-            ));
+            if !(u.starts_with("http://") || u.starts_with("https://")) {
+                continue;
+            }
+
+            let mut req = client
+                .get(&u)
+                .header(
+                    "User-Agent",
+                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                )
+                .header("Origin", "https://yandex.ru")
+                .header("Referer", "https://yandex.ru/chat");
+            if let Some(ref a) = oauth {
+                req = req.header("Authorization", a);
+            }
+            if let Some(ref c) = cookie {
+                req = req.header("Cookie", c);
+            }
+
+            match req.send().await {
+                Ok(resp) if resp.status().is_success() => {
+                    let bytes = match resp.bytes().await {
+                        Ok(b) => b,
+                        Err(e) => {
+                            log::debug!("inline image body {}: {}", u, e);
+                            continue;
+                        }
+                    };
+                    if bytes.is_empty() {
+                        continue;
+                    }
+                    if bytes.len() > INLINE_DOWNLOAD_MAX_BYTES {
+                        return Err(format!(
+                            "image too large for preview ({} bytes)",
+                            bytes.len()
+                        ));
+                    }
+                    let raw = bytes.to_vec();
+                    match tokio::task::spawn_blocking(move || {
+                        downscale_image_for_preview(&raw, INLINE_PREVIEW_MAX_SIDE)
+                    })
+                    .await
+                    {
+                        Ok(Ok(preview)) => return Ok(preview),
+                        Ok(Err(e)) => {
+                            log::debug!("downscale failed for {}: {}", u, e);
+                            continue;
+                        }
+                        Err(e) => {
+                            log::debug!("downscale join {}: {}", u, e);
+                            continue;
+                        }
+                    }
+                }
+                Ok(resp) => {
+                    log::debug!("inline image HTTP {} for {}", resp.status(), u);
+                }
+                Err(e) => {
+                    log::debug!("inline image fetch {}: {}", u, e);
+                }
+            }
         }
-
-        let bytes = response
-            .bytes()
-            .await
-            .map_err(|e| format!("Failed to read image bytes: {}", e))?;
-
-        Ok(bytes)
+        Err("all image candidates failed".into())
     });
 
     match download_handle.await {
-        Ok(Ok(bytes)) => {
-            let bytes_glib = glib::Bytes::from(&bytes);
+        Ok(Ok(preview_png)) => {
+            let bytes_glib = glib::Bytes::from(&preview_png);
             match gtk::gdk::Texture::from_bytes(&bytes_glib) {
                 Ok(texture) => {
                     img_clone.set_from_paintable(Some(&texture));
+                    img_clone.set_pixel_size(240);
                     Ok(())
                 }
-                Err(e) => {
-                    log::error!("Failed to load inline image texture from bytes: {}", e);
-                    Err(format!("Failed to load texture: {}", e))
-                }
+                Err(e) => match load_texture_via_pixbuf_scaled(&preview_png, INLINE_PREVIEW_MAX_SIDE)
+                {
+                    Ok(texture) => {
+                        img_clone.set_from_paintable(Some(&texture));
+                        img_clone.set_pixel_size(240);
+                        Ok(())
+                    }
+                    Err(e2) => Err(format!("texture: {}; pixbuf: {}", e, e2)),
+                },
             }
         }
         Ok(Err(e)) => Err(e),
         Err(join_err) => Err(format!("Join error: {}", join_err)),
+    }
+}
+
+fn local_path_from_url(url: &str) -> Option<std::path::PathBuf> {
+    if url.starts_with("file:") {
+        return glib::filename_from_uri(url).ok().map(|(p, _)| p);
+    }
+    if url.starts_with('/') {
+        let p = std::path::PathBuf::from(url);
+        if p.exists() {
+            return Some(p);
+        }
+    }
+    None
+}
+
+fn load_texture_via_pixbuf_scaled(
+    bytes: &[u8],
+    max_side: u32,
+) -> Result<gtk::gdk::Texture, String> {
+    let loader = gtk::gdk_pixbuf::PixbufLoader::new();
+    loader
+        .write(bytes)
+        .map_err(|e| format!("pixbuf write: {}", e))?;
+    loader
+        .close()
+        .map_err(|e| format!("pixbuf close: {}", e))?;
+    let pixbuf = loader
+        .pixbuf()
+        .ok_or_else(|| "pixbuf loader empty".to_string())?;
+    let w = pixbuf.width() as u32;
+    let h = pixbuf.height() as u32;
+    let scaled = if w > max_side || h > max_side {
+        let scale = (max_side as f64 / w.max(h) as f64).min(1.0);
+        let nw = ((w as f64) * scale).round().max(1.0) as i32;
+        let nh = ((h as f64) * scale).round().max(1.0) as i32;
+        pixbuf
+            .scale_simple(nw, nh, gtk::gdk_pixbuf::InterpType::Bilinear)
+            .unwrap_or(pixbuf)
+    } else {
+        pixbuf
+    };
+    Ok(gtk::gdk::Texture::for_pixbuf(&scaled))
+}
+
+/// Menu row: [symbolic icon] label — no emoji chrome.
+fn menu_row_button(icon_name: &str, label: &str) -> Button {
+    let btn = Button::builder()
+        .css_classes(vec!["flat".to_string(), "attach-menu-btn".to_string()])
+        .halign(gtk::Align::Fill)
+        .build();
+    let row = GtkBox::new(Orientation::Horizontal, 10);
+    row.set_margin_start(4);
+    row.set_margin_end(8);
+    let icon = gtk::Image::from_icon_name(icon_name);
+    icon.set_pixel_size(18);
+    icon.set_valign(gtk::Align::Center);
+    let lab = Label::builder()
+        .label(label)
+        .xalign(0.0)
+        .hexpand(true)
+        .build();
+    row.append(&icon);
+    row.append(&lab);
+    btn.set_child(Some(&row));
+    btn
+}
+
+/// Read all bytes from a GIO InputStream (clipboard image payloads).
+async fn read_gio_stream_bytes(stream: gio::InputStream) -> Result<Vec<u8>, String> {
+    use gio::prelude::InputStreamExt;
+    let mut out = Vec::new();
+    loop {
+        let chunk = stream
+            .read_bytes_future(64 * 1024, glib::Priority::DEFAULT)
+            .await
+            .map_err(|e| format!("stream read: {}", e))?;
+        if chunk.is_empty() {
+            break;
+        }
+        out.extend_from_slice(&chunk);
+        if out.len() > 40 * 1024 * 1024 {
+            return Err("clipboard image too large".into());
+        }
+    }
+    Ok(out)
+}
+
+/// Delivery ticks markup for outgoing messages.
+/// pending · delivered ✓ · read ✓✓
+fn delivery_ticks_markup(sent: bool, delivered: bool, read: bool) -> String {
+    if read {
+        "<span size='small'>✓✓</span>".to_string()
+    } else if delivered || sent {
+        "<span size='small'>✓</span>".to_string()
+    } else {
+        "<span size='small'>…</span>".to_string()
+    }
+}
+
+fn format_file_size(bytes: u64) -> String {
+    const KB: f64 = 1024.0;
+    const MB: f64 = KB * 1024.0;
+    let b = bytes as f64;
+    if b >= MB {
+        format!("{:.1} МБ", b / MB)
+    } else if b >= KB {
+        format!("{:.0} КБ", b / KB)
+    } else {
+        format!("{} Б", bytes)
     }
 }
 

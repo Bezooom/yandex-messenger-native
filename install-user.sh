@@ -48,21 +48,29 @@ fi
 echo "Создание ярлыка запуска..."
 DESKTOP_FILE="$SCRIPT_DIR/yandex-messenger.desktop"
 if [ -f "$DESKTOP_FILE" ]; then
-    # Заменяем Exec на абсолютный путь к локальному бинарнику
-    sed -e "s|^Exec=yandex-messenger|Exec=$BIN_DEST/yandex-messenger|g" "$DESKTOP_FILE" > "$DESKTOP_DEST/yandex-messenger.desktop"
+    sed \
+      -e "s|^Exec=yandex-messenger|Exec=$BIN_DEST/yandex-messenger|g" \
+      -e "s|^TryExec=yandex-messenger|TryExec=$BIN_DEST/yandex-messenger|g" \
+      "$DESKTOP_FILE" > "$DESKTOP_DEST/yandex-messenger.desktop"
     chmod +x "$DESKTOP_DEST/yandex-messenger.desktop"
 else
     echo "Предупреждение: yandex-messenger.desktop не найден, ярлык не создан."
 fi
 
-# 5. Обновление базы данных приложений
-echo "Обновление системной базы ярлыков..."
+# 5. Обновление баз иконок / приложений
+echo "Обновление кэшей desktop/icons..."
 if command -v update-desktop-database >/dev/null 2>&1; then
     update-desktop-database "$DESKTOP_DEST" || true
 fi
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+    gtk-update-icon-cache -f -t "$ICONS_DEST" 2>/dev/null || true
+fi
+if command -v update-icon-caches >/dev/null 2>&1; then
+    update-icon-caches "$ICONS_DEST" 2>/dev/null || true
+fi
 
 echo "=== Установка успешно завершена! ==="
-echo "Новая версия Yandex Messenger установлена в: $BIN_DEST/yandex-messenger"
-echo "Она автоматически переопределит старую системную версию в меню приложений."
-echo "Запуск: yandex-messenger (убедитесь, что $BIN_DEST есть в вашей переменной PATH)"
-echo "или через меню приложений: Yandex Messenger"
+echo "Бинарник: $BIN_DEST/yandex-messenger"
+echo "Иконки:   $ICONS_DEST"
+echo "Ярлык:    $DESKTOP_DEST/yandex-messenger.desktop"
+echo "Запуск:   yandex-messenger   (PATH должен включать $BIN_DEST)"

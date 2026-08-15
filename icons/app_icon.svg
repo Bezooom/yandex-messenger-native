@@ -1,17 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-    <defs>
-        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="#FFDD00"/>
-            <stop offset="100%" stop-color="#FFBB00"/>
-        </linearGradient>
-        <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
-            <feDropShadow dx="0" dy="10" stdDeviation="15" flood-color="#000" flood-opacity="0.3"/>
-        </filter>
-    </defs>
-    <!-- Background Circle -->
-    <rect width="512" height="512" rx="128" fill="url(#bg)"/>
-    <!-- Speech Bubble -->
-    <path d="M160 160 C 160 120, 352 120, 352 160 C 352 200, 352 280, 352 320 C 352 360, 160 360, 160 320 L 160 380 L 220 320 C 220 320, 160 320, 160 320 Z" fill="#000" filter="url(#shadow)"/>
-    <!-- Yandex 'Y' -->
-    <path d="M 230 200 L 256 240 L 282 200 L 310 200 L 268 260 L 268 300 L 244 300 L 244 260 L 202 200 Z" fill="#FFF"/>
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect x="0" y="0" width="512" height="512" rx="114" fill="#FFCC00"/>
+  <rect x="0" y="0" width="512" height="180" rx="114" fill="#FFFFFF" opacity="0.12"/>
+  <path fill="#1A1A1A" d="
+    M118 150 h276 c28 0 50 22 50 50 v148 c0 28-22 50-50 50 H248 l-72 62 v-62 H118
+    c-28 0-50-22-50-50 V200 c0-28 22-50 50-50 z"/>
+  <circle cx="196" cy="250" r="22" fill="#FFCC00"/>
+  <circle cx="256" cy="250" r="22" fill="#FFCC00"/>
+  <circle cx="316" cy="250" r="22" fill="#FFCC00"/>
 </svg>

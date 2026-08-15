@@ -1,6 +1,8 @@
 # Yandex Messenger API — Reverse Engineering Specification
 
-This document contains the technical specification of the Yandex Messenger API (including the web client and the Telemost mobile application `ru.yandex.telemost`), obtained through reverse engineering and network traffic analysis.
+[Русская версия](API.ru.md)
+
+This document contains the technical specification of the Yandex Messenger API (including the web client and the Telemost mobile application `ru.yandex.telemost`), obtained through reverse engineering and network traffic analysis. Client release **2.173.0** uses these endpoints via session cookies + OAuth.
 
 ---
 

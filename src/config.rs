@@ -2,12 +2,18 @@
 
 /// Configuration module - API endpoints reverse-engineered from Yandex Messenger Electron app
 
-pub const OAUTH_CLIENT_ID: &str = "YOUR_YANDEX_CLIENT_ID";
-pub const OAUTH_AUTHORIZE_URL: &str = "https://oauth.yandex.com/authorize";
-pub const OAUTH_TOKEN_URL: &str = "https://oauth.yandex.com/token";
+// Default OAuth application id (32-char hex). Package name `ru.yandex.yamb` is NOT valid.
+// Override with env YANDEX_CLIENT_ID if you registered your own app at https://oauth.yandex.ru/.
+// Without a valid id the WebView falls back to Passport session + optional token paste.
+pub const OAUTH_CLIENT_ID: &str = "bef24ec2889b481bb39af0b430099845";
+// Prefer .ru host for Russian accounts (avoids some "unknown client" edge cases on .com).
+pub const OAUTH_AUTHORIZE_URL: &str = "https://oauth.yandex.ru/authorize";
+pub const OAUTH_TOKEN_URL: &str = "https://oauth.yandex.ru/token";
 pub const PASSPORT_HOST: &str = "passport.yandex.ru";
 pub const PASSPORT_AUTH_URL: &str = "https://passport.yandex.ru/auth";
 pub const PASSPORT_PROFILE_URL: &str = "https://passport.yandex.ru/profile";
+/// Where to land after Passport login to harvest Session_id cookies.
+pub const CHAT_WEB_URL: &str = "https://yandex.ru/chat";
 
 // Primary API base - will be resolved to actual hostname
 pub const API_BASE_TEMPLATE: &str = "https://yandex.{tld}/messenger/api/registry/api/";
@@ -23,11 +29,14 @@ pub const FILE_PRIVATE_HOST: &str = "https://files.messenger.yandex.ru";
 
 // Telemost
 pub const TELEMOST_URL: &str = "https://telemost.yandex.ru";
+pub const TELEMOST_CLOUD_API: &str = "https://api.messenger.yandex.net";
+pub const GOLOOM_WS_URL: &str = "wss://goloom.strm.yandex.net/join";
+pub const TELEMOST_API_PATH: &str = "/v1/telemost";
 
 // OAuth
-// Callback URL is resolved by OAuth app defaults. We intentionally do not
-// send redirect_uri from the desktop client to avoid mismatch with stale local
-// config/environment values.
+// Desktop app uses implicit flow (response_type=token) — redirect_uri is
+// optional for this flow. We leave it empty so Yandex OAuth falls back to its
+// registered default callback for the app.
 pub const REDIRECT_URI: &str = "";
 pub const OAUTH_SCOPES: &str = "";
 
@@ -94,3 +103,15 @@ pub const VOICE_MAX_FILE_SIZE: u64 = 5_242_880; // ~5MB макс для голо
 pub const SPEECHKIT_API_URL: &str = "https://api.speechkit.yandex.net/v1/stt";
 pub const SPEECHKIT_LANG: &str = "ru-RU";
 pub const SPEECHKIT_ENCODING: &str = "WEBM_OPUS";
+
+pub fn ym_enable_voice() -> bool {
+    std::env::var("YM_ENABLE_VOICE")
+        .map(|s| s == "1" || s.to_lowercase() == "true")
+        .unwrap_or(false)
+}
+
+pub fn ym_enable_telemost_ui() -> bool {
+    std::env::var("YM_ENABLE_TELEMOST_UI")
+        .map(|s| s == "1" || s.to_lowercase() == "true")
+        .unwrap_or(false)
+}

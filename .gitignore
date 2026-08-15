@@ -47,6 +47,10 @@ Thumbs.db
 
 # Reverse engineering and debian build artifacts
 ru.yandex.telemost_25559178_rs.apk
+ru.yandex.telemost_*.apk
+ru.yandex.telemost_*.xapk
+extracted_apk/
+icons/android-ref/
 apktool.jar
 jadx-1.4.7.zip
 apktool_out/

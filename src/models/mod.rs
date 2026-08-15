@@ -13,6 +13,7 @@ pub mod reaction;
 pub mod saved_message;
 pub mod scheduled_message;
 pub mod sticker;
+pub mod telemost;
 pub mod thread;
 pub mod voice_message;
 
@@ -22,8 +23,10 @@ pub use bot::BotReplyMarkup;
 pub use folder::ChatFolder;
 pub use poll::{Poll, PollAnswer};
 pub use reaction::ExtendedReactionsConfig;
+pub use saved_message::SavedMessage;
 pub use scheduled_message::ScheduledMessage;
 pub use sticker::{Sticker, StickerPack, StickerPackList};
+pub use telemost::*;
 pub use thread::Thread;
 pub use voice_message::VoiceMessage;
 
@@ -88,7 +91,7 @@ impl Chat {
         self.last_message
             .as_ref()
             .map(|m| m.preview())
-            .unwrap_or_else(|| "No messages".to_string())
+            .unwrap_or_else(|| "Нет сообщений".to_string())
     }
 
     pub fn display_name(&self) -> String {
@@ -192,24 +195,50 @@ pub struct Message {
 
 impl Message {
     pub fn preview(&self) -> String {
-        match &self.text {
-            Some(text) => {
-                let truncated: String = text.chars().take(100).collect();
-                if text.len() > 100 {
-                    format!("{}...", truncated)
-                } else {
-                    truncated
-                }
+        if let Some(text) = self.text.as_ref().map(|t| t.trim()).filter(|t| !t.is_empty()) {
+            let truncated: String = text.chars().take(100).collect();
+            return if text.chars().count() > 100 {
+                format!("{}…", truncated)
+            } else {
+                truncated
+            };
+        }
+
+        // Prefer explicit media type when text is empty
+        if let Some(media) = self.media.first() {
+            return match media.type_ {
+                MediaType::Image => "📷 Фото".to_string(),
+                MediaType::Video => "🎬 Видео".to_string(),
+                MediaType::Voice | MediaType::Audio => "🎤 Голосовое сообщение".to_string(),
+                MediaType::Document => media
+                    .filename
+                    .as_ref()
+                    .map(|n| format!("📎 {}", n))
+                    .unwrap_or_else(|| "📎 Файл".to_string()),
+                MediaType::Sticker | MediaType::AnimatedEmoji => "🎟 Стикер".to_string(),
+                _ => "📎 Вложение".to_string(),
+            };
+        }
+
+        match self.type_ {
+            MessageType::Image => "📷 Фото".to_string(),
+            MessageType::File => "📎 Файл".to_string(),
+            MessageType::Voice => "🎤 Голосовое сообщение".to_string(),
+            MessageType::Video => "🎬 Видео".to_string(),
+            MessageType::Sticker | MessageType::AnimatedEmoji => "🎟 Стикер".to_string(),
+            MessageType::Poll => "📊 Опрос".to_string(),
+            MessageType::Location => "📍 Геолокация".to_string(),
+            MessageType::Contact => "👤 Контакт".to_string(),
+            MessageType::Call | MessageType::Telemost | MessageType::ScreenShare => {
+                "📞 Звонок".to_string()
             }
-            None => match self.type_ {
-                MessageType::Image => "[Image]".to_string(),
-                MessageType::File => "[File]".to_string(),
-                MessageType::Voice => "[Voice message]".to_string(),
-                MessageType::Video => "[Video]".to_string(),
-                MessageType::Sticker => "[Sticker]".to_string(),
-                MessageType::Poll => "[Poll]".to_string(),
-                _ => "[Message]".to_string(),
-            },
+            MessageType::System | MessageType::Pin | MessageType::Unpin | MessageType::Kick
+            | MessageType::Invite => "ℹ️ Системное сообщение".to_string(),
+            MessageType::Link => "🔗 Ссылка".to_string(),
+            MessageType::Forward => "↪ Пересланное сообщение".to_string(),
+            MessageType::Reply => "💬 Ответ".to_string(),
+            MessageType::Reaction => "😊 Реакция".to_string(),
+            MessageType::Text | MessageType::Unknown => "Сообщение".to_string(),
         }
     }
 
@@ -500,4 +529,146 @@ pub struct Notification {
     pub sender_name: String,
     pub message_preview: String,
     pub timestamp: DateTime<Utc>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+
+    #[test]
+    fn test_message_preview_text() {
+        let msg = Message {
+            id: "1".to_string(),
+            chat_id: "chat_1".to_string(),
+            from_id: "user_1".to_string(),
+            message_id: None,
+            rmid: None,
+            type_: MessageType::Text,
+            text: Some("Hello, world!".to_string()),
+            entities: vec![],
+            reply_to: None,
+            forward: None,
+            media: vec![],
+            reactions: vec![],
+            thread_id: None,
+            has_thread: false,
+            pinned: false,
+            edited: false,
+            edited_at: None,
+            sent: true,
+            delivered: true,
+            read: true,
+            created: Utc::now(),
+            updated: None,
+            poll: None,
+        };
+        assert_eq!(msg.preview(), "Hello, world!");
+
+        // Test truncation
+        let long_text = "a".repeat(120);
+        let msg_long = Message {
+            text: Some(long_text),
+            ..msg.clone()
+        };
+        let expected_preview = format!("{}…", "a".repeat(100));
+        assert_eq!(msg_long.preview(), expected_preview);
+    }
+
+    #[test]
+    fn test_message_preview_types() {
+        let mut msg = Message {
+            id: "1".to_string(),
+            chat_id: "chat_1".to_string(),
+            from_id: "user_1".to_string(),
+            message_id: None,
+            rmid: None,
+            type_: MessageType::Image,
+            text: None,
+            entities: vec![],
+            reply_to: None,
+            forward: None,
+            media: vec![],
+            reactions: vec![],
+            thread_id: None,
+            has_thread: false,
+            pinned: false,
+            edited: false,
+            edited_at: None,
+            sent: true,
+            delivered: true,
+            read: true,
+            created: Utc::now(),
+            updated: None,
+            poll: None,
+        };
+        assert_eq!(msg.preview(), "📷 Фото");
+
+        msg.type_ = MessageType::Voice;
+        assert_eq!(msg.preview(), "🎤 Голосовое сообщение");
+
+        msg.type_ = MessageType::File;
+        assert_eq!(msg.preview(), "📎 Файл");
+
+        msg.type_ = MessageType::Video;
+        assert_eq!(msg.preview(), "🎬 Видео");
+
+        msg.type_ = MessageType::Sticker;
+        assert_eq!(msg.preview(), "🎟 Стикер");
+
+        msg.type_ = MessageType::Poll;
+        assert_eq!(msg.preview(), "📊 Опрос");
+    }
+
+    #[test]
+    fn test_chat_preview_text() {
+        let chat = Chat {
+            id: "chat_1".to_string(),
+            chat_type: ChatType::Private,
+            title: Some("User".to_string()),
+            rid: None,
+            avatar_id: None,
+            participants: vec![],
+            unread_count: 0,
+            last_message: None,
+            pinned: false,
+            archived: false,
+            muted: false,
+            created: None,
+            updated: None,
+        };
+        assert_eq!(chat.preview_text(), "Нет сообщений");
+
+        let msg = Message {
+            id: "1".to_string(),
+            chat_id: "chat_1".to_string(),
+            from_id: "user_1".to_string(),
+            message_id: None,
+            rmid: None,
+            type_: MessageType::Text,
+            text: Some("Ping".to_string()),
+            entities: vec![],
+            reply_to: None,
+            forward: None,
+            media: vec![],
+            reactions: vec![],
+            thread_id: None,
+            has_thread: false,
+            pinned: false,
+            edited: false,
+            edited_at: None,
+            sent: true,
+            delivered: true,
+            read: true,
+            created: Utc::now(),
+            updated: None,
+            poll: None,
+        };
+
+        let chat_with_msg = Chat {
+            last_message: Some(msg),
+            ..chat
+        };
+        assert_eq!(chat_with_msg.preview_text(), "Ping");
+    }
 }

@@ -1,5 +1,20 @@
 # Test Plan
 
+[Русская версия](TESTPLAN.ru.md)
+
+## Current Status (2.173.0)
+
+| Phase | Status |
+|---|---|
+| 0 — Sedimentation | Complete |
+| 1 — API Integration | Complete (session login, files, reply/edit) |
+| 2 — Calls / Telemost | Shell only — WebRTC is still a stub |
+| Desktop trust | Notifications, tray, settings, ticks |
+
+**Tests:** `cargo test --all-targets` (13 unit/smoke tests at last check).
+
+---
+
 ## 1. Static checks
 
 ```bash
@@ -14,36 +29,57 @@ cargo test --all-targets
 make run
 ```
 
-Проверить:
-- открытие окна приложения;
-- авторизацию через OAuth URL;
-- загрузку списка чатов;
-- выбор чата и отображение истории.
+Check:
+
+- Application window opens with the night theme and nheko-style split.
+- OAuth / WebView login writes `~/.config/yandex-messenger-native/session.json` with `Session_id`.
+- Chat list loads; opening a chat shows history and auto-scrolls to the latest message.
+- Outbox: disable network → send text → pending bubble → restore network → message leaves (or after reconnect).
+- Pagination: long chat → scroll up → older history loads; “Loading history…” is visible.
+- Drafts: type text → switch chat → come back → text is still there.
+- DnD: drop a file into the chat → send; Ctrl+V for a clipboard image.
+- Attachment: Download / Open → file appears in Downloads.
+- Offline cold start: chat list / history from SQLite after a previous session.
+- UX: startup skeleton → list; no chat selected → welcome; empty chat → empty conversation.
+- Search with no hits → empty “Nothing found”.
+- Reaction → chip pop-in; Settings → “Reduce animations” kills shimmer/pop-in.
+- Opening a chat auto-scrolls to the last message.
 
 ## 3. Messaging flow
 
-- отправка текста через кнопку и Enter;
-- отображение отправленного сообщения в списке;
-- отсутствие падений при переключении чатов.
+- Send text with the button and Enter.
+- Sent message appears in the list.
+- No crash when switching chats.
+- Reply: peer sees a quote (session/WS).
+- Edit: peer sees the changed text.
+- Mark as read: badge drops when the chat is opened.
 
 ## 4. File flow
 
-- attach action вызывается и уходит в upload pipeline;
-- download API возвращает байты;
-- при ошибке выводится корректное уведомление.
+- Attach action enters the upload pipeline.
+- Download API returns bytes.
+- Download / Open works via `xdg-open`.
+- Errors show a proper notification.
 
 ## 5. Calls
 
-- клик по call action открывает окно Telemost;
-- кнопка End закрывает окно без ошибок.
+- Call action opens the Telemost window.
+- End closes the window without errors.
+- Built-in WebView (`in_app_webview`) loads the Telemost page.
+- Mute / Video toggle state and visuals.
+- Fallback: without `in_app_webview`, a dialog with “Open in browser” appears.
+- Native WebRTC is **not** expected in 2.173.0.
 
 ## 6. Desktop behavior
 
-- уведомления показываются через `notify-rust`;
-- dark theme применяется при `dark_theme = true`;
-- close behavior соответствует `minimize_to_tray`.
+- Notifications via `notify-rust` (not for the currently focused chat; mute is respected).
+- Dark / night theme applies when `dark_theme = true`.
+- Close behavior: with `minimize_to_tray` the window hides, the tray stays.
+- Tray: Show / Quit, unread tooltip.
+- Settings: notifications / tray / dark theme / reduce animations.
 
 ## 7. Packaging and CI
 
-- `debuild -us -uc` завершается успешно;
-- workflow `.github/workflows/ci.yml` проходит на чистом runner.
+- `debuild -us -uc` succeeds.
+- `.github/workflows/ci.yml` passes on a clean runner.
+- `make dist` produces `yandex-messenger-native_2.173.0-*`.

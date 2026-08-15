@@ -1,5 +1,9 @@
 # Yandex Messenger Native — Архитектура
 
+[English version](ARCHITECTURE.md)
+
+Текущий релиз: **2.173.0**.
+
 ## Обзор
 
 Нативный Linux-клиент для Яндекс Мессенджера, разработанный на Rust и GTK4.
@@ -73,17 +77,19 @@ flowchart TD
 - **TelemostWindow** (`telemost.rs`): Окно-обертка для видеозвонков Яндекс Телемост. Поддерживает отключение звука/видео и завершение звонка.
 - **TrayHandle** (`tray.rs`): Иконка системного трея с контекстным меню (открыть, настройки, выход).
 - **Notifications** (`notifications.rs`): Системные уведомления на рабочем столе с использованием библиотеки `notify-rust`.
-- **Settings** (`settings.rs`): Сохраняемые настройки в формате JSON (темная тема, сворачивание в трей). Файл расположен по пути `~/.config/yandex-messenger-native/settings.json`.
-- **Тема** (`theme.css`): Глобальные CSS-стили для GTK. Поддержка темного режима осуществляется через параметр `gtk::Settings::gtk_application_prefer_dark_theme`.
+- **Settings** (`settings.rs`): Сохраняемые настройки в формате JSON (тёмная тема, сворачивание в трей, уведомления, уменьшить анимации). Файл: `~/.config/yandex-messenger-native/settings.json`.
+- **Тема** (`theme.css`): токены Telegram Desktop night, плотный список в стиле nheko, пузыри `msgIn` / `msgOut`, адаптивный сайдбар.
 
 ### Слой Core
 
 Класс `AppController` (`src/core.rs`) является центральным оркестратором приложения. Он владеет:
 
 - `AuthManager` — жизненный цикл токенов OAuth
-- `HttpClient` — REST API-клиент
+- `HttpClient` — REST API-клиент (session cookies + CSRF)
 - `WebSocketClient` — WebSocket-клиент реального времени
 - `AppState` — общее изменяемое состояние приложения (Shared mutable state)
+- SQLite-кэш (`src/core/db.rs`), черновики (`drafts.rs`), outbox (`outbox.rs`)
+- Session store (`src/api/session_store.rs`) — cookies Паспорта после входа в WebView
 
 Структура `AppState` содержит:
 ```rust

@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 
 pub mod db;
+pub mod drafts;
+pub mod outbox;
 pub mod voice_recorder;
 
 use std::collections::HashMap;
@@ -10,11 +12,15 @@ use tokio::sync::Mutex;
 
 use crate::api::auth::AuthManager;
 use crate::api::scheduled_message::ScheduledMessageClient;
+use crate::api::telemost::TelemostClient;
 use crate::api::{HttpClient, WebSocketClient};
+use crate::core::db::Database;
+use crate::core::drafts::DraftStore;
+use crate::core::outbox::Outbox;
 use crate::models::bot::{BotInfo, BotMessage, BotReplyMarkup};
 use crate::models::saved_message::SavedMessage;
 use crate::models::scheduled_message::ScheduledMessage;
-use crate::models::{Chat, Message};
+use crate::models::{CallStatus, Chat, Message, TelemostCall};
 
 #[derive(Debug, Clone)]
 pub enum AppEvent {
@@ -24,6 +30,7 @@ pub enum AppEvent {
     MessageSent(String, Message),
     Typing(String, String),
     Error(String),
+    CallStatusUpdated(String, CallStatus),
 }
 
 #[derive(Default, Clone)]
@@ -44,6 +51,10 @@ pub struct AppController {
     http: Arc<HttpClient>,
     ws: Arc<WebSocketClient>,
     scheduled_client: Arc<ScheduledMessageClient>,
+    telemost_client: Arc<TelemostClient>,
+    outbox: Arc<Outbox>,
+    drafts: Arc<DraftStore>,
+    db: Arc<Database>,
     state: SharedState,
 }
 
@@ -60,13 +71,118 @@ impl AppController {
         let http = Arc::new(HttpClient::new(auth.clone()).with_token(&access_token));
         let ws = Arc::new(WebSocketClient::new(auth.clone()));
         let scheduled_client = Arc::new(ScheduledMessageClient::new(auth.clone()));
+        let telemost_client = Arc::new(TelemostClient::new(auth.clone()));
+        let outbox = Arc::new(Outbox::open());
+        let drafts = Arc::new(DraftStore::open());
+        let db = match Database::open() {
+            Ok(d) => Arc::new(d),
+            Err(e) => {
+                log::error!("SQLite cache open failed ({}): using temp fallback", e);
+                let path = std::env::temp_dir().join(format!(
+                    "ym-cache-fallback-{}.db",
+                    std::process::id()
+                ));
+                let conn = rusqlite::Connection::open(&path)
+                    .expect("temp sqlite open");
+                Arc::new(
+                    Database::from_connection(conn).expect("temp sqlite schema"),
+                )
+            }
+        };
         Self {
             auth,
             http,
             ws,
             scheduled_client,
+            telemost_client,
+            outbox,
+            drafts,
+            db,
             state: Arc::new(Mutex::new(AppState::default())),
         }
+    }
+
+    pub fn outbox(&self) -> Arc<Outbox> {
+        self.outbox.clone()
+    }
+
+    pub fn drafts(&self) -> Arc<DraftStore> {
+        self.drafts.clone()
+    }
+
+    pub fn http(&self) -> Arc<HttpClient> {
+        self.http.clone()
+    }
+
+    /// Reload Passport session cookies from disk into HTTP client.
+    pub fn reload_session(&self) {
+        self.http.reload_session();
+    }
+
+    /// Clear in-memory session cookies (after logout / before re-login).
+    pub fn clear_session_cookies(&self) {
+        self.http.clear_session_cookies();
+    }
+
+    /// Load older messages (pagination) using the oldest known message id as cursor.
+    /// Returns newly loaded messages (oldest-first), already merged into state.
+    pub async fn load_older_messages(
+        &self,
+        chat_id: &str,
+        before_message_id: &str,
+        limit: usize,
+    ) -> Result<Vec<Message>, String> {
+        // Prefer raw message_id if our id is composite like "seq_mid"
+        let cursor = before_message_id
+            .split('_')
+            .last()
+            .unwrap_or(before_message_id);
+
+        let older = self
+            .http
+            .get_messages(chat_id, Some(cursor), 0, limit)
+            .await?;
+
+        if older.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let mut state = self.state.lock().await;
+        let existing = state
+            .messages_by_chat
+            .entry(chat_id.to_string())
+            .or_default();
+        let existing_ids: std::collections::HashSet<String> =
+            existing.iter().map(|m| m.id.clone()).collect();
+
+        let mut new_ones: Vec<Message> = older
+            .into_iter()
+            .filter(|m| !existing_ids.contains(&m.id))
+            .collect();
+        new_ones.sort_by(|a, b| a.created.cmp(&b.created));
+
+        if !new_ones.is_empty() {
+            let mut merged = new_ones.clone();
+            merged.extend(existing.iter().cloned());
+            merged.sort_by(|a, b| a.created.cmp(&b.created));
+            // dedup by id
+            let mut seen = std::collections::HashSet::new();
+            merged.retain(|m| seen.insert(m.id.clone()));
+            *existing = merged;
+            let full = existing.clone();
+            drop(state);
+            Self::save_cache_l2(chat_id, &full);
+            let db = self.db.clone();
+            let cid = chat_id.to_string();
+            let full2 = full;
+            let _ = tokio::task::spawn_blocking(move || {
+                if let Err(e) = db.upsert_messages(&cid, &full2) {
+                    log::warn!("SQLite upsert older msgs: {}", e);
+                }
+            });
+        }
+
+        Ok(new_ones)
     }
 
     pub fn state(&self) -> SharedState {
@@ -75,6 +191,10 @@ impl AppController {
 
     pub fn ws(&self) -> Arc<WebSocketClient> {
         self.ws.clone()
+    }
+
+    pub fn telemost_client(&self) -> Arc<TelemostClient> {
+        self.telemost_client.clone()
     }
 
     /// Get the selected chat ID from the app state
@@ -107,13 +227,36 @@ impl AppController {
                             .or_insert_with(|| vec![lm.clone()]);
                     }
                 }
+                drop(state);
+                // Persist to SQLite
+                let db = self.db.clone();
+                let chats_for_db = chats.clone();
+                tokio::task::spawn_blocking(move || {
+                    if let Err(e) = db.upsert_chats(&chats_for_db) {
+                        log::warn!("SQLite upsert_chats: {}", e);
+                    }
+                });
                 Ok(chats)
             }
             Err(e) => {
                 eprintln!("Failed to load chats: {}", e);
-                Err(e)
+                // Fallback to SQLite
+                match self.db.get_chats() {
+                    Ok(cached) if !cached.is_empty() => {
+                        log::info!("Loaded {} chats from SQLite cache", cached.len());
+                        let mut state = self.state.lock().await;
+                        state.chats = cached.clone();
+                        Ok(cached)
+                    }
+                    _ => Err(e),
+                }
             }
         }
+    }
+
+    /// Instant chat list from SQLite (for cold start UI).
+    pub fn load_chats_from_db(&self) -> Vec<Chat> {
+        self.db.get_chats().unwrap_or_default()
     }
 
     pub async fn select_chat(&self, chat_id: &str) -> Result<Vec<Message>, String> {
@@ -130,26 +273,67 @@ impl AppController {
         }
 
         // Always fetch fresh history instead of relying on stale cache
-        let messages = self.http.get_messages_fresh(chat_id, None, 0, 50).await?;
-        let mut state = self.state.lock().await;
-        state
-            .messages_by_chat
-            .insert(chat_id.to_string(), messages.clone());
+        match self.http.get_messages_fresh(chat_id, None, 0, 50).await {
+            Ok(messages) => {
+                let mut state = self.state.lock().await;
+                state
+                    .messages_by_chat
+                    .insert(chat_id.to_string(), messages.clone());
+                drop(state);
 
-        // Save to L2 Cache asynchronously in a background thread task
-        let chat_id_str = chat_id.to_string();
-        let msgs_clone = messages.clone();
-        tokio::spawn(async move {
-            Self::save_cache_l2_async(chat_id_str, msgs_clone).await;
-        });
+                let chat_id_str = chat_id.to_string();
+                let msgs_clone = messages.clone();
+                let db = self.db.clone();
+                tokio::spawn(async move {
+                    Self::save_cache_l2_async(chat_id_str.clone(), msgs_clone.clone()).await;
+                    let _ = tokio::task::spawn_blocking(move || {
+                        if let Err(e) = db.upsert_messages(&chat_id_str, &msgs_clone) {
+                            log::warn!("SQLite upsert_messages: {}", e);
+                        }
+                    })
+                    .await;
+                });
 
-        Ok(messages)
+                Ok(messages)
+            }
+            Err(e) => {
+                // Fallback: SQLite then JSON L2
+                if let Ok(cached) = self.db.get_messages(chat_id, Some(200)) {
+                    if !cached.is_empty() {
+                        log::info!(
+                            "select_chat network failed ({}), using {} SQLite msgs",
+                            e,
+                            cached.len()
+                        );
+                        let mut state = self.state.lock().await;
+                        state
+                            .messages_by_chat
+                            .insert(chat_id.to_string(), cached.clone());
+                        return Ok(cached);
+                    }
+                }
+                if let Ok(cached) = Self::load_cache_l2(chat_id) {
+                    if !cached.is_empty() {
+                        return Ok(cached);
+                    }
+                }
+                Err(e)
+            }
+        }
     }
 
     pub async fn get_cached_messages_async(&self, chat_id: String) -> Vec<Message> {
         if let Ok(state) = self.state.try_lock() {
             if let Some(msgs) = state.messages_by_chat.get(&chat_id) {
-                return msgs.clone();
+                if !msgs.is_empty() {
+                    return msgs.clone();
+                }
+            }
+        }
+        // Prefer SQLite
+        if let Ok(msgs) = self.db.get_messages(&chat_id, Some(200)) {
+            if !msgs.is_empty() {
+                return msgs;
             }
         }
         Self::load_cache_l2_async(chat_id).await.unwrap_or_default()
@@ -335,6 +519,13 @@ impl AppController {
         }
     }
 
+    /// Persist messages to SQLite (sync; call from blocking context or spawn_blocking).
+    pub fn save_messages_sqlite(&self, chat_id: &str, messages: &[Message]) {
+        if let Err(e) = self.db.upsert_messages(chat_id, messages) {
+            log::warn!("save_messages_sqlite: {}", e);
+        }
+    }
+
     async fn save_cache_l2_async(chat_id: String, messages: Vec<Message>) {
         let (tx, rx) = tokio::sync::oneshot::channel();
         std::thread::spawn(move || {
@@ -368,8 +559,406 @@ impl AppController {
     }
 
     pub async fn send_text_message(&self, chat_id: &str, text: &str) -> Result<Message, String> {
-        // Send via WebSocket
-        let sent = self.ws.send_text_message(chat_id, text, None).await?;
+        self.send_text_message_ex(chat_id, text, None, None).await
+    }
+
+    /// Send or edit a text message.
+    /// - `reply_to`: optional message id being replied to
+    /// - `edit_id`: if set, edits that message instead of sending a new one
+    pub async fn send_text_message_ex(
+        &self,
+        chat_id: &str,
+        text: &str,
+        reply_to: Option<&str>,
+        edit_id: Option<&str>,
+    ) -> Result<Message, String> {
+        if let Some(mid) = edit_id {
+            self.http.edit_message(chat_id, mid, text).await?;
+            let mut state = self.state.lock().await;
+            if let Some(msgs) = state.messages_by_chat.get_mut(chat_id) {
+                if let Some(msg) = msgs.iter_mut().find(|m| m.id == mid || m.message_id.as_deref() == Some(mid))
+                {
+                    msg.text = Some(text.to_string());
+                    msg.edited = true;
+                    msg.edited_at = Some(chrono::Utc::now());
+                    return Ok(msg.clone());
+                }
+            }
+            // Fallback optimistic edited message
+            return Ok(Message {
+                id: mid.to_string(),
+                chat_id: chat_id.to_string(),
+                from_id: self
+                    .auth
+                    .get_current_account_id()
+                    .await
+                    .unwrap_or_default(),
+                message_id: Some(mid.to_string()),
+                rmid: None,
+                type_: crate::models::MessageType::Text,
+                text: Some(text.to_string()),
+                entities: vec![],
+                reply_to: None,
+                forward: None,
+                media: vec![],
+                reactions: vec![],
+                thread_id: None,
+                has_thread: false,
+                pinned: false,
+                edited: true,
+                edited_at: Some(chrono::Utc::now()),
+                sent: true,
+                delivered: true,
+                read: false,
+                created: chrono::Utc::now(),
+                updated: Some(chrono::Utc::now()),
+                poll: None,
+            });
+        }
+
+        // Text send path (Yandex):
+        // 1) WebSocket binary ClientMessage (primary — registry has no send_message path)
+        // 2) Session RPC only as experimental fallback (often "No such path")
+        // On total failure — enqueue outbox and return optimistic pending message.
+        let send_result = match self.ws.send_text_message(chat_id, text, reply_to).await {
+            Ok(m) => Ok(m),
+            Err(ws_err) => {
+                log::warn!("WS send failed: {}", ws_err);
+                if self.http.has_session() {
+                    match self.http.send_message(chat_id, text, reply_to).await {
+                        Ok(m) => Ok(m),
+                        Err(e) => {
+                            log::warn!("session send_message failed: {}", e);
+                            Err(format!("ws: {}; session: {}", ws_err, e))
+                        }
+                    }
+                } else {
+                    Err(format!("ws: {}; no session for HTTP fallback", ws_err))
+                }
+            }
+        };
+
+        let sent = match send_result {
+            Ok(mut m) => {
+                // Network round-trip succeeded → at least delivered
+                m.sent = true;
+                m.delivered = true;
+                m
+            }
+            Err(e) => {
+                log::warn!("Send failed, queuing outbox: {}", e);
+                let item = self.outbox.enqueue(chat_id, text, reply_to, Some(e.clone()));
+                let pending = Message {
+                    id: item.id.clone(),
+                    chat_id: chat_id.to_string(),
+                    from_id: self
+                        .auth
+                        .get_current_account_id()
+                        .await
+                        .unwrap_or_default(),
+                    message_id: Some(item.id.clone()),
+                    rmid: None,
+                    type_: crate::models::MessageType::Text,
+                    text: Some(text.to_string()),
+                    entities: vec![],
+                    reply_to: reply_to.map(|rt| crate::models::MessageId {
+                        chat_id: chat_id.to_string(),
+                        message_id: rt.to_string(),
+                    }),
+                    forward: None,
+                    media: vec![],
+                    reactions: vec![],
+                    thread_id: None,
+                    has_thread: false,
+                    pinned: false,
+                    edited: false,
+                    edited_at: None,
+                    sent: false,
+                    delivered: false,
+                    read: false,
+                    created: chrono::Utc::now(),
+                    updated: None,
+                    poll: None,
+                };
+                let mut state = self.state.lock().await;
+                state
+                    .messages_by_chat
+                    .entry(chat_id.to_string())
+                    .or_default()
+                    .push(pending.clone());
+                return Ok(pending);
+            }
+        };
+
+        let mut state = self.state.lock().await;
+        state
+            .messages_by_chat
+            .entry(chat_id.to_string())
+            .or_default()
+            .push(sent.clone());
+        Ok(sent)
+    }
+
+    /// Retry all pending outbox messages. Returns (sent_ok, still_pending).
+    pub async fn flush_outbox(&self) -> (usize, usize) {
+        self.outbox.purge_dead(20);
+        let items = self.outbox.list();
+        if items.is_empty() {
+            return (0, 0);
+        }
+        log::info!("Flushing outbox ({} items)", items.len());
+        let mut ok = 0usize;
+        for item in items {
+            let res = if self.http.has_session() {
+                match self
+                    .http
+                    .send_message(&item.chat_id, &item.text, item.reply_to.as_deref())
+                    .await
+                {
+                    Ok(m) => Ok(m),
+                    Err(e) => self
+                        .ws
+                        .send_text_message(&item.chat_id, &item.text, item.reply_to.as_deref())
+                        .await
+                        .map_err(|e2| format!("{}; {}", e, e2)),
+                }
+            } else {
+                self.ws
+                    .send_text_message(&item.chat_id, &item.text, item.reply_to.as_deref())
+                    .await
+            };
+
+            match res {
+                Ok(msg) => {
+                    self.outbox.remove(&item.id);
+                    let mut state = self.state.lock().await;
+                    if let Some(msgs) = state.messages_by_chat.get_mut(&item.chat_id) {
+                        // Replace pending placeholder if present
+                        if let Some(slot) = msgs.iter_mut().find(|m| m.id == item.id) {
+                            *slot = msg.clone();
+                        } else {
+                            msgs.push(msg);
+                        }
+                    }
+                    ok += 1;
+                }
+                Err(e) => {
+                    log::warn!("Outbox item {} failed: {}", item.id, e);
+                    self.outbox.mark_attempt(&item.id, Some(e));
+                }
+            }
+        }
+        (ok, self.outbox.len())
+    }
+
+    pub async fn mark_chat_read(&self, chat_id: &str) -> Result<(), String> {
+        let last_id = {
+            let state = self.state.lock().await;
+            state
+                .messages_by_chat
+                .get(chat_id)
+                .and_then(|m| m.last())
+                .map(|m| m.id.clone())
+        };
+        let res = self
+            .http
+            .mark_chat_read(chat_id, last_id.as_deref())
+            .await;
+        if let Ok(()) = res {
+            let mut state = self.state.lock().await;
+            if let Some(chat) = state.chats.iter_mut().find(|c| c.id == chat_id) {
+                chat.unread_count = 0;
+            }
+        }
+        res
+    }
+
+    pub async fn set_chat_muted(&self, chat_id: &str, muted: bool) -> Result<(), String> {
+        let res = self.http.set_chat_muted(chat_id, muted).await;
+        // Always update local state for responsive UI
+        {
+            let mut state = self.state.lock().await;
+            if let Some(chat) = state.chats.iter_mut().find(|c| c.id == chat_id) {
+                chat.muted = muted;
+            }
+        }
+        res
+    }
+
+    pub async fn set_chat_pinned(&self, chat_id: &str, pinned: bool) -> Result<(), String> {
+        let res = self.http.set_chat_pinned(chat_id, pinned).await;
+        {
+            let mut state = self.state.lock().await;
+            if let Some(chat) = state.chats.iter_mut().find(|c| c.id == chat_id) {
+                chat.pinned = pinned;
+            }
+        }
+        res
+    }
+
+    pub async fn set_chat_archived(&self, chat_id: &str, archived: bool) -> Result<(), String> {
+        let res = self.http.set_chat_archived(chat_id, archived).await;
+        {
+            let mut state = self.state.lock().await;
+            if let Some(chat) = state.chats.iter_mut().find(|c| c.id == chat_id) {
+                chat.archived = archived;
+            }
+        }
+        res
+    }
+
+    pub async fn delete_chat(&self, chat_id: &str) -> Result<(), String> {
+        let res = self.http.delete_chat(chat_id).await;
+        {
+            let mut state = self.state.lock().await;
+            state.chats.retain(|c| c.id != chat_id);
+            state.messages_by_chat.remove(chat_id);
+            if state.selected_chat_id.as_deref() == Some(chat_id) {
+                state.selected_chat_id = None;
+            }
+        }
+        res
+    }
+
+    pub async fn delete_message(&self, chat_id: &str, message_id: &str) -> Result<(), String> {
+        self.http.delete_message(chat_id, message_id).await?;
+        let mut state = self.state.lock().await;
+        if let Some(msgs) = state.messages_by_chat.get_mut(chat_id) {
+            msgs.retain(|m| m.id != message_id && m.message_id.as_deref() != Some(message_id));
+        }
+        Ok(())
+    }
+
+    /// Total unread across chats (for tray badge).
+    pub async fn total_unread(&self) -> u32 {
+        let state = self.state.lock().await;
+        state.chats.iter().map(|c| c.unread_count).sum()
+    }
+
+    pub async fn is_chat_muted(&self, chat_id: &str) -> bool {
+        let state = self.state.lock().await;
+        state
+            .chats
+            .iter()
+            .find(|c| c.id == chat_id)
+            .map(|c| c.muted)
+            .unwrap_or(false)
+    }
+
+    /// Apply delivery/read status to messages in memory (and SQLite best-effort).
+    /// Returns list of message ids that changed.
+    pub async fn apply_status_update(
+        &self,
+        update: crate::api::StatusUpdate,
+    ) -> Vec<String> {
+        let mut changed = Vec::new();
+        let mut state = self.state.lock().await;
+
+        let chat_ids: Vec<String> = if let Some(ref cid) = update.chat_id {
+            vec![cid.clone()]
+        } else {
+            state.messages_by_chat.keys().cloned().collect()
+        };
+
+        for cid in chat_ids {
+            if let Some(msgs) = state.messages_by_chat.get_mut(&cid) {
+                for msg in msgs.iter_mut() {
+                    let chat_wide = update.message_id.is_none();
+                    let match_id = update.message_id.as_ref().map_or(false, |mid| {
+                        msg.id == *mid
+                            || msg.message_id.as_deref() == Some(mid.as_str())
+                            || msg.id.ends_with(&format!("_{}", mid))
+                    });
+                    if !chat_wide && !match_id {
+                        continue;
+                    }
+                    // Chat-wide updates apply to already-outgoing messages only
+                    if chat_wide && !(msg.sent || msg.delivered) {
+                        continue;
+                    }
+                    let mut dirty = false;
+                    if update.delivered && !msg.delivered {
+                        msg.delivered = true;
+                        dirty = true;
+                    }
+                    if update.read && !msg.read {
+                        msg.read = true;
+                        msg.delivered = true;
+                        dirty = true;
+                    }
+                    if dirty {
+                        changed.push(msg.id.clone());
+                    }
+                }
+            }
+        }
+        changed
+    }
+
+    /// Send a message with a file attachment:
+    /// 1) POST media_upload (OAuth) → file_id
+    /// 2) push WS ClientMessage Image/MiscFile (same PayloadId as upload messageId)
+    pub async fn send_file_message(
+        &self,
+        chat_id: &str,
+        file_data: &[u8],
+        filename: &str,
+    ) -> Result<Message, String> {
+        let payload_id = uuid::Uuid::new_v4().simple().to_string();
+        let mime = crate::api::HttpClient::guess_mime_type(filename);
+
+        // Wait briefly for WS (same as text send)
+        if !self.ws.is_connected().await {
+            for _ in 0..20 {
+                if self.ws.is_connected().await {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+        }
+
+        let file_id = self
+            .http
+            .upload_file_for_message(chat_id, file_data, filename, &payload_id)
+            .await?;
+
+        let is_image = crate::api::HttpClient::is_image_mime(mime);
+        // Cheap dimensions (no full decode when possible) — full decode freezes on 4K pastes
+        let (width, height) = if is_image {
+            image_dimensions_fast(file_data)
+        } else {
+            (None, None)
+        };
+
+        let mut sent = self
+            .ws
+            .send_file_message(
+                chat_id,
+                &file_id,
+                filename,
+                file_data.len() as u64,
+                mime,
+                width,
+                height,
+                &payload_id,
+            )
+            .await
+            .map_err(|e| format!("Файл загружен, но отправка в чат не удалась: {}", e))?;
+
+        // Local downscaled preview so bubble doesn't re-fetch full file over network
+        if is_image {
+            if let Some(local) = cache_outgoing_image_preview(file_data, &file_id) {
+                if let Some(m) = sent.media.get_mut(0) {
+                    m.thumbnail_url = Some(local.clone());
+                    // Prefer shortterm URL for open/download with OAuth later
+                    m.url = format!(
+                        "{}/file_shortterm/{}",
+                        crate::config::FILE_PUBLIC_HOST.trim_end_matches('/'),
+                        file_id.trim_start_matches('/')
+                    );
+                }
+            }
+        }
 
         let mut state = self.state.lock().await;
         state
@@ -391,6 +980,29 @@ impl AppController {
 
     pub async fn download_file(&self, file_id: &str) -> Result<Vec<u8>, String> {
         self.http.download_file(file_id).await
+    }
+
+    pub async fn download_url(&self, url: &str) -> Result<Vec<u8>, String> {
+        self.http.download_url(url).await
+    }
+
+    /// Download attachment bytes (prefer file id, fall back to URL).
+    pub async fn download_attachment(
+        &self,
+        file_id: &str,
+        url: &str,
+    ) -> Result<Vec<u8>, String> {
+        if !file_id.is_empty() && !file_id.starts_with("http") {
+            match self.download_file(file_id).await {
+                Ok(b) if !b.is_empty() => return Ok(b),
+                Ok(_) => {}
+                Err(e) => log::debug!("download_file id failed: {}", e),
+            }
+        }
+        if url.starts_with("http") {
+            return self.download_url(url).await;
+        }
+        Err("No downloadable url/id".into())
     }
 
     /// Save a message to favorites
@@ -451,8 +1063,38 @@ impl AppController {
         Ok(())
     }
 
-    pub fn telemost_url(&self, chat_id: &str) -> String {
-        self.http.telemost_url(chat_id, None)
+    pub fn telemost_url(&self, chat_id: &str, call_id: Option<&str>) -> String {
+        self.http.telemost_url(chat_id, call_id)
+    }
+
+    /// Start a Telemost call in the given chat.
+    pub async fn start_call(&self, chat_id: &str) -> Result<TelemostCall, String> {
+        self.http.start_call(chat_id).await
+    }
+
+    /// End an active Telemost call.
+    pub async fn end_call(&self, call_id: &str) -> Result<(), String> {
+        self.http.end_call(call_id).await
+    }
+
+    /// Get the current status of a Telemost call.
+    pub async fn get_call_status(&self, call_id: &str) -> Result<CallStatus, String> {
+        self.http.get_call_status(call_id).await
+    }
+
+    /// Subscribe to real-time call status updates via WebSocket.
+    pub async fn subscribe_call_updates(&self, call_id: &str) -> Result<u64, String> {
+        self.ws.subscribe_call_updates(call_id).await
+    }
+
+    /// Send a call event (e.g. participant joined/left) over WebSocket.
+    pub async fn send_call_event_ws(
+        &self,
+        call_id: &str,
+        event: &str,
+        params: serde_json::Value,
+    ) -> Result<u64, String> {
+        self.ws.send_call_event_ws(call_id, event, params).await
     }
 
     // ── Bot methods ──
@@ -693,4 +1335,56 @@ impl AppController {
 
         Ok(sent_messages)
     }
+}
+
+/// Read image size without full pixel buffer when the decoder supports it.
+fn image_dimensions_fast(data: &[u8]) -> (Option<u32>, Option<u32>) {
+    use std::io::Cursor;
+    let reader = image::ImageReader::new(Cursor::new(data)).with_guessed_format();
+    match reader {
+        Ok(r) => match r.into_dimensions() {
+            Ok((w, h)) => (Some(w), Some(h)),
+            Err(_) => (None, None),
+        },
+        Err(_) => (None, None),
+    }
+}
+
+/// Write a small PNG preview under cache for instant bubble display (file://).
+fn cache_outgoing_image_preview(file_data: &[u8], file_id: &str) -> Option<String> {
+    use std::io::Cursor;
+
+    let cache = dirs::cache_dir()?.join("yandex-messenger-native").join("previews");
+    std::fs::create_dir_all(&cache).ok()?;
+    let safe: String = file_id
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let path = cache.join(format!("{}.png", safe));
+
+    // Prefer small thumbnail for UI; skip on failure
+    let mut reader = image::ImageReader::new(Cursor::new(file_data))
+        .with_guessed_format()
+        .ok()?;
+    reader.no_limits();
+    let img = reader.decode().ok()?;
+    let thumb = if img.width() > 480 || img.height() > 480 {
+        img.thumbnail(480, 480)
+    } else {
+        img
+    };
+    let mut out = Vec::new();
+    {
+        let mut c = Cursor::new(&mut out);
+        thumb.write_to(&mut c, image::ImageFormat::Png).ok()?;
+    }
+    std::fs::write(&path, &out).ok()?;
+    // file:// URI for load_inline_image
+    Some(format!("file://{}", path.display()))
 }

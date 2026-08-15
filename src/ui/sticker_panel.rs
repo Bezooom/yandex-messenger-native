@@ -196,10 +196,24 @@ impl StickerPanel {
         thumb.set_valign(Align::Start);
 
         let thumb_clone = thumb.clone();
-        let thumb_url = pack.thumb_url.clone();
+        // Prefer pack thumb; fall back to first sticker thumb
+        let mut thumb_url = pack.thumb_url.clone();
+        if thumb_url.is_empty() {
+            if let Some(first) = pack.stickers.first() {
+                thumb_url = if !first.thumb_url.is_empty() {
+                    first.thumb_url.clone()
+                } else {
+                    first.file_url.clone()
+                };
+            }
+        }
         glib::spawn_future_local(async move {
-            if !thumb_url.is_empty() {
-                let _ = load_sticker_image(&thumb_clone, &thumb_url).await;
+            if thumb_url.is_empty() {
+                log::debug!("pack has no thumb url");
+                return;
+            }
+            if let Err(e) = load_sticker_image(&thumb_clone, &thumb_url).await {
+                log::debug!("pack thumb: {}", e);
             }
         });
 
@@ -308,10 +322,17 @@ impl StickerPanel {
         btn.set_child(Some(&image));
 
         let image_clone = image.clone();
-        let sticker_url = sticker.thumb_url.clone();
+        let sticker_url = if !sticker.thumb_url.is_empty() {
+            sticker.thumb_url.clone()
+        } else {
+            sticker.file_url.clone()
+        };
         glib::spawn_future_local(async move {
-            if !sticker_url.is_empty() {
-                let _ = load_sticker_image(&image_clone, &sticker_url).await;
+            if sticker_url.is_empty() {
+                return;
+            }
+            if let Err(e) = load_sticker_image(&image_clone, &sticker_url).await {
+                log::debug!("sticker thumb: {}", e);
             }
         });
 
@@ -508,34 +529,82 @@ mod tests {
 }
 
 async fn load_sticker_image(img: &gtk::Image, url: &str) -> Result<(), String> {
+    if url.is_empty() {
+        return Err("empty sticker url".into());
+    }
+    // Animated pack formats can't be Texture — keep placeholder icon
+    if url.contains(".tgs") || url.ends_with(".json") || url.contains("size=json") {
+        return Err("animated sticker not supported as static thumb".into());
+    }
+
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(5))
+        .timeout(std::time::Duration::from_secs(8))
         .build()
         .map_err(|e| format!("Failed to create client: {}", e))?;
 
     let response = client
         .get(url)
-        .header("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        .header(
+            "User-Agent",
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        )
+        .header("Accept", "image/webp,image/png,image/*,*/*;q=0.8")
         .send()
         .await
-        .map_err(|e| format!("Failed to fetch: {}", e))?;
+        .map_err(|e| format!("Failed to fetch {}: {}", url, e))?;
 
     if !response.status().is_success() {
-        return Err(format!("Fetch failed: HTTP {}", response.status()));
+        return Err(format!("Fetch failed {}: HTTP {}", url, response.status()));
     }
 
     let bytes = response
         .bytes()
         .await
         .map_err(|e| format!("Failed to read bytes: {}", e))?;
-    let bytes_glib = glib::Bytes::from(&bytes);
-    match gtk::gdk::Texture::from_bytes(&bytes_glib) {
+    if bytes.is_empty() {
+        return Err("empty image body".into());
+    }
+
+    // 1) Fast path: gdk Texture (png/jpeg/some webp)
+    let bytes_glib = glib::Bytes::from(&bytes.to_vec());
+    if let Ok(texture) = gtk::gdk::Texture::from_bytes(&bytes_glib) {
+        img.set_from_paintable(Some(&texture));
+        img.set_pixel_size(50);
+        return Ok(());
+    }
+
+    // 2) PixbufLoader — reliable for webp (Yandex CDN) when gdk_pixbuf loaders present
+    match load_texture_via_pixbuf(&bytes) {
         Ok(texture) => {
             img.set_from_paintable(Some(&texture));
+            img.set_pixel_size(50);
+            Ok(())
         }
         Err(e) => {
-            return Err(format!("Failed to load texture: {}", e));
+            log::warn!("sticker thumb load failed ({}): {}", url, e);
+            Err(e)
         }
     }
-    Ok(())
+}
+
+fn load_texture_via_pixbuf(bytes: &[u8]) -> Result<gtk::gdk::Texture, String> {
+    let loader = gtk::gdk_pixbuf::PixbufLoader::new();
+    loader
+        .write(bytes)
+        .map_err(|e| format!("pixbuf write: {}", e))?;
+    loader
+        .close()
+        .map_err(|e| format!("pixbuf close: {}", e))?;
+    let pixbuf = loader
+        .pixbuf()
+        .ok_or_else(|| "pixbuf loader returned no image (missing webp loader?)".to_string())?;
+    // Scale down pack thumbs for list
+    let scaled = if pixbuf.width() > 64 || pixbuf.height() > 64 {
+        pixbuf
+            .scale_simple(64, 64, gtk::gdk_pixbuf::InterpType::Bilinear)
+            .unwrap_or(pixbuf)
+    } else {
+        pixbuf
+    };
+    Ok(gtk::gdk::Texture::for_pixbuf(&scaled))
 }

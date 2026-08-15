@@ -1,17 +1,14 @@
 # Yandex Auth Proxy
 
-Минимальный backend proxy для централизованной OAuth-авторизации.
+[Русская версия ниже](#русский)
 
-## Зачем
-
-- `client_secret` хранится на сервере, а не на клиентских машинах.
-- Пользователям desktop-клиента не нужно регистрировать OAuth app вручную.
+Minimal backend proxy for centralized OAuth so `client_secret` stays on the server. Desktop users do not need to register their own OAuth app.
 
 ## Environment
 
 - `YANDEX_CLIENT_ID` (required)
 - `YANDEX_CLIENT_SECRET` (required)
-- `YANDEX_REDIRECT_URI` (required) — callback URL, который зарегистрирован в Yandex OAuth для вашего app.
+- `YANDEX_REDIRECT_URI` (required) — callback URL registered for the Yandex OAuth app
 - `AUTH_PROXY_BIND` (optional, default `127.0.0.1:8080`)
 - `YANDEX_OAUTH_SCOPES` (optional)
 
@@ -28,12 +25,36 @@ cargo run --release
 ## Endpoints
 
 - `GET /health`
-- `GET /oauth/start` — redirect на Yandex OAuth authorize
-- `GET /oauth/callback` — показывает код подтверждения для вставки в desktop app
-- `POST /oauth/exchange` — обмен code на token
+- `GET /oauth/start` — redirect to Yandex OAuth authorize
+- `GET /oauth/callback` — shows the confirmation code to paste into the desktop app
+- `POST /oauth/exchange` — exchange `code` for a token
 
 Body:
 
 ```json
 {"code":"<authorization_code>"}
 ```
+
+The desktop client can point at this service with `YANDEX_AUTH_PROXY_URL`.
+
+---
+
+## Русский
+
+Минимальный backend-прокси для централизованной OAuth-авторизации.
+
+### Зачем
+
+- `client_secret` хранится на сервере, а не на клиентских машинах.
+- Пользователям desktop-клиента не нужно регистрировать OAuth app вручную.
+
+### Окружение и запуск
+
+Те же переменные и команда, что в английской секции выше.
+
+### Эндпоинты
+
+- `GET /health`
+- `GET /oauth/start` — редирект на Yandex OAuth authorize
+- `GET /oauth/callback` — показывает код подтверждения для вставки в desktop app
+- `POST /oauth/exchange` — обмен code на token

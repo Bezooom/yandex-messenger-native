@@ -1,14 +1,27 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#FF4D2D"/>
-      <stop offset="100%" stop-color="#FF2B00"/>
-    </linearGradient>
-  </defs>
-  <rect x="24" y="24" rx="112" ry="112" width="464" height="464" fill="url(#bg)"/>
-  <path d="M144 160h224c22 0 40 18 40 40v112c0 22-18 40-40 40H236l-74 64v-64h-18c-22 0-40-18-40-40V200c0-22 18-40 40-40z" fill="#ffffff"/>
-  <circle cx="198" cy="256" r="18" fill="#FF3B1D"/>
-  <circle cx="256" cy="256" r="18" fill="#FF3B1D"/>
-  <circle cx="314" cy="256" r="18" fill="#FF3B1D"/>
+<!-- Yandex Messenger launcher: brand yellow plate + black chat bubble + yellow dots -->
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Squircle plate (iOS/Android adaptive-friendly) -->
+  <rect width="512" height="512" rx="108" fill="#FFCC00"/>
+
+  <!-- Chat bubble — flat black, classic messenger silhouette -->
+  <path fill="#1A1A1A" d="
+    M 128 148
+    h 256
+    c 30 0 54 24 54 54
+    v 140
+    c 0 30 -24 54 -54 54
+    H 236
+    l -64 66
+    v -66
+    H 128
+    c -30 0 -54 -24 -54 -54
+    V 202
+    c 0 -30 24 -54 54 -54
+    z"/>
+
+  <!-- Three message dots (brand yellow on black) -->
+  <circle cx="200" cy="252" r="24" fill="#FFCC00"/>
+  <circle cx="256" cy="252" r="24" fill="#FFCC00"/>
+  <circle cx="312" cy="252" r="24" fill="#FFCC00"/>
 </svg>

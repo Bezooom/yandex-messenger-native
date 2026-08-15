@@ -151,12 +151,16 @@ impl AuthDialog {
             .build();
         content.append(&subtitle);
 
-        // Browser login button
+        // Browser login button — Passport session (never empty/package OAuth client_id).
         let browser_btn = gtk::Button::with_label("Войти через Яндекс");
         browser_btn.add_css_class("primary-action");
         browser_btn.set_margin_bottom(8);
 
-        let auth_url = self.auth_manager.auth_code_url();
+        let auth_url = if self.auth_manager.has_valid_oauth_client_id() {
+            self.auth_manager.auth_code_url()
+        } else {
+            self.auth_manager.passport_session_url()
+        };
         let auth_url_owned = auth_url.to_string();
         browser_btn.connect_clicked(move |_| {
             let _ =
@@ -248,7 +252,21 @@ impl AuthDialog {
             redirect_uri.as_deref(),
             proxy_url.as_deref(),
         )?;
-        self.finalize_token(&code)
+        let token = self.finalize_token(&code)?;
+        // Ensure Passport session cookies exist (history / WS / files).
+        // Prefer cookies already captured during WebView OAuth; otherwise open chat once.
+        #[cfg(feature = "in_app_webview")]
+        {
+            if !crate::api::session_store::load_session()
+                .map(|s| s.has_session_id())
+                .unwrap_or(false)
+            {
+                if let Err(e) = self.capture_session_via_webview() {
+                    log::warn!("Session capture after OAuth: {}", e);
+                }
+            }
+        }
+        Ok(token)
     }
 
     fn select_account(&self, accounts: &[Account]) -> Result<OAuthToken, String> {
@@ -389,12 +407,14 @@ impl AuthDialog {
 
         #[cfg(feature = "in_app_webview")]
         {
+            setup_webkit_cookie_storage();
+
             let dialog = Window::builder()
                 .transient_for(&self.parent)
                 .modal(true)
                 .title("Вход через Яндекс ID")
-                .default_width(500)
-                .default_height(650)
+                .default_width(520)
+                .default_height(680)
                 .css_classes(["auth-window"])
                 .build();
 
@@ -404,8 +424,67 @@ impl AuthDialog {
             let header_bar = gtk::HeaderBar::new();
             content.append(&header_bar);
 
+            let use_oauth = self.auth_manager.has_valid_oauth_client_id();
+            // Prefer reusing a still-valid token already on disk (avoids "where do I get y0__?").
+            let cached_token = self
+                .block_on(self.auth_manager.load_token())
+                .ok()
+                .filter(|t| !t.is_expired())
+                .map(|t| t.access_token);
+
+            let status = Label::builder()
+                .label(if use_oauth {
+                    "Войдите в Яндекс ID. Если попросит доступ — нажмите «Разрешить».\n\
+                     Токен и session cookies сохранятся сами — ничего копировать не нужно."
+                } else {
+                    "Войдите в Яндекс ID. После входа нажмите «Продолжить» — \
+                     сессия сохранится автоматически."
+                })
+                .wrap(true)
+                .xalign(0.0)
+                .margin_start(12)
+                .margin_end(12)
+                .margin_top(6)
+                .margin_bottom(6)
+                .build();
+            content.append(&status);
+
+            // Advanced: manual token paste only as fallback (hidden by default when OAuth works)
+            let token_entry = Entry::builder()
+                .placeholder_text("Только если вход завис: вставьте Access Token (y0__…)")
+                .hexpand(true)
+                .margin_start(12)
+                .margin_end(12)
+                .margin_bottom(4)
+                .build();
+            token_entry.set_visible(!use_oauth);
+            content.append(&token_entry);
+
+            let done_btn = Button::with_label(if use_oauth {
+                "Продолжить"
+            } else {
+                "Продолжить (сохранить сессию)"
+            });
+            done_btn.add_css_class("primary-action");
+            done_btn.set_margin_start(12);
+            done_btn.set_margin_end(12);
+            done_btn.set_margin_bottom(8);
+            content.append(&done_btn);
+
             let webview = webkit6::WebView::new();
-            webview.load_uri(auth_url);
+            // With a real OAuth client_id: open authorize (Passport → token in URL fragment).
+            // Without: Passport → chat for Session_id only; reuse disk token if present.
+            let oauth_url = if use_oauth {
+                auth_url.to_string()
+            } else {
+                String::new()
+            };
+            let start_url = if use_oauth {
+                oauth_url.clone()
+            } else {
+                self.auth_manager.passport_session_url()
+            };
+            webview.load_uri(&start_url);
 
             let scrolled = gtk::ScrolledWindow::builder()
                 .hscrollbar_policy(gtk::PolicyType::Automatic)
@@ -418,23 +497,155 @@ impl AuthDialog {
 
             let main_loop = glib::MainLoop::new(None, false);
             let outcome = std::rc::Rc::new(std::cell::RefCell::new(None::<Result<String, String>>));
+            // 0=oauth, 1=waiting Session_id after token, 2=session-first then auto-oauth / disk token
+            let phase = std::rc::Rc::new(std::cell::Cell::new(if use_oauth { 0u8 } else { 2u8 }));
+            let cached_tok = std::rc::Rc::new(cached_token);
+            let oauth_url_rc = std::rc::Rc::new(oauth_url);
+
+            // "Продолжить": pasted token OR session+cached token OR session-only → kick OAuth
+            {
+                let outcome_b = outcome.clone();
+                let loop_b = main_loop.clone();
+                let entry_b = token_entry.clone();
+                let wv_b = webview.clone();
+                let cached_b = cached_tok.clone();
+                let oauth_b = oauth_url_rc.clone();
+                let status_b = status.clone();
+                let phase_b = phase.clone();
+                let entry_show = token_entry.clone();
+                done_btn.connect_clicked(move |_| {
+                    let _ = harvest_and_save_session_from_webview(&wv_b);
+                    let raw = entry_b.text().to_string();
+                    let code = extract_auth_code(raw.trim());
+                    if !code.is_empty() {
+                        *outcome_b.borrow_mut() = Some(Ok(code));
+                        loop_b.quit();
+                        return;
+                    }
+                    if let Some(tok) = cached_b.as_ref() {
+                        eprintln!("[AUTH] Continue with cached access token");
+                        *outcome_b.borrow_mut() = Some(Ok(tok.clone()));
+                        loop_b.quit();
+                        return;
+                    }
+                    // No paste / cache: if we can do OAuth, open it now
+                    if !oauth_b.is_empty() {
+                        status_b.set_label(
+                            "Сессия есть. Открываем разрешение доступа — нажмите «Разрешить».",
+                        );
+                        phase_b.set(0);
+                        wv_b.load_uri(oauth_b.as_str());
+                        return;
+                    }
+                    status_b.set_label(
+                        "Нужен Access Token. Задайте YANDEX_CLIENT_ID или вставьте y0__… \
+                         (см. https://oauth.yandex.ru/).",
+                    );
+                    entry_show.set_visible(true);
+                });
+            }
 
             let outcome_clone = outcome.clone();
             let loop_clone = main_loop.clone();
+            let phase_c = phase.clone();
+            let status_c = status.clone();
+            let cached_c = cached_tok.clone();
+            let oauth_c = oauth_url_rc.clone();
+            let token_entry_c = token_entry.clone();
             webview.connect_load_changed(move |wv, load_event| {
-                if load_event == webkit6::LoadEvent::Finished {
-                    if let Some(uri) = wv.uri() {
-                        let uri_str = uri.to_string();
-                        eprintln!("[AUTH] WebView loaded URI: {}", uri_str);
+                if load_event != webkit6::LoadEvent::Finished {
+                    return;
+                }
+                let uri_str = wv.uri().map(|u| u.to_string()).unwrap_or_default();
+                eprintln!("[AUTH] WebView loaded URI: {}", uri_str);
+
+                // Surface OAuth "unknown client" clearly
+                if uri_str.contains("oauth.yandex") {
+                    if uri_str.contains("error") {
+                        status_c.set_label(
+                            "Ошибка OAuth (неверный client_id). Задайте YANDEX_CLIENT_ID \
+                             (32 hex) или вставьте Access Token вручную.",
+                        );
+                        token_entry_c.set_visible(true);
+                    }
+                }
+
+                match phase_c.get() {
+                    0 => {
                         if uri_str.contains("access_token=") || uri_str.contains("code=") {
                             let code = extract_auth_code(&uri_str);
                             if !code.is_empty() {
                                 eprintln!("[AUTH] Extracted code/token from WebView redirect!");
-                                *outcome_clone.borrow_mut() = Some(Ok(code));
-                                loop_clone.quit();
+                                if harvest_and_save_session_from_webview(wv) {
+                                    *outcome_clone.borrow_mut() = Some(Ok(code));
+                                    loop_clone.quit();
+                                } else {
+                                    status_c.set_label(
+                                        "Токен получен. Сохраняем session cookies…",
+                                    );
+                                    phase_c.set(1);
+                                    *outcome_clone.borrow_mut() = Some(Ok(code.clone()));
+                                    wv.load_uri(crate::config::CHAT_WEB_URL);
+                                }
                             }
+                        } else if uri_str.contains("passport.yandex") {
+                            status_c.set_label("Войдите в Яндекс ID…");
+                        } else if uri_str.contains("oauth.yandex") {
+                            status_c.set_label(
+                                "Если видите кнопку «Разрешить» — нажмите её. Токен подхватится сам.",
+                            );
                         }
                     }
+                    1 => {
+                        if harvest_and_save_session_from_webview(wv) {
+                            loop_clone.quit();
+                        } else if uri_str.contains("passport.yandex") {
+                            status_c.set_label(
+                                "Завершите вход в Паспорт — session появится автоматически.",
+                            );
+                        }
+                    }
+                    2 => {
+                        // Session-first: after Session_id, finish with cached token or open OAuth
+                        if harvest_and_save_session_from_webview(wv) {
+                            if let Some(tok) = cached_c.as_ref() {
+                                status_c.set_label("Сессия сохранена. Входим…");
+                                *outcome_clone.borrow_mut() = Some(Ok(tok.clone()));
+                                loop_clone.quit();
+                                return;
+                            }
+                            if !oauth_c.is_empty() {
+                                status_c.set_label(
+                                    "Сессия сохранена. Запрашиваем доступ — нажмите «Разрешить».",
+                                );
+                                phase_c.set(0);
+                                wv.load_uri(oauth_c.as_str());
+                                return;
+                            }
+                            status_c.set_label(
+                                "Сессия сохранена. Нажмите «Продолжить» или вставьте Access Token.",
+                            );
+                            token_entry_c.set_visible(true);
+                        } else if uri_str.contains("passport.yandex") {
+                            status_c.set_label("Войдите в Яндекс ID…");
+                        } else if uri_str.contains("yandex.ru/chat") {
+                            status_c.set_label("Завершите вход — session сохранится сам…");
+                        }
+                    }
+                    _ => {}
+                }
+            });
+
+            // Timeout for phase 1: don't hang forever
+            let outcome_t = outcome.clone();
+            let loop_t = main_loop.clone();
+            let phase_t = phase.clone();
+            glib::timeout_add_local_once(std::time::Duration::from_secs(180), move || {
+                if phase_t.get() == 1 {
+                    log::warn!("Session capture timed out after OAuth — continuing");
+                    loop_t.quit();
+                } else if outcome_t.borrow().is_none() {
+                    // leave running
                 }
             });
 
@@ -561,8 +772,14 @@ impl AuthDialog {
             let callback_rx: std::rc::Rc<std::cell::RefCell<Option<mpsc::Receiver<String>>>> =
                 std::rc::Rc::new(std::cell::RefCell::new(None));
 
-            // Login button — open browser via xdg-open (most reliable on Linux)
-            let auth_url_owned = auth_url.to_string();
+            // Login button — open browser via xdg-open (most reliable on Linux).
+            // Without a registered OAuth app id, open Passport (not oauth/?client_id= → 400).
+            let open_url = if self.auth_manager.has_valid_oauth_client_id() {
+                auth_url.to_string()
+            } else {
+                self.auth_manager.passport_session_url()
+            };
+            let auth_url_owned = open_url;
             let status_weak = status_label.clone();
             let rx_cell_c = callback_rx.clone();
             login_btn.connect_clicked(move |btn| {
@@ -776,6 +993,205 @@ impl AuthDialog {
         });
 
         Ok((final_url, rx))
+    }
+}
+
+#[cfg(feature = "in_app_webview")]
+fn setup_webkit_cookie_storage() {
+    let dir = dirs::config_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("yandex-messenger-native");
+    let _ = std::fs::create_dir_all(&dir);
+    let cookie_db = dir.join("webkit-cookies.sqlite");
+    if let Some(ns) = webkit6::NetworkSession::default() {
+        if let Some(cm) = ns.cookie_manager() {
+            cm.set_accept_policy(webkit6::CookieAcceptPolicy::Always);
+            if let Some(p) = cookie_db.to_str() {
+                cm.set_persistent_storage(p, webkit6::CookiePersistentStorage::Sqlite);
+            }
+        }
+    }
+}
+
+/// Collect cookies from WebKit CookieManager for yandex domains and write session.json.
+/// Returns true if Session_id is present.
+#[cfg(feature = "in_app_webview")]
+fn harvest_and_save_session_from_webview(webview: &webkit6::WebView) -> bool {
+    let Some(ns) = webview.network_session() else {
+        log::warn!("No NetworkSession on WebView");
+        return false;
+    };
+    let Some(cm) = ns.cookie_manager() else {
+        log::warn!("No CookieManager");
+        return false;
+    };
+
+    let cookies_map = harvest_cookies_sync(&cm);
+    if cookies_map.is_empty() {
+        return false;
+    }
+
+    let cookie_header: String = cookies_map
+        .iter()
+        .map(|(k, v)| format!("{}={}", k, v))
+        .collect::<Vec<_>>()
+        .join("; ");
+
+    // Best-effort CSRF (sync via nested loop + async spawn is heavy; fetch in thread)
+    let csrf = {
+        let header = cookie_header.clone();
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .ok()?;
+            rt.block_on(crate::api::session_store::fetch_csrf_token(&header))
+        })
+        .join()
+        .ok()
+        .flatten()
+    };
+
+    match crate::api::session_store::save_cookies_map(cookies_map, csrf) {
+        Ok(data) => {
+            log::info!(
+                "In-app session saved (Session_id={}, yuid={:?})",
+                data.has_session_id(),
+                data.yuid()
+            );
+            data.has_session_id()
+        }
+        Err(e) => {
+            log::warn!("Failed to save session: {}", e);
+            false
+        }
+    }
+}
+
+#[cfg(feature = "in_app_webview")]
+fn harvest_cookies_sync(
+    cm: &webkit6::CookieManager,
+) -> std::collections::HashMap<String, String> {
+    use std::cell::{Cell, RefCell};
+    use std::rc::Rc;
+
+    let result = Rc::new(RefCell::new(std::collections::HashMap::new()));
+    let remaining = Rc::new(Cell::new(2i32));
+    let main_loop = glib::MainLoop::new(None, false);
+
+    for uri in ["https://yandex.ru/", "https://passport.yandex.ru/"] {
+        let r = result.clone();
+        let rem = remaining.clone();
+        let lp = main_loop.clone();
+        cm.cookies(uri, None::<&gio::Cancellable>, move |res| {
+            if let Ok(cookies) = res {
+                for mut c in cookies {
+                    if let (Some(n), Some(v)) = (c.name(), c.value()) {
+                        r.borrow_mut().insert(n.to_string(), v.to_string());
+                    }
+                }
+            }
+            rem.set(rem.get() - 1);
+            if rem.get() <= 0 {
+                lp.quit();
+            }
+        });
+    }
+
+    // Safety timeout
+    let lp = main_loop.clone();
+    glib::timeout_add_local_once(std::time::Duration::from_secs(4), move || {
+        lp.quit();
+    });
+    main_loop.run();
+    let map = result.borrow().clone();
+    map
+}
+
+impl AuthDialog {
+    /// Open WebView on yandex.ru/chat solely to capture Passport Session_id (no OAuth).
+    #[cfg(feature = "in_app_webview")]
+    fn capture_session_via_webview(&self) -> Result<(), String> {
+        setup_webkit_cookie_storage();
+
+        let dialog = Window::builder()
+            .transient_for(&self.parent)
+            .modal(true)
+            .title("Синхронизация сессии")
+            .default_width(520)
+            .default_height(640)
+            .css_classes(["auth-window"])
+            .build();
+
+        let content = GtkBox::new(Orientation::Vertical, 0);
+        dialog.set_child(Some(&content));
+
+        let status = Label::builder()
+            .label("Откройте Мессенджер и при необходимости войдите — session сохранится автоматически.")
+            .wrap(true)
+            .margin_start(12)
+            .margin_end(12)
+            .margin_top(8)
+            .margin_bottom(8)
+            .build();
+        content.append(&status);
+
+        let webview = webkit6::WebView::new();
+        webview.load_uri("https://yandex.ru/chat");
+
+        let scrolled = gtk::ScrolledWindow::builder()
+            .vexpand(true)
+            .hexpand(true)
+            .child(&webview)
+            .build();
+        content.append(&scrolled);
+
+        let done = std::rc::Rc::new(std::cell::Cell::new(false));
+        let main_loop = glib::MainLoop::new(None, false);
+
+        let done_c = done.clone();
+        let loop_c = main_loop.clone();
+        let status_c = status.clone();
+        webview.connect_load_changed(move |wv, ev| {
+            if ev != webkit6::LoadEvent::Finished {
+                return;
+            }
+            if harvest_and_save_session_from_webview(wv) {
+                status_c.set_label("Сессия сохранена ✓");
+                done_c.set(true);
+                // brief pause then quit
+                let lp = loop_c.clone();
+                glib::timeout_add_local_once(std::time::Duration::from_millis(400), move || {
+                    lp.quit();
+                });
+            }
+        });
+
+        let loop_close = main_loop.clone();
+        dialog.connect_close_request(move |_| {
+            loop_close.quit();
+            glib::Propagation::Proceed
+        });
+
+        // Max wait 3 minutes
+        let loop_t = main_loop.clone();
+        glib::timeout_add_local_once(std::time::Duration::from_secs(180), move || {
+            loop_t.quit();
+        });
+
+        dialog.present();
+        main_loop.run();
+        dialog.close();
+
+        if done.get()
+            || crate::api::session_store::load_session()
+                .map(|s| s.has_session_id())
+                .unwrap_or(false)
+        {
+            Ok(())
+        } else {
+            Err("Session_id not captured".to_string())
+        }
     }
 }
 

@@ -73,6 +73,7 @@ impl ReactionPanel {
     }
 
     /// Hide the reaction panel popover.
+    #[allow(dead_code)]
     pub fn hide(&self) {
         if let Some(pop) = self.popover.borrow_mut().take() {
             pop.popdown();
@@ -121,7 +122,7 @@ impl ReactionPanel {
     fn create_reaction_button(&self, emoji: &str) -> Button {
         let btn = Button::builder().label(emoji).build();
 
-        btn.set_css_classes(&["reaction-btn", "circular"]);
+        btn.set_css_classes(&["reaction-btn", "circular", "reaction-pop"]);
         btn.set_size_request(36, 36);
         btn.set_valign(Align::Center);
 
@@ -198,6 +199,7 @@ impl ReactionPanel {
     }
 
     /// Get the container widget to add to a parent layout.
+    #[allow(dead_code)]
     pub fn container(&self) -> &GtkBox {
         &self.container
     }

@@ -1,5 +1,9 @@
 # Yandex Messenger Native — Разработка
 
+[English version](DEVELOPMENT.md)
+
+Текущий релиз: **2.173.0**.
+
 ## 1. Цель
 
 Собрать production-ready Linux-клиент Yandex Messenger на Rust + GTK4 с:
@@ -36,8 +40,9 @@
 `ChatView` рендерит сообщения, содержит input-поле и кнопки attachments/call.
 `AuthDialog` управляет OAuth-флоу через встроенный WebView (feature `in_app_webview`).
 `TelemostWindow` embed-обёртка для Yandex Telemost.
-`settings.rs` — персистентные настройки через JSON (тёмная тема, минимизация в трей).
-Общая тема — CSS-провайдер GTK (`theme.css`) с поддержкой dark mode.
+`settings.rs` — персистентные настройки через JSON (тёмная тема, трей, уведомления, уменьшить анимации).
+Общая тема — CSS-провайдер GTK (`theme.css`) с токенами Telegram Desktop night.
+Персистентность: `src/core/db.rs` (SQLite), `drafts.rs`, `outbox.rs`, `src/api/session_store.rs`.
 
 ### Core Layer (`src/core.rs`)
 

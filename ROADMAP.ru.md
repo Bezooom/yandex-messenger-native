@@ -1,9 +1,13 @@
 # Дорожная карта — Yandex Messenger (Rust/GTK4)
 
+> ⚠️ **Актуальная дорожная карта доработки:** [`ROADMAP_DETAILED.ru.md`](ROADMAP_DETAILED.ru.md)  
+> Обоснование разрывов: [`GAP_AUDIT.md`](GAP_AUDIT.md)  
+> Этот файл — **архив спринтов 1–12** (исторический лог). Статусы «✅ завершён» ниже часто означают UI/каркас, а не production E2E — см. аудит.
+
 **Дата формирования:** 2026-05-06  
-**Версия:** 2.161.0  
+**Текущий релиз:** 2.173.0 (2026-08-15)  
 **Платформа:** Linux (GTK4 + Adwaita + CSS theming)  
-**Статус компиляции:** ✅ 0 ошибок, ⚠️ 35 предупреждений
+**Статус компиляции:** собирается; честный статус функций — в матрице README
 
 ---
 
@@ -15,10 +19,15 @@ src/
 ├── config.rs         — constants, API URLs, auth config
 ├── core.rs           — AppController, AppState, ScheduledMessageClient
 ├── core/
-│   └── voice_recorder.rs   — VoiceRecorder (GStreamer)
+│   ├── voice_recorder.rs   — VoiceRecorder (GStreamer)
+│   ├── db.rs               — SQLite-кэш (чаты + сообщения)
+│   ├── drafts.rs           — черновики по чатам
+│   └── outbox.rs           — повтор неотправленных
 ├── api/
 │   ├── auth.rs       — OAuth2 (Yandex OAuth, token refresh, multi-account) ✅
+│   ├── session_store.rs — cookies Паспорта / CSRF (`session.json`)
 │   ├── folder.rs     — Chat folders (get_folders, update_folder)
+│   ├── telemost.rs   — Telemost REST/WS stubs
 │   ├── mod.rs        — ChatAPI, ChatSession, WebSocketClient
 │   ├── translation.rs — Translate (translate_message)
 │   ├── saved_message.rs — Saved Messages API ✅

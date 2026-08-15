@@ -6,7 +6,49 @@ pub mod folder;
 pub mod group;
 pub mod saved_message;
 pub mod scheduled_message;
+pub mod session_store;
 pub mod translation;
+pub mod telemost;
+
+/// Delivery/read status update from WebSocket or history.
+#[derive(Debug, Clone)]
+pub struct StatusUpdate {
+    pub message_id: Option<String>,
+    pub chat_id: Option<String>,
+    pub delivered: bool,
+    pub read: bool,
+}
+
+/// Normalize server epoch to **unix seconds**.
+///
+/// Yandex payloads mix units:
+/// - seconds (~1e9)
+/// - milliseconds (~1e12)
+/// - microseconds (~1e15)
+///
+/// Bug we hit: treating milliseconds as microseconds → `ts/1e6` ≈ 1970 →
+/// new messages sorted to the **top** of the chat.
+pub fn normalize_unix_timestamp_secs(ts: i64) -> i64 {
+    if ts <= 0 {
+        return chrono::Utc::now().timestamp();
+    }
+    if ts > 1_000_000_000_000_000 {
+        // microseconds
+        ts / 1_000_000
+    } else if ts > 10_000_000_000 {
+        // milliseconds (1e10 covers 2286; current ~1.7e12)
+        ts / 1_000
+    } else {
+        // seconds
+        ts
+    }
+}
+
+/// Same as [`normalize_unix_timestamp_secs`] but as `DateTime<Utc>`.
+pub fn normalize_unix_timestamp(ts: i64) -> chrono::DateTime<chrono::Utc> {
+    let secs = normalize_unix_timestamp_secs(ts);
+    chrono::DateTime::from_timestamp(secs, 0).unwrap_or_else(chrono::Utc::now)
+}
 
 use reqwest::Client;
 use serde_json::Value;
@@ -88,40 +130,9 @@ impl WebSocketClient {
     }
 
     fn get_session_cookies_and_uid() -> Option<(String, String)> {
-        let config_dir = dirs::config_dir()
-            .map(|d| d.join("yandex-messenger-native"))
-            .unwrap_or_default();
-        let session_file = config_dir.join("session.json");
-
-        if !session_file.exists() {
-            return None;
-        }
-
-        let content = std::fs::read_to_string(&session_file).ok()?;
-        let data: serde_json::Value = serde_json::from_str(&content).ok()?;
-
-        let cookies_map = data.get("cookies")?.as_object()?;
-
-        let mut cookie_str = String::new();
-        let mut uid = String::new();
-
-        for (k, v) in cookies_map {
-            let val_str = v.as_str()?;
-            if !cookie_str.is_empty() {
-                cookie_str.push_str("; ");
-            }
-            cookie_str.push_str(&format!("{}={}", k, val_str));
-
-            if k == "Session_id" {
-                if let Some(pos) = val_str.find('|') {
-                    let sub = &val_str[pos + 1..];
-                    if let Some(dot_pos) = sub.find('.') {
-                        uid = sub[..dot_pos].to_string();
-                    }
-                }
-            }
-        }
-
+        let data = session_store::load_session()?;
+        let cookie_str = data.cookie_header();
+        let uid = data.yuid().unwrap_or_default();
         if cookie_str.is_empty() || uid.is_empty() {
             None
         } else {
@@ -300,9 +311,24 @@ impl WebSocketClient {
     /// Perform a single WebSocket connection attempt
     async fn do_connect(&self) -> Result<(), String> {
         let (cookies_str, uid) = Self::get_session_cookies_and_uid().ok_or_else(|| {
-            "Failed to load session cookies/UID from session.json. Please run login script."
+            "Failed to load session cookies/UID from session.json. Please re-login."
                 .to_string()
         })?;
+
+        // OAuth is REQUIRED for push.yandex.ru — cookies alone → close 4401 "no credentials"
+        let oauth = self
+            .auth
+            .get_access_token()
+            .map_err(|e| {
+                format!(
+                    "No OAuth access token ({e}). Re-login so messenger can open the push WebSocket."
+                )
+            })?;
+        let auth_header = if oauth.starts_with("OAuth ") {
+            oauth
+        } else {
+            format!("OAuth {}", oauth)
+        };
 
         let xiva_session = format!(
             "{}-{}-{}-{}",
@@ -321,6 +347,11 @@ impl WebSocketClient {
         request.headers_mut().insert(
             "Cookie",
             tokio_tungstenite::tungstenite::http::HeaderValue::from_str(&cookies_str)
+                .map_err(|e| e.to_string())?,
+        );
+        request.headers_mut().insert(
+            "Authorization",
+            tokio_tungstenite::tungstenite::http::HeaderValue::from_str(&auth_header)
                 .map_err(|e| e.to_string())?,
         );
         request.headers_mut().insert(
@@ -518,6 +549,8 @@ impl WebSocketClient {
                                                 .unwrap_or_else(|| {
                                                     chrono::Utc::now().timestamp_millis()
                                                 });
+                                            let created_secs =
+                                                normalize_unix_timestamp_secs(timestamp);
 
                                             if !chat_id.is_empty() && !text.is_empty() {
                                                 method = "new_message";
@@ -529,13 +562,13 @@ impl WebSocketClient {
                                                 mapped_msg = serde_json::json!({
                                                     "method": "new_message",
                                                     "messages": [{
-                                                        "id": format!("{}_{}", timestamp, msg_id_val),
+                                                        "id": format!("{}_{}", created_secs, msg_id_val),
                                                         "chat_id": chat_id,
                                                         "from_id": from_guid,
                                                         "message_id": Some(msg_id_val.clone()),
                                                         "type": "text",
                                                         "text": text,
-                                                        "created": (timestamp / 1000) as u64
+                                                        "created": created_secs
                                                     }]
                                                 });
                                             }
@@ -563,19 +596,21 @@ impl WebSocketClient {
                                             .unwrap_or_else(|| {
                                                 chrono::Utc::now().timestamp_millis()
                                             });
+                                        let created_secs =
+                                            normalize_unix_timestamp_secs(timestamp);
 
                                         if !chat_id.is_empty() && !text.is_empty() {
                                             method = "new_message";
                                             mapped_msg = serde_json::json!({
                                                 "method": "new_message",
                                                 "messages": [{
-                                                    "id": format!("{}_{}", timestamp, message_id),
+                                                    "id": format!("{}_{}", created_secs, message_id),
                                                     "chat_id": chat_id,
                                                     "from_id": from_guid,
                                                     "message_id": Some(message_id),
                                                     "type": "text",
                                                     "text": text,
-                                                    "created": (timestamp / 1000) as u64
+                                                    "created": created_secs
                                                 }]
                                             });
                                         }
@@ -674,6 +709,12 @@ impl WebSocketClient {
                 let _ = self.subscribe(&id).await;
             }
         }
+    }
+
+    /// Whether the push WebSocket is currently connected.
+    pub async fn is_connected(&self) -> bool {
+        let state = self.state.lock().await;
+        *state == WSState::Connected
     }
 
     /// Force reconnect by dropping the active WebSocket connection
@@ -812,23 +853,7 @@ impl WebSocketClient {
     }
 
     fn get_yuid_from_session() -> Option<String> {
-        let config_dir = dirs::config_dir()
-            .map(|d| d.join("yandex-messenger-native"))
-            .unwrap_or_default();
-        let session_file = config_dir.join("session.json");
-
-        if !session_file.exists() {
-            return None;
-        }
-
-        let content = std::fs::read_to_string(&session_file).ok()?;
-        let data: serde_json::Value = serde_json::from_str(&content).ok()?;
-        let cookies_map = data.get("cookies")?.as_object()?;
-        cookies_map
-            .get("yandexuid")
-            .or_else(|| cookies_map.get("uid"))
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
+        session_store::load_session()?.yuid()
     }
 
     fn make_ack_packet(seq: u64) -> Vec<u8> {
@@ -866,8 +891,10 @@ impl WebSocketClient {
         *counter += 1;
         drop(counter);
 
-        let yuid =
-            Self::get_yuid_from_session().unwrap_or_else(|| "1057346851777820885".to_string());
+        let yuid = Self::get_yuid_from_session().ok_or_else(|| {
+            "Нет session yuid (session.json). Запустите scripts/login_browser.py или перелогиньтесь."
+                .to_string()
+        })?;
         let custom_payload_json = serde_json::json!({
             "service": {
                 "serviceName": "WEB",
@@ -936,7 +963,11 @@ impl WebSocketClient {
             let _ = tx.send(Message::Binary(packet));
         }
 
-        // Generate a fake message structure to return to the UI immediately
+        // Optimistic local message for UI
+        let reply_to = reply_to.map(|rtid| models::MessageId {
+            chat_id: chat_id.to_string(),
+            message_id: rtid.to_string(),
+        });
         Ok(models::Message {
             id: payload_id.clone(),
             chat_id: chat_id.to_string(),
@@ -946,7 +977,7 @@ impl WebSocketClient {
             type_: models::MessageType::Text,
             text: Some(text.to_string()),
             entities: vec![],
-            reply_to: None,
+            reply_to,
             forward: None,
             media: vec![],
             reactions: vec![],
@@ -956,7 +987,175 @@ impl WebSocketClient {
             edited: false,
             edited_at: None,
             sent: true,
-            delivered: false,
+            // Optimistic: server accepted the push → delivered until proven otherwise
+            delivered: true,
+            read: false,
+            created: chrono::Utc::now(),
+            updated: None,
+            poll: None,
+        })
+    }
+
+    /// Send an already-uploaded file as ClientMessage (Image or MiscFile).
+    /// `file_id` comes from `HttpClient::upload_file_for_message` and must have been
+    /// uploaded with the same `payload_id` as `messageId` path segment.
+    pub async fn send_file_message(
+        &self,
+        chat_id: &str,
+        file_id: &str,
+        filename: &str,
+        size: u64,
+        mime: &str,
+        width: Option<u32>,
+        height: Option<u32>,
+        payload_id: &str,
+    ) -> Result<models::Message, String> {
+        let mut counter = self.seq_counter.lock().await;
+        let seq = *counter;
+        *counter += 1;
+        drop(counter);
+
+        let yuid = Self::get_yuid_from_session().ok_or_else(|| {
+            "Нет session yuid (session.json). Перелогиньтесь, чтобы отправлять файлы."
+                .to_string()
+        })?;
+        let custom_payload_json = serde_json::json!({
+            "service": {
+                "serviceName": "WEB",
+                "region": "Санкт-Петербург",
+                "yuid": yuid,
+                "isHistory": true,
+                "ui": "desktop",
+                "ua": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "id": format!("{}-{}-{}-{}",
+                    &uuid::Uuid::new_v4().simple().to_string()[..4],
+                    &uuid::Uuid::new_v4().simple().to_string()[..4],
+                    &uuid::Uuid::new_v4().simple().to_string()[..4],
+                    &uuid::Uuid::new_v4().simple().to_string()[..4]
+                ),
+                "version": "3.18.0"
+            }
+        });
+        let custom_payload_str = serde_json::to_string(&custom_payload_json).unwrap_or_default();
+        use base64::Engine;
+        let custom_payload_b64 =
+            base64::engine::general_purpose::STANDARD.encode(custom_payload_str);
+
+        // FileSource.MDS = 0 (web client default for media_upload)
+        let file_info = serde_json::json!({
+            "Id2": file_id,
+            "Name": filename,
+            "Size": size,
+            "Source": 0
+        });
+
+        let is_image = mime.starts_with("image/");
+        let mut plain = serde_json::json!({
+            "ChatId": chat_id,
+            "PayloadId": payload_id,
+            "CustomPayload": custom_payload_b64
+        });
+
+        if is_image {
+            plain["Image"] = serde_json::json!({
+                "Width": width.unwrap_or(0),
+                "Height": height.unwrap_or(0),
+                "FileInfo": file_info,
+                "Animated": mime == "image/gif" || filename.to_ascii_lowercase().ends_with(".gif")
+            });
+        } else {
+            plain["MiscFile"] = serde_json::json!({
+                "FileInfo": file_info
+            });
+            // Caption-like text optional; many clients still set empty Text
+            plain["Text"] = serde_json::json!({
+                "MessageText": filename
+            });
+        }
+
+        let payload = serde_json::json!({
+            "ClientMessage": {
+                "Plain": plain
+            }
+        });
+
+        let state = self.state.lock().await;
+        if *state != WSState::Connected {
+            return Err("Not connected".to_string());
+        }
+        drop(state);
+
+        let msgpack_header = Self::serialize_push_header(seq);
+        let mut bin_header = Vec::new();
+        bin_header.push(0x05);
+        bin_header.extend_from_slice(&0u64.to_be_bytes());
+        bin_header.extend_from_slice(&[0, 0, 0]);
+        let json_bytes = serde_json::to_vec(&payload).unwrap_or_default();
+        let mut packet = Vec::new();
+        packet.push(0x01);
+        packet.extend_from_slice(&msgpack_header);
+        packet.extend_from_slice(&bin_header);
+        packet.extend_from_slice(&json_bytes);
+
+        let tx_guard = self.tx.lock().await;
+        if let Some(tx) = tx_guard.as_ref() {
+            let _ = tx.send(Message::Binary(packet));
+        } else {
+            return Err("WebSocket send channel missing".to_string());
+        }
+
+        let media_type = if is_image {
+            models::MediaType::Image
+        } else {
+            models::MediaType::Document
+        };
+        // Prefer shortterm path (works with OAuth in preview loader)
+        let media_url = format!(
+            "{}/file_shortterm/{}",
+            crate::config::FILE_PUBLIC_HOST.trim_end_matches('/'),
+            file_id.trim_start_matches('/')
+        );
+
+        Ok(models::Message {
+            id: payload_id.to_string(),
+            chat_id: chat_id.to_string(),
+            from_id: self.auth.get_current_account_id().await.unwrap_or_default(),
+            message_id: Some(payload_id.to_string()),
+            rmid: None,
+            type_: if is_image {
+                models::MessageType::Image
+            } else {
+                models::MessageType::File
+            },
+            text: if is_image {
+                None
+            } else {
+                Some(filename.to_string())
+            },
+            entities: vec![],
+            reply_to: None,
+            forward: None,
+            media: vec![models::MediaAttachment {
+                id: file_id.to_string(),
+                type_: media_type,
+                url: media_url,
+                thumbnail_url: None,
+                width,
+                height,
+                size: Some(size),
+                duration: None,
+                filename: Some(filename.to_string()),
+                mime_type: Some(mime.to_string()),
+                waveform: None,
+            }],
+            reactions: vec![],
+            thread_id: None,
+            has_thread: false,
+            pinned: false,
+            edited: false,
+            edited_at: None,
+            sent: true,
+            delivered: true,
             read: false,
             created: chrono::Utc::now(),
             updated: None,
@@ -1080,6 +1279,40 @@ impl WebSocketClient {
         .await
     }
 
+    // ============================================================
+    // Telemost WebSocket methods
+    // ============================================================
+
+    /// Подписаться на обновления звонка
+    pub async fn subscribe_call_updates(&self, call_id: &str) -> Result<u64, String> {
+        self.send_message(
+            "subscribe_call_updates",
+            serde_json::json!({ "callId": call_id }),
+        )
+        .await
+    }
+
+    /// Отправить событие звонка через WebSocket (mute/video/end)
+    pub async fn send_call_event_ws(
+        &self,
+        call_id: &str,
+        event: &str,
+        params: serde_json::Value,
+    ) -> Result<u64, String> {
+        let mut payload = serde_json::json!({
+            "callId": call_id,
+            "event": event
+        });
+        if let Some(obj) = payload.as_object_mut() {
+            if let Some(p) = params.as_object() {
+                for (k, v) in p {
+                    obj.insert(k.clone(), v.clone());
+                }
+            }
+        }
+        self.send_message("call_event", payload).await
+    }
+
     async fn notify_state(&self, state: WSState) {
         let callbacks = self.state_callbacks.lock().await;
         for cb in callbacks.iter() {
@@ -1094,18 +1327,9 @@ pub struct HttpClient {
     base_url: String,
     token: std::sync::Mutex<Option<String>>,
     /// Session cookies from Yandex Passport (for methods like 'messages' that require session auth)
-    session_cookies: Option<String>,
+    session_cookies: std::sync::Mutex<Option<String>>,
     /// CSRF token obtained during browser login
     csrf_token: std::sync::Mutex<Option<String>>,
-}
-
-/// Session data loaded from session.json
-#[derive(serde::Deserialize)]
-struct SessionData {
-    cookies: std::collections::HashMap<String, String>,
-    csrf_token: Option<String>,
-    #[serde(default)]
-    saved_at: u64,
 }
 
 impl HttpClient {
@@ -1124,72 +1348,64 @@ impl HttpClient {
                 .unwrap_or_default(),
             base_url: config::API_BASE_URL.to_string(),
             token: std::sync::Mutex::new(None),
-            session_cookies,
+            session_cookies: std::sync::Mutex::new(session_cookies),
             csrf_token: std::sync::Mutex::new(csrf_token),
         }
     }
 
-    /// Load session cookies from disk (written by scripts/login_browser.py)
+    /// Load session cookies from disk (in-app login or scripts/login_browser.py)
     fn load_session_cookies() -> (Option<String>, Option<String>) {
-        let config_dir = dirs::config_dir()
-            .map(|d| d.join("yandex-messenger-native"))
-            .unwrap_or_default();
-        let session_file = config_dir.join("session.json");
-
-        if !session_file.exists() {
-            return (None, None);
-        }
-
-        let content = match std::fs::read_to_string(&session_file) {
-            Ok(c) => c,
-            Err(e) => {
-                log::warn!("Failed to read session.json: {}", e);
-                return (None, None);
+        match session_store::load_session() {
+            Some(data) => {
+                if data.saved_at > 0 {
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0);
+                    if now > data.saved_at {
+                        let age_days = (now - data.saved_at) / 86400;
+                        if age_days > 30 {
+                            log::warn!(
+                                "Session cookies are {} days old — re-login if history fails",
+                                age_days
+                            );
+                        }
+                    }
+                }
+                (Some(data.cookie_header()), data.csrf_token)
             }
-        };
-
-        let data: SessionData = match serde_json::from_str(&content) {
-            Ok(d) => d,
-            Err(e) => {
-                log::warn!("Failed to parse session.json: {}", e);
-                return (None, None);
-            }
-        };
-
-        // Warn if session is old, but still use cookies — Passport sessions often
-        // remain valid longer than 30 days (hard-drop was causing stale chat history).
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::SystemTime::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-        if data.saved_at > 0 && now > data.saved_at {
-            let age_days = (now - data.saved_at) / 86400;
-            if age_days > 30 {
-                log::warn!(
-                    "Session cookies are {} days old — if history fails, re-run login_browser.py",
-                    age_days
-                );
-            }
+            None => (None, None),
         }
+    }
 
-        if data.cookies.is_empty() {
-            return (None, None);
+    /// Reload session from disk (call after in-app session capture).
+    pub fn reload_session(&self) {
+        let (cookies, csrf) = Self::load_session_cookies();
+        *self.session_cookies.lock().unwrap() = cookies;
+        *self.csrf_token.lock().unwrap() = csrf;
+        if self.has_session() {
+            log::info!("Session cookies reloaded into HttpClient");
         }
+    }
 
-        // Build cookie header string
-        let cookie_str: String = data
-            .cookies
-            .iter()
-            .map(|(k, v)| format!("{}={}", k, v))
-            .collect::<Vec<_>>()
-            .join("; ");
+    /// Drop in-memory Passport cookies (logout).
+    pub fn clear_session_cookies(&self) {
+        *self.session_cookies.lock().unwrap() = None;
+        *self.csrf_token.lock().unwrap() = None;
+        log::info!("Session cookies cleared from HttpClient");
+    }
 
-        (Some(cookie_str), data.csrf_token)
+    /// Apply session data in-memory (and optionally already saved to disk).
+    pub fn apply_session(&self, cookie_header: String, csrf: Option<String>) {
+        *self.session_cookies.lock().unwrap() = Some(cookie_header);
+        if csrf.is_some() {
+            *self.csrf_token.lock().unwrap() = csrf;
+        }
     }
 
     /// Check if session cookies are available
     pub fn has_session(&self) -> bool {
-        self.session_cookies.is_some()
+        self.session_cookies.lock().unwrap().is_some()
     }
 
     pub fn get_token_header(&self) -> String {
@@ -1353,9 +1569,12 @@ impl HttpClient {
         method: &str,
         params: serde_json::Value,
     ) -> Result<serde_json::Value, String> {
-        let cookies = self.session_cookies.as_ref().ok_or_else(|| {
-            "No session cookies available. Run: python3 scripts/login_browser.py".to_string()
-        })?;
+        let cookies_guard = self.session_cookies.lock().unwrap();
+        let cookies = cookies_guard.as_ref().ok_or_else(|| {
+            "No session cookies. Re-login in the app (session is captured automatically)."
+                .to_string()
+        })?.clone();
+        drop(cookies_guard);
 
         let body = serde_json::json!({
             "method": method,
@@ -1454,7 +1673,7 @@ impl HttpClient {
 
     /// Refresh CSRF token using session cookies
     async fn refresh_csrf_token(&self) -> Option<String> {
-        let cookies = self.session_cookies.as_ref()?;
+        let cookies = self.session_cookies.lock().unwrap().clone()?;
         let url = "https://yandex.ru/messenger/api/registry/csrf-token/".to_string();
         let resp = self
             .client
@@ -2128,16 +2347,13 @@ impl HttpClient {
             .get("timestamp")
             .or_else(|| item.get("ts"))
             .or_else(|| item.get("created_at"))
+            .or_else(|| item.get("created"))
             .and_then(|v| v.as_i64())
             .unwrap_or(0);
 
-        let secs = if timestamp > 1_000_000_000_000 {
-            timestamp / 1_000_000 // Microseconds
-        } else {
-            timestamp // Seconds
-        };
-        let created =
-            chrono::DateTime::from_timestamp(secs, 0).unwrap_or_else(|| chrono::Utc::now());
+        // Server may send seconds, milliseconds, or microseconds — never treat ms as µs
+        // (that mapped ~2026 → 1970 and sorted new messages to the top of the list).
+        let created = normalize_unix_timestamp(timestamp);
 
         let text = item
             .get("text")
@@ -2407,8 +2623,10 @@ impl HttpClient {
             let created = item
                 .get("created")
                 .and_then(|v| {
-                    if let Some(secs) = v.as_i64() {
-                        chrono::DateTime::from_timestamp(secs, 0)
+                    if let Some(n) = v.as_i64() {
+                        Some(normalize_unix_timestamp(n))
+                    } else if let Some(n) = v.as_u64() {
+                        Some(normalize_unix_timestamp(n as i64))
                     } else if let Some(text) = v.as_str() {
                         chrono::DateTime::parse_from_rfc3339(text)
                             .ok()
@@ -2420,6 +2638,7 @@ impl HttpClient {
                 .unwrap_or_else(chrono::Utc::now);
             let reactions = Self::parse_reactions_from_message(item);
 
+            let (delivered, read) = Self::parse_delivery_flags(item);
             parsed.push(models::Message {
                 id,
                 chat_id: chat_id.to_string(),
@@ -2439,8 +2658,8 @@ impl HttpClient {
                 edited: false,
                 edited_at: None,
                 sent: true,
-                delivered: true,
-                read: false,
+                delivered,
+                read,
                 created,
                 updated: None,
                 poll: None,
@@ -2448,6 +2667,95 @@ impl HttpClient {
         }
 
         parsed
+    }
+
+    /// Parse delivery/read flags from various server payload shapes.
+    /// Returns `(delivered, read)`.
+    pub fn parse_delivery_flags(item: &serde_json::Value) -> (bool, bool) {
+        // Nested ServerMessageInfo
+        let sources = [
+            Some(item),
+            item.get("ServerMessageInfo"),
+            item.get("data").and_then(|d| d.get("ServerMessageInfo")),
+            item.get("message"),
+            item.get("Message"),
+        ];
+
+        for src in sources.into_iter().flatten() {
+            if src.get("read").and_then(|v| v.as_bool()) == Some(true)
+                || src.get("is_read").and_then(|v| v.as_bool()) == Some(true)
+                || src.get("IsRead").and_then(|v| v.as_bool()) == Some(true)
+            {
+                return (true, true);
+            }
+            if let Some(s) = src
+                .get("status")
+                .or_else(|| src.get("Status"))
+                .or_else(|| src.get("delivery_status"))
+                .and_then(|v| v.as_str())
+            {
+                let s = s.to_ascii_lowercase();
+                if s == "read" || s == "seen" || s == "viewed" {
+                    return (true, true);
+                }
+                if s == "delivered" || s == "sent" || s == "received" {
+                    return (true, false);
+                }
+                if s == "pending" || s == "sending" || s == "queued" {
+                    return (false, false);
+                }
+            }
+            if src.get("delivered").and_then(|v| v.as_bool()) == Some(true)
+                || src.get("is_delivered").and_then(|v| v.as_bool()) == Some(true)
+            {
+                return (true, false);
+            }
+            // views > 0 often means read in channels
+            if let Some(views) = src.get("views").or_else(|| src.get("Views")).and_then(|v| v.as_u64()) {
+                if views > 0 {
+                    return (true, true);
+                }
+            }
+        }
+        // History from server: assume at least delivered
+        (true, false)
+    }
+
+    /// Parse a status-update WS payload → (message_id, delivered, read) or chat-wide read.
+    pub fn parse_status_update_payload(
+        payload: &serde_json::Value,
+    ) -> Option<StatusUpdate> {
+        let msg_id = payload
+            .get("message_id")
+            .or_else(|| payload.get("messageId"))
+            .or_else(|| payload.get("msg_id"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        let chat_id = payload
+            .get("chat_id")
+            .or_else(|| payload.get("chatId"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        let (delivered, read) = Self::parse_delivery_flags(payload);
+
+        // Explicit method-style flags
+        let read = read
+            || payload.get("event").and_then(|e| e.as_str()) == Some("read")
+            || payload.get("type").and_then(|e| e.as_str()) == Some("read");
+        let delivered = delivered || read;
+
+        if msg_id.is_some() || chat_id.is_some() {
+            Some(StatusUpdate {
+                message_id: msg_id,
+                chat_id,
+                delivered,
+                read,
+            })
+        } else {
+            None
+        }
     }
 
     /// Parse a single search result item into our Message model.
@@ -2468,11 +2776,14 @@ impl HttpClient {
             .get("Timestamp")
             .and_then(|t| t.as_i64())
             .unwrap_or(0);
-        // Timestamp is in microseconds
-        let secs = timestamp / 1_000_000;
-        let nanos = ((timestamp % 1_000_000) * 1000) as u32;
-        let created =
-            chrono::DateTime::from_timestamp(secs, nanos).unwrap_or_else(|| chrono::Utc::now());
+        // Prefer microsecond ServerMessageInfo.Timestamp; fall back to ms/s heuristics
+        let created = if timestamp > 1_000_000_000_000_000 {
+            let secs = timestamp / 1_000_000;
+            let nanos = ((timestamp % 1_000_000) * 1000) as u32;
+            chrono::DateTime::from_timestamp(secs, nanos).unwrap_or_else(chrono::Utc::now)
+        } else {
+            normalize_unix_timestamp(timestamp)
+        };
 
         let text = plain
             .get("Text")
@@ -2493,6 +2804,7 @@ impl HttpClient {
 
         let reactions = Self::parse_reactions_from_message(data);
 
+        let (delivered, read) = Self::parse_delivery_flags(item);
         Some(models::Message {
             id: format!("{}_{}", seq_no, payload_id),
             chat_id: chat_id.to_string(),
@@ -2516,8 +2828,8 @@ impl HttpClient {
                 > 1,
             edited_at: None,
             sent: true,
-            delivered: true,
-            read: true,
+            delivered,
+            read,
             created,
             updated: None,
             poll: None,
@@ -2554,7 +2866,173 @@ impl HttpClient {
         Err("Send message response missing 'message' object".to_string())
     }
 
-    fn guess_mime_type(filename: &str) -> &'static str {
+    /// Edit an existing message (session RPC).
+    pub async fn edit_message(
+        &self,
+        chat_id: &str,
+        message_id: &str,
+        text: &str,
+    ) -> Result<(), String> {
+        let params = serde_json::json!({
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "text": text,
+        });
+        match self.session_rpc_request("edit_message", params.clone()).await {
+            Ok(_) => Ok(()),
+            Err(e1) => {
+                // Alternate param casing used by some clients
+                let alt = serde_json::json!({
+                    "chatId": chat_id,
+                    "messageId": message_id,
+                    "text": text,
+                });
+                self.session_rpc_request("edit_message", alt)
+                    .await
+                    .map(|_| ())
+                    .map_err(|e2| format!("edit_message failed: {}; alt: {}", e1, e2))
+            }
+        }
+    }
+
+    /// Delete a message (session RPC).
+    pub async fn delete_message(&self, chat_id: &str, message_id: &str) -> Result<(), String> {
+        let params = serde_json::json!({
+            "chat_id": chat_id,
+            "message_id": message_id,
+        });
+        self.session_rpc_request("delete_message", params)
+            .await
+            .map(|_| ())
+            .map_err(|e| format!("delete_message failed: {}", e))
+    }
+
+    /// Mark chat as read (session RPC method `read`).
+    pub async fn mark_chat_read(
+        &self,
+        chat_id: &str,
+        last_message_id: Option<&str>,
+    ) -> Result<(), String> {
+        let mut params = serde_json::json!({ "chat_id": chat_id });
+        if let Some(mid) = last_message_id {
+            params["message_id"] = serde_json::json!(mid);
+        }
+        match self.session_rpc_request("read", params.clone()).await {
+            Ok(_) => Ok(()),
+            Err(e1) => {
+                let alt = serde_json::json!({
+                    "chatId": chat_id,
+                    "messageId": last_message_id,
+                });
+                self.session_rpc_request("read", alt)
+                    .await
+                    .map(|_| ())
+                    .map_err(|e2| format!("read failed: {}; alt: {}", e1, e2))
+            }
+        }
+    }
+
+    /// Mute / unmute chat (best-effort session RPC).
+    pub async fn set_chat_muted(&self, chat_id: &str, muted: bool) -> Result<(), String> {
+        let attempts = [
+            (
+                "set_chat_settings",
+                serde_json::json!({"chat_id": chat_id, "muted": muted}),
+            ),
+            (
+                "set_chat_settings",
+                serde_json::json!({"chatId": chat_id, "muted": muted}),
+            ),
+            (
+                "update_chat",
+                serde_json::json!({"chat_id": chat_id, "muted": muted}),
+            ),
+            (
+                "mute_chat",
+                serde_json::json!({"chat_id": chat_id, "mute": muted}),
+            ),
+        ];
+        let mut last_err = String::new();
+        for (method, params) in attempts {
+            match self.session_rpc_request(method, params).await {
+                Ok(_) => return Ok(()),
+                Err(e) => last_err = format!("{}: {}", method, e),
+            }
+        }
+        Err(format!("set_chat_muted failed: {}", last_err))
+    }
+
+    /// Pin / unpin chat in the list.
+    pub async fn set_chat_pinned(&self, chat_id: &str, pinned: bool) -> Result<(), String> {
+        let attempts = [
+            (
+                "pin_chat",
+                serde_json::json!({"chat_id": chat_id, "pin": pinned}),
+            ),
+            (
+                "set_chat_settings",
+                serde_json::json!({"chat_id": chat_id, "pinned": pinned}),
+            ),
+            (
+                "update_chat",
+                serde_json::json!({"chat_id": chat_id, "pinned": pinned}),
+            ),
+        ];
+        let mut last_err = String::new();
+        for (method, params) in attempts {
+            match self.session_rpc_request(method, params).await {
+                Ok(_) => return Ok(()),
+                Err(e) => last_err = format!("{}: {}", method, e),
+            }
+        }
+        Err(format!("set_chat_pinned failed: {}", last_err))
+    }
+
+    /// Archive / unarchive chat.
+    pub async fn set_chat_archived(&self, chat_id: &str, archived: bool) -> Result<(), String> {
+        let attempts = [
+            (
+                "archive_chat",
+                serde_json::json!({"chat_id": chat_id, "archive": archived}),
+            ),
+            (
+                "set_chat_settings",
+                serde_json::json!({"chat_id": chat_id, "archived": archived}),
+            ),
+            (
+                "hide_chat",
+                serde_json::json!({"chat_id": chat_id, "hide": archived}),
+            ),
+        ];
+        let mut last_err = String::new();
+        for (method, params) in attempts {
+            match self.session_rpc_request(method, params).await {
+                Ok(_) => return Ok(()),
+                Err(e) => last_err = format!("{}: {}", method, e),
+            }
+        }
+        Err(format!("set_chat_archived failed: {}", last_err))
+    }
+
+    /// Leave / delete chat from list.
+    pub async fn delete_chat(&self, chat_id: &str) -> Result<(), String> {
+        let attempts = [
+            ("leave", serde_json::json!({"chat_id": chat_id})),
+            ("delete_chat", serde_json::json!({"chat_id": chat_id})),
+            ("hide_chat", serde_json::json!({"chat_id": chat_id, "hide": true})),
+        ];
+        let mut last_err = String::new();
+        for (method, params) in attempts {
+            match self.session_rpc_request(method, params).await {
+                Ok(_) => return Ok(()),
+                Err(e) => last_err = format!("{}: {}", method, e),
+            }
+        }
+        Err(format!("delete_chat failed: {}", last_err))
+    }
+
+    /// Guess MIME from filename extension (used by upload + send).
+    pub fn guess_mime_type(filename: &str) -> &'static str {
         let ext = filename
             .split('.')
             .last()
@@ -2575,121 +3053,248 @@ impl HttpClient {
         }
     }
 
-    /// Upload file
+    /// True if this MIME should be sent as `Image` / gallery rather than `MiscFile`.
+    pub fn is_image_mime(mime: &str) -> bool {
+        mime.starts_with("image/")
+    }
+
+    /// Upload file to Yandex Files and return `file_id` (e.g. `file/<uuid>`).
+    ///
+    /// Official web client:
+    /// `POST https://files.messenger.yandex.ru/media_upload/{chatId}/{messageId}/{filename}`
+    /// with raw body + `Authorization: OAuth …` + `Content-Type: <mime>`.
+    /// PUT is rejected with 405 Method Not Allowed.
     pub async fn upload_file(
         &self,
         chat_id: &str,
         file_data: &[u8],
         filename: &str,
     ) -> Result<String, String> {
-        // Try to get upload URL or fileId via RPC
-        let upload_params = serde_json::json!({
-            "chatId": chat_id,
-            "fileName": filename,
-            "size": file_data.len(),
-            "mimeType": Self::guess_mime_type(filename)
-        });
-
-        // Use session_rpc_request or rpc_request for upload_file
-        let upload_data = if self.has_session() {
-            self.session_rpc_request("upload_file", upload_params.clone())
-                .await
-        } else {
-            self.rpc_request("upload_file", upload_params).await
-        };
-
-        match upload_data {
-            Ok(data) => {
-                // Parse response to get fileId or uploadUrl
-                if let Some(file_id) = data.get("fileId").and_then(|f| f.as_str()) {
-                    return Ok(file_id.to_string());
-                }
-                if let Some(upload_url) = data.get("uploadUrl").and_then(|u| u.as_str()) {
-                    // Upload file to upload_url
-                    let response = self
-                        .client
-                        .put(upload_url)
-                        .header("Content-Type", Self::guess_mime_type(filename))
-                        .body(file_data.to_vec())
-                        .send()
-                        .await
-                        .map_err(|e| format!("Upload to url failed: {}", e))?;
-
-                    if !response.status().is_success() {
-                        return Err(format!(
-                            "Upload to url failed with status: {}",
-                            response.status()
-                        ));
-                    }
-
-                    // After upload, some APIs require a confirm step or return fileId in response
-                    if let Some(file_id) = response
-                        .headers()
-                        .get("x-file-id")
-                        .and_then(|v| v.to_str().ok())
-                    {
-                        return Ok(file_id.to_string());
-                    }
-                    if let Ok(json) = response.json::<Value>().await {
-                        if let Some(file_id) = json.get("fileId").and_then(|f| f.as_str()) {
-                            return Ok(file_id.to_string());
-                        }
-                    }
-                    return Err("No fileId in upload response".to_string());
-                }
-                Err("upload_file response missing fileId or uploadUrl".to_string())
-            }
-            Err(e) => {
-                log::warn!("upload_file RPC failed: {}, fallback to direct upload", e);
-                // Fallback to direct upload
-                let upload_url = format!(
-                    "{}/media_upload/{}/{}?{}",
-                    config::FILE_PUBLIC_HOST,
-                    chat_id,
-                    filename,
-                    uuid::Uuid::new_v4()
-                );
-
-                let auth_header = self.get_token_header();
-                let response = self
-                    .client
-                    .put(&upload_url)
-                    .header("Authorization", &auth_header)
-                    .header("Content-Type", Self::guess_mime_type(filename))
-                    .body(file_data.to_vec())
-                    .send()
-                    .await
-                    .map_err(|e| format!("Upload failed: {}", e))?;
-
-                if !response.status().is_success() {
-                    return Err(format!("Upload failed with status: {}", response.status()));
-                }
-
-                let json: Value = response
-                    .json()
-                    .await
-                    .map_err(|e| format!("Upload parse failed: {}", e))?;
-
-                json["fileId"]
-                    .as_str()
-                    .map(|s| s.to_string())
-                    .ok_or_else(|| "No fileId in response".to_string())
-            }
-        }
+        let message_id = uuid::Uuid::new_v4().simple().to_string();
+        self.upload_file_for_message(chat_id, file_data, filename, &message_id)
+            .await
     }
 
-    /// Download file
-    pub async fn download_file(&self, file_id: &str) -> Result<Vec<u8>, String> {
-        let url = format!("{}/file_shortterm/{}", config::FILE_PUBLIC_HOST, file_id);
+    /// Same as [`upload_file`], but uses a pre-generated `message_id` (must match
+    /// the PayloadId of the subsequent ClientMessage).
+    pub async fn upload_file_for_message(
+        &self,
+        chat_id: &str,
+        file_data: &[u8],
+        filename: &str,
+        message_id: &str,
+    ) -> Result<String, String> {
+        if file_data.is_empty() {
+            return Err("Empty file".to_string());
+        }
+        if file_data.len() as u64 > config::MAX_FILE_SIZE {
+            return Err(format!(
+                "File too large ({} > {} bytes)",
+                file_data.len(),
+                config::MAX_FILE_SIZE
+            ));
+        }
+
         let auth_header = self.get_token_header();
-        let response = self
-            .client
-            .get(&url)
-            .header("Authorization", &auth_header)
+        if auth_header.is_empty() {
+            return Err(
+                "Нет OAuth токена — перелогиньтесь (файлы требуют Authorization: OAuth)."
+                    .to_string(),
+            );
+        }
+
+        // encodeURI(filename) as web client: keep path-safe basename only
+        let safe_name = filename
+            .rsplit(['/', '\\'])
+            .next()
+            .unwrap_or(filename)
+            .trim();
+        let safe_name = if safe_name.is_empty() {
+            "file.bin"
+        } else {
+            safe_name
+        };
+        // encodeURIComponent-style for the filename segment only; chatId keeps `/`
+        let filename_enc = urlencoding::encode(safe_name);
+
+        let mime = Self::guess_mime_type(safe_name);
+        // Prefer private host (web template: filePrivateHost), then public.
+        let hosts = [
+            config::FILE_PRIVATE_HOST,
+            config::FILE_PUBLIC_HOST,
+        ];
+
+        let mut last_err = String::new();
+        for host in hosts {
+            // Do NOT fully-encode chatId: group ids are `0/0/<uuid>` and must stay path segments.
+            let upload_url = format!(
+                "{}/media_upload/{}/{}/{}",
+                host.trim_end_matches('/'),
+                chat_id,
+                message_id,
+                filename_enc
+            );
+
+            log::info!(
+                "Uploading {} bytes to {} (mime={})",
+                file_data.len(),
+                upload_url,
+                mime
+            );
+
+            // OAuth only — Cookie without CSRF on .net often yields 401.
+            let response = self
+                .client
+                .post(&upload_url)
+                .header("Authorization", &auth_header)
+                .header("Content-Type", mime)
+                .header("Origin", "https://yandex.ru")
+                .header("Referer", "https://yandex.ru/chat")
+                .body(file_data.to_vec())
+                .send()
+                .await
+                .map_err(|e| format!("Upload request failed: {}", e))?;
+
+            let status = response.status();
+            let text = response
+                .text()
+                .await
+                .map_err(|e| format!("Upload read failed: {}", e))?;
+
+            if !status.is_success() {
+                last_err = format!("HTTP {} from {}: {}", status, host, &text[..text.len().min(200)]);
+                log::warn!("media_upload failed: {}", last_err);
+                continue;
+            }
+
+            let json: Value = serde_json::from_str(&text).map_err(|e| {
+                format!(
+                    "Upload JSON parse failed: {} (body: {})",
+                    e,
+                    &text[..text.len().min(200)]
+                )
+            })?;
+
+            // Web client expects data.file_id (sometimes file_ids[0] for other endpoints)
+            let file_id = json
+                .pointer("/data/file_id")
+                .and_then(|v| v.as_str())
+                .or_else(|| json.get("file_id").and_then(|v| v.as_str()))
+                .or_else(|| {
+                    json.pointer("/data/file_ids/0")
+                        .and_then(|v| v.as_str())
+                })
+                .or_else(|| json.get("fileId").and_then(|v| v.as_str()))
+                .map(|s| s.to_string());
+
+            if let Some(id) = file_id {
+                log::info!("Upload OK file_id={}", id);
+                return Ok(id);
+            }
+
+            last_err = format!("No file_id in upload response: {}", &text[..text.len().min(200)]);
+        }
+
+        Err(format!("File upload failed: {}", last_err))
+    }
+
+    /// Upload only (sending goes via push WS ClientMessage — registry has no send_message path).
+    /// Kept for callers that still expect a Message; prefer `AppController::send_file_message`.
+    pub async fn send_message_with_file(
+        &self,
+        chat_id: &str,
+        file_data: &[u8],
+        filename: &str,
+    ) -> Result<models::Message, String> {
+        let payload_id = uuid::Uuid::new_v4().simple().to_string();
+        let file_id = self
+            .upload_file_for_message(chat_id, file_data, filename, &payload_id)
+            .await?;
+        let mime = Self::guess_mime_type(filename);
+        // Without WS we cannot deliver the attachment; return optimistic local message.
+        Ok(models::Message {
+            id: payload_id.clone(),
+            chat_id: chat_id.to_string(),
+            from_id: String::new(),
+            message_id: Some(payload_id),
+            rmid: None,
+            type_: if Self::is_image_mime(mime) {
+                models::MessageType::Text
+            } else {
+                models::MessageType::Text
+            },
+            text: Some(format!("[Файл: {}]", filename)),
+            entities: vec![],
+            reply_to: None,
+            forward: None,
+            media: vec![models::MediaAttachment {
+                id: file_id.clone(),
+                type_: if Self::is_image_mime(mime) {
+                    models::MediaType::Image
+                } else {
+                    models::MediaType::Document
+                },
+                url: format!("{}/{}", config::FILE_PUBLIC_HOST, file_id),
+                thumbnail_url: None,
+                width: None,
+                height: None,
+                size: Some(file_data.len() as u64),
+                duration: None,
+                filename: Some(filename.to_string()),
+                mime_type: Some(mime.to_string()),
+                waveform: None,
+            }],
+            reactions: vec![],
+            thread_id: None,
+            has_thread: false,
+            pinned: false,
+            edited: false,
+            edited_at: None,
+            sent: false,
+            delivered: false,
+            read: false,
+            created: chrono::Utc::now(),
+            updated: None,
+            poll: None,
+        })
+    }
+
+    /// Download file by Yandex Files id.
+    pub async fn download_file(&self, file_id: &str) -> Result<Vec<u8>, String> {
+        let candidates = [
+            format!("{}/file_shortterm/{}", config::FILE_PUBLIC_HOST, file_id),
+            format!("{}/file_shortterm/{}", config::FILE_PRIVATE_HOST, file_id),
+            format!("{}/{}", config::FILE_PUBLIC_HOST, file_id),
+        ];
+        let mut last_err = String::new();
+        for url in &candidates {
+            match self.download_url(url).await {
+                Ok(bytes) if !bytes.is_empty() => return Ok(bytes),
+                Ok(_) => last_err = format!("empty body from {}", url),
+                Err(e) => last_err = e,
+            }
+        }
+        Err(format!("Download failed for {}: {}", file_id, last_err))
+    }
+
+    /// Download arbitrary HTTPS URL (with OAuth if set).
+    pub async fn download_url(&self, url: &str) -> Result<Vec<u8>, String> {
+        let auth_header = self.get_token_header();
+        let mut req = self.client.get(url);
+        if !auth_header.is_empty() {
+            req = req.header("Authorization", &auth_header);
+        }
+        // Session cookies help for some CDN paths
+        if let Some(cookies) = self.session_cookies.lock().unwrap().clone() {
+            req = req.header("Cookie", cookies);
+        }
+        let response = req
             .send()
             .await
             .map_err(|e| format!("Download failed: {}", e))?;
-
+        if !response.status().is_success() {
+            return Err(format!("Download HTTP {}", response.status()));
+        }
         response
             .bytes()
             .await
@@ -2718,6 +3323,73 @@ impl HttpClient {
             url = format!("{}&callId={}", url, cid);
         }
         url
+    }
+
+    // ============================================================
+    // Telemost call API methods
+    // ============================================================
+
+    /// Start a Telemost call in a chat
+    pub async fn start_call(&self, chat_id: &str) -> Result<models::TelemostCall, String> {
+        let data = self
+            .rpc_request(
+                "start_call",
+                serde_json::json!({
+                    "chatId": chat_id
+                }),
+            )
+            .await?;
+
+        if let Some(call_val) = data.get("call") {
+            let call: models::TelemostCall = serde_json::from_value(call_val.clone())
+                .map_err(|e| format!("Failed to parse call: {}", e))?;
+            return Ok(call);
+        }
+
+        if let Ok(call) = serde_json::from_value::<models::TelemostCall>(data.clone()) {
+            return Ok(call);
+        }
+
+        Err("Start call response missing 'call' object".to_string())
+    }
+
+    /// End an active Telemost call
+    pub async fn end_call(&self, call_id: &str) -> Result<(), String> {
+        let _ = self
+            .rpc_request(
+                "end_call",
+                serde_json::json!({
+                    "callId": call_id
+                }),
+            )
+            .await?;
+        Ok(())
+    }
+
+    /// Get current status of a Telemost call
+    pub async fn get_call_status(&self, call_id: &str) -> Result<models::CallStatus, String> {
+        let data = self
+            .rpc_request(
+                "get_call_status",
+                serde_json::json!({
+                    "callId": call_id
+                }),
+            )
+            .await?;
+
+        if let Some(status_str) = data.get("status").and_then(|s| s.as_str()) {
+            let status = match status_str {
+                "ringing" => models::CallStatus::Ringing,
+                "in_progress" => models::CallStatus::InProgress,
+                "missed" => models::CallStatus::Missed,
+                "ended" => models::CallStatus::Ended,
+                "declined" => models::CallStatus::Declined,
+                _ => models::CallStatus::Ended,
+            };
+            return Ok(status);
+        }
+
+        Err("Get call status response missing 'status' field".to_string())
     }
 
     // ============================================================
@@ -3740,7 +4412,12 @@ mod tests {
 
     #[test]
     fn test_config_values() {
-        assert_eq!(config::OAUTH_CLIENT_ID, "YOUR_YANDEX_CLIENT_ID");
+        // Default OAuth client_id is empty — set via YANDEX_CLIENT_ID (32-char hex).
+        assert!(
+            config::OAUTH_CLIENT_ID.is_empty()
+                || config::OAUTH_CLIENT_ID.chars().all(|c| c.is_ascii_hexdigit()),
+            "OAUTH_CLIENT_ID must be empty or a hex OAuth app id, not a package name"
+        );
         assert_eq!(config::TELEMOST_URL, "https://telemost.yandex.ru");
         assert_eq!(
             config::FILE_PUBLIC_HOST,

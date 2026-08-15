@@ -1,5 +1,9 @@
 # Yandex Messenger Native — Architecture
 
+[Русская версия](ARCHITECTURE.ru.md)
+
+Current release: **2.173.0**.
+
 ## Overview
 
 Native Linux desktop client for Yandex Messenger built with Rust and GTK4.
@@ -83,18 +87,20 @@ and shared state references.
 - **TrayHandle** (`tray.rs`): System tray icon with menu (open, settings, quit).
 - **Notifications** (`notifications.rs`): Desktop notifications via `notify-rust`.
 - **Settings** (`settings.rs`): JSON-based persistent settings (dark theme, minimize
-  to tray). Stored in `~/.config/yandex-messenger-native/settings.json`.
-- **Theme** (`theme.css`): GTK CSS provider for global styling. Supports dark mode
-  via `gtk::Settings::gtk_application_prefer_dark_theme`.
+  to tray, notifications, reduce animations). Stored in `~/.config/yandex-messenger-native/settings.json`.
+- **Theme** (`theme.css`): Telegram Desktop night tokens, nheko-style dense list,
+  `msgIn` / `msgOut` bubbles, adaptive sidebar.
 
 ### Core Layer
 
 `AppController` (`src/core.rs`) is the central orchestrator. It owns:
 
 - `AuthManager` — OAuth token lifecycle
-- `HttpClient` — REST API communication
+- `HttpClient` — REST API communication (session cookies + CSRF)
 - `WebSocketClient` — Real-time communication
 - `AppState` — Shared mutable application state
+- SQLite cache (`src/core/db.rs`), drafts (`drafts.rs`), outbox (`outbox.rs`)
+- Session store (`src/api/session_store.rs`) — Passport cookies written on WebView login
 
 `AppState` holds:
 ```rust

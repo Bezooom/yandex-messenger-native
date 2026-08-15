@@ -1,5 +1,9 @@
 # Yandex Messenger Native — Security
 
+[Русская версия](SECURITY.ru.md)
+
+Current release: **2.173.0**.
+
 ## Overview
 
 This document covers security considerations for the Yandex Messenger Native
@@ -77,6 +81,7 @@ The proxy handles token storage, reducing client-side secrets exposure.
 ### Location and Format
 
 - **Path**: `~/.config/yandex-messenger-native/token.json`
+- **Session cookies**: `~/.config/yandex-messenger-native/session.json` (Passport `Session_id` + CSRF), written on WebView login
 - **Format**: Pretty-printed JSON via `serde_json::to_string_pretty`
 - **Content**:
   ```json
@@ -217,14 +222,14 @@ The CSRF token is included in the `X-CSRF-Token` header (standard Yandex API con
 ### Attack Surface
 
 1. **Browser**: OAuth redirect URL parsing (fragment extraction)
-2. **Disk**: `token.json` file
+2. **Disk**: `token.json` and `session.json` (both should be `0600`)
 3. **Network**: HTTP API + WSS endpoints
 4. **Environment**: Client ID, secret, proxy URL
 5. **UI**: WebView (in_app_webview feature) — potential XSS from Telemost
 
 ### Future Improvements
 
-- [ ] Encrypt token.json with device-specific key
+- [ ] Encrypt `token.json` and `session.json` with a device-specific key
 - [ ] Pin TLS certificates for API endpoints
 - [ ] Validate all WebSocket message schemas
 - [ ] Implement rate limiting for file uploads

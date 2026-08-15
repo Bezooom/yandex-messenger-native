@@ -1,9 +1,13 @@
 # Project Roadmap — Yandex Messenger (Rust/GTK4)
 
-**Date of Release:** 2026-05-06  
-**Version:** 2.161.0  
+> ⚠️ **Current implementation roadmap:** [`ROADMAP_DETAILED.md`](ROADMAP_DETAILED.md) ([Russian](ROADMAP_DETAILED.ru.md))  
+> Gap analysis: [`GAP_AUDIT.md`](GAP_AUDIT.md)  
+> This file is the **sprint 1–12 archive**. “✅ done” below often means UI/shell, not production E2E — see the audit.
+
+**Created:** 2026-05-06  
+**Current release:** 2.173.0 (2026-08-15)  
 **Target Platform:** Linux (GTK4 + Adwaita + CSS theming)  
-**Compilation Status:** ✅ 0 errors, ⚠️ 35 warnings
+**Compilation Status:** builds; see README feature matrix for honest status
 
 ---
 
@@ -15,10 +19,15 @@ src/
 ├── config.rs         — constants, API URLs, auth config
 ├── core.rs           — AppController, AppState, ScheduledMessageClient
 ├── core/
-│   └── voice_recorder.rs   — VoiceRecorder (GStreamer)
+│   ├── voice_recorder.rs   — VoiceRecorder (GStreamer)
+│   ├── db.rs               — SQLite cache (chats + messages)
+│   ├── drafts.rs           — per-chat drafts
+│   └── outbox.rs           — unsent message retry
 ├── api/
 │   ├── auth.rs       — OAuth2 (Yandex OAuth, token refresh, multi-account) ✅
+│   ├── session_store.rs — Passport cookies / CSRF (`session.json`)
 │   ├── folder.rs     — Chat folders (get_folders, update_folder)
+│   ├── telemost.rs   — Telemost REST/WS stubs
 │   ├── mod.rs        — ChatAPI, ChatSession, WebSocketClient
 │   ├── translation.rs — Translate (translate_message)
 │   ├── saved_message.rs — Saved Messages API ✅

@@ -20,12 +20,17 @@ override_dh_auto_install:
 	install -D -m 0755 target/release/yandex-messenger debian/yandex-messenger-native/usr/bin/yandex-messenger
 	install -D -m 0644 yandex-messenger.desktop debian/yandex-messenger-native/usr/share/applications/yandex-messenger.desktop
 	install -D -m 0644 icons/hicolor/scalable/apps/yandex-messenger.svg debian/yandex-messenger-native/usr/share/icons/hicolor/scalable/apps/yandex-messenger.svg
-	@if [ -f icons/hicolor/128x128/apps/yandex-messenger.png ]; then \
-		install -D -m 0644 icons/hicolor/128x128/apps/yandex-messenger.png debian/yandex-messenger-native/usr/share/icons/hicolor/128x128/apps/yandex-messenger.png; \
-	fi
+	@for size in 16 24 32 48 64 128 256 512; do \
+		if [ -f icons/hicolor/$${size}x$${size}/apps/yandex-messenger.png ]; then \
+			install -D -m 0644 icons/hicolor/$${size}x$${size}/apps/yandex-messenger.png \
+				debian/yandex-messenger-native/usr/share/icons/hicolor/$${size}x$${size}/apps/yandex-messenger.png; \
+		fi; \
+	done
 	install -D -m 0644 yandex-messenger.1 debian/yandex-messenger-native/usr/share/man/man1/yandex-messenger.1
 	install -D -m 0644 src/ui/theme.css debian/yandex-messenger-native/usr/share/yandex-messenger-native/theme.css
-	install -D -m 0644 icons/b2c_main_logo.png debian/yandex-messenger-native/usr/share/yandex-messenger-native/b2c_main_logo.png
+	@if [ -f icons/b2c_main_logo.png ]; then \
+		install -D -m 0644 icons/b2c_main_logo.png debian/yandex-messenger-native/usr/share/yandex-messenger-native/b2c_main_logo.png; \
+	fi
 
 override_dh_auto_clean:
 	$(HOME)/.cargo/bin/cargo clean

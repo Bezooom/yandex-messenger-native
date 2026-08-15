@@ -4,21 +4,22 @@
 
 set -e
 
-DEB_FILE="yandex-messenger-native_2.162.0-1_amd64.deb"
-
-# Resolve script directory (works even with sudo which changes $PWD)
+# Prefer newest packaged deb under dist/, fall back to parent dir (debuild output)
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+DEB_PATH=""
+if ls "$SCRIPT_DIR"/dist/yandex-messenger-native_*_amd64.deb >/dev/null 2>&1; then
+    DEB_PATH="$(ls -1t "$SCRIPT_DIR"/dist/yandex-messenger-native_*_amd64.deb | head -1)"
+elif ls "$SCRIPT_DIR"/../yandex-messenger-native_*_amd64.deb >/dev/null 2>&1; then
+    DEB_PATH="$(ls -1t "$SCRIPT_DIR"/../yandex-messenger-native_*_amd64.deb | head -1)"
+fi
 
-# .deb is in parent directory (dpkg-buildpackage outputs to ..)
-DEB_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-DEB_PATH="${DEB_DIR}/${DEB_FILE}"
-
-if [ ! -f "$DEB_PATH" ]; then
-    echo "Ошибка: файл $DEB_FILE не найден в ${DEB_DIR}"
+if [ -z "$DEB_PATH" ] || [ ! -f "$DEB_PATH" ]; then
+    echo "Ошибка: .deb не найден. Соберите пакет или положите его в dist/"
     exit 1
 fi
 
-echo "Установка Yandex Messenger..."
+echo "Установка Yandex Messenger из:"
+echo "  $DEB_PATH"
 sudo dpkg -i "$DEB_PATH"
 
 # Fix any missing dependencies
