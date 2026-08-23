@@ -67,3 +67,12 @@ debian/yandex-messenger-native.substvars
 cache/tail_explorer.db*
 .kilo/
 scratch/
+
+# Secrets and debug dumps — never commit
+*.jks
+*.keystore
+bootstrap_debug.json
+bootstrap_dump.json
+chat_page.html
+js_dumps/
+debug_chat.png

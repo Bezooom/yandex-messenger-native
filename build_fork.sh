@@ -26,15 +26,23 @@ else
 fi
 
 # 3. Подпись APK (apksigner)
+# Keystore НЕ хранится в репозитории. Создайте свой:
+#   keytool -genkeypair -v -keystore fork_keystore.jks -alias fork_alias \
+#     -keyalg RSA -keysize 2048 -validity 10000
 echo "=> Подписываем APK..."
+if [ ! -f fork_keystore.jks ]; then
+    echo "Ошибка: fork_keystore.jks не найден. Сгенерируйте локально (см. комментарий выше) и держите вне git."
+    exit 1
+fi
+read -rsp "Пароль keystore: " KS_PASS; echo
 APKSIGNER=$(command -v apksigner)
 if [ -z "$APKSIGNER" ]; then
     echo "Внимание: apksigner не найден в PATH. Установите apksigner (sudo apt install apksigner)."
     echo "Пытаемся использовать jarsigner как запасной вариант..."
-    jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 -keystore fork_keystore.jks -storepass 123456 -keypass 123456 fork_aligned.apk fork_alias
+    jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 -keystore fork_keystore.jks -storepass "$KS_PASS" -keypass "$KS_PASS" fork_aligned.apk fork_alias
     mv fork_aligned.apk fork_signed.apk
 else
-    $APKSIGNER sign --ks fork_keystore.jks --ks-pass pass:123456 --key-pass pass:123456 --out fork_signed.apk fork_aligned.apk
+    $APKSIGNER sign --ks fork_keystore.jks --ks-pass pass:"$KS_PASS" --key-pass pass:"$KS_PASS" --out fork_signed.apk fork_aligned.apk
 fi
 
 echo "=> Готово! Ваш форк собран: fork_signed.apk"
