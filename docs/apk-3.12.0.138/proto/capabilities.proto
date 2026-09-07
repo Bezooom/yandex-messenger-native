@@ -1,0 +1,253 @@
+syntax = "proto3";
+
+package videoplatform.speakerroom.common.capabilities;
+
+option go_package = "a.yandex-team.ru/videoplatform/webrtc/common/proto/capabilities;capabilities";
+option swift_prefix = "Goloom";
+option java_multiple_files = true;
+option java_package = "ru.yandex.goloom.lib.model.capabilities";
+
+enum OfferAnswerMode {
+    SEPARATE = 0;
+    UNITED = 1 [deprecated = true];
+}
+
+enum InitialSubscriberOffer {
+    ON_REQUEST_SUBSCRIPTION = 0 [deprecated = true];
+    ON_HELLO = 1;
+}
+
+enum SlotsMode {
+    FROM_SFU = 0 [deprecated = true];
+    FROM_CONTROLLER = 1;
+}
+
+enum SimulcastMode {
+    // No simulcast
+    DISABLED = 0;
+    // Hardcoded layers
+    STATIC = 1;
+}
+
+enum SelfVADStatus {
+    FROM_CLIENT = 0;
+    FROM_SERVER = 1;
+}
+
+enum DataChannelSharing {
+    TO_DATA_CHANNEL = 0;
+    TO_RTP = 1;
+}
+
+enum DataChannelVideoCodec {
+    VP8 = 0;
+    UNIQUE_CODEC_FROM_TRACK_DESCRIPTION = 1;
+    // ANY_CODEC_FROM_TRACK_DESCRIPTION = 2;
+}
+
+enum VideoEncoderConfigSupport {
+    NO_CONFIG = 0;
+    ONLY_INIT_CONFIG = 1;
+    RUNTIME_CONFIG = 2;
+}
+
+enum BandwidthLimitationReason {
+    BANDWIDTH_REASON_DISABLED = 0;
+    BANDWIDTH_REASON_ENABLED = 1;
+}
+
+enum ServerLayoutTransition {
+    SERVER_LAYOUT_TRANSITION_DISABLED = 0;
+    SERVER_LAYOUT_TRANSITION_ENABLED = 1;
+}
+
+enum PinLayout {
+    PIN_LAYOUT_DISABLED = 0;
+    PIN_LAYOUT_ENABLED = 1;
+}
+
+enum JoinOrderLayout {
+    JOIN_ORDER_LAYOUT_DISABLED = 0;
+    JOIN_ORDER_LAYOUT_ENABLED = 1;
+}
+
+enum SendSelfViewVideoSlot {
+    SEND_SELF_VIEW_VIDEO_SLOT_DISABLED = 0;
+    SEND_SELF_VIEW_VIDEO_SLOT_ENABLED = 1;
+}
+
+enum SDKDefaultDeviceManagement {
+    SDK_DEFAULT_DEVICE_MANAGEMENT_DISABLED = 0;
+    SDK_DEFAULT_DEVICE_MANAGEMENT_ENABLED = 1;
+}
+
+enum SDKPublisherOptimizeBitrate{
+    SDK_PUBLISHER_OPTIMIZE_BITRATE_DISABLED = 0;
+    SDK_PUBLISHER_OPTIMIZE_BITRATE_ONLY_SELF = 1;
+    SDK_PUBLISHER_OPTIMIZE_BITRATE_FULL = 2;
+}
+
+// Enable NWPathMonitor in iOS (network interfaces observer)
+enum SDKNetworkPathMonitor {
+    SDK_NETWORK_PATH_MONITOR_DISABLED = 0;
+    SDK_NETWORK_PATH_MONITOR_ENABLED = 1;
+}
+
+enum PublishVp9 {
+    PUBLISH_VP9_DISABLED = 0;
+    PUBLISH_VP9_ENABLED = 1;
+}
+
+enum SVCMode {
+    SVC_MODE_DISABLED = 0;
+    SVC_MODE_L1T1 = 1;
+    SVC_MODE_L1T2 = 2;
+    SVC_MODE_L1T3 = 3;
+    SVC_MODE_L2T1 = 4;
+    SVC_MODE_L2T2 = 5;
+    SVC_MODE_L2T3 = 6;
+    SVC_MODE_L3T1 = 7;
+    SVC_MODE_L3T2 = 8;
+    SVC_MODE_L3T3 = 9;
+    SVC_MODE_L2T1h = 10;
+    SVC_MODE_L2T2h = 11;
+    SVC_MODE_L2T3h = 12;
+    SVC_MODE_L3T1h = 13;
+    SVC_MODE_L3T2h = 14;
+    SVC_MODE_L3T3h = 15;
+    SVC_MODE_S2T1 = 16;
+    SVC_MODE_S2T2 = 17;
+    SVC_MODE_S2T3 = 18;
+    SVC_MODE_S2T1h = 19;
+    SVC_MODE_S2T2h = 20;
+    SVC_MODE_S2T3h = 21;
+    SVC_MODE_S3T1 = 22;
+    SVC_MODE_S3T2 = 23;
+    SVC_MODE_S3T3 = 24;
+    SVC_MODE_S3T1h = 25;
+    SVC_MODE_S3T2h = 26;
+    SVC_MODE_S3T3h = 27;
+    SVC_MODE_L2T2_KEY = 28;
+    SVC_MODE_L2T2_KEY_SHIFT = 29;
+    SVC_MODE_L2T3_KEY = 30;
+    SVC_MODE_L2T3_KEY_SHIFT = 31;
+    SVC_MODE_L3T1_KEY = 32;
+    SVC_MODE_L3T2_KEY = 33;
+    SVC_MODE_L3T2_KEY_SHIFT = 34;
+    SVC_MODE_L3T3_KEY = 35;
+    SVC_MODE_L3T3_KEY_SHIFT = 36;
+}
+
+enum SDKNetworkLostDetection {
+    SDK_NETWORK_LOST_DETECTION_DISABLED = 0;
+    SDK_NETWORK_LOST_DETECTION_ENABLED = 1;
+}
+
+enum FixedIceCandidatesPoolSize {
+    FIXED_ICE_CANDIDATES_POOL_SIZE_DISABLED = 0;
+    FIXED_ICE_CANDIDATES_POOL_SIZE_ENABLED = 1;
+}
+
+enum SubscriberOfferAsyncAck {
+    SUBSCRIBER_OFFER_ASYNC_ACK_DISABLED = 0;
+    SUBSCRIBER_OFFER_ASYNC_ACK_ENABLED = 1;
+}
+
+enum AndroidBluetoothRoutingFix {
+    ANDROID_BLUETOOTH_ROUTING_FIX_ENABLED = 0;
+    ANDROID_BLUETOOTH_ROUTING_FIX_DISABLED = 1;
+}
+
+enum SDKAndroidTelecomIntegration {
+    SDK_ANDROID_TELECOM_INTEGRATION_ENABLED = 0;
+    SDK_ANDROID_TELECOM_INTEGRATION_DISABLED = 1;
+}
+
+enum SetActiveCodecsMode {
+    SET_ACTIVE_CODECS_MODE_DISABLED = 0;
+    SET_ACTIVE_CODECS_MODE_VIDEO_ONLY = 1; // Supports only video codec changing for camera
+    SET_ACTIVE_CODECS_MODE_AUDIO_ONLY = 2; // Supports only audio codec changing for microphone
+    SET_ACTIVE_CODECS_MODE_AUDIO_AND_VIDEO = 3;
+}
+
+enum SubscriberDTLSPassiveMode {
+    SUBSCRIBER_DTLS_PASSIVE_MODE_DISABLED = 0;
+    SUBSCRIBER_DTLS_PASSIVE_MODE_ENABLED = 1;
+}
+
+enum PublisherOpusLowBitrate {
+    PUBLISHER_OPUS_LOW_BITRATE_DISABLED = 0;
+    PUBLISHER_OPUS_LOW_BITRATE_ENABLED = 1;
+}
+
+enum PublisherOpusDRED {
+    PUBLISHER_OPUS_DRED_DISABLED = 0;
+    PUBLISHER_OPUS_DRED_ENABLED = 1;
+}
+
+enum SDKAndroidDestroySessionOnTaskRemoved {
+    SDK_ANDROID_DESTROY_SESSION_ON_TASK_REMOVED_DISABLED = 0;
+    SDK_ANDROID_DESTROY_SESSION_ON_TASK_REMOVED_ENABLED = 1;
+}
+
+message CapabilitiesOffer {
+    repeated OfferAnswerMode offer_answer_mode = 1;
+    repeated InitialSubscriberOffer initial_subscriber_offer = 2;
+    repeated SlotsMode slots_mode = 3;
+    repeated SimulcastMode simulcast_mode = 4;
+    repeated SelfVADStatus self_vad_status = 5;
+    repeated DataChannelSharing data_channel_sharing = 6;
+    repeated VideoEncoderConfigSupport video_encoder_config = 7;
+    repeated DataChannelVideoCodec data_channel_video_codec = 8;
+    repeated BandwidthLimitationReason bandwidth_limitation_reason = 9;
+    repeated ServerLayoutTransition server_layout_transition = 10;
+    repeated PinLayout pin_layout = 11;
+    repeated JoinOrderLayout join_order_layout = 12;
+    repeated SendSelfViewVideoSlot send_self_view_video_slot = 13;
+    repeated SDKDefaultDeviceManagement sdk_default_device_management = 14;
+    repeated SDKPublisherOptimizeBitrate sdk_publisher_optimize_bitrate = 15;
+    repeated SDKNetworkPathMonitor sdk_network_path_monitor = 16;
+    repeated PublishVp9 publisher_vp9 = 17;
+    repeated SVCMode svc_mode = 18;
+    repeated SDKNetworkLostDetection sdk_network_lost_detection = 19;
+    repeated FixedIceCandidatesPoolSize fixed_ice_candidates_pool_size = 20;
+    repeated SubscriberOfferAsyncAck subscriber_offer_async_ack = 21;
+    repeated AndroidBluetoothRoutingFix android_bluetooth_routing_fix = 22;
+    repeated SDKAndroidTelecomIntegration sdk_android_telecom_integration = 23;
+    repeated SetActiveCodecsMode set_active_codecs_mode = 24;
+    repeated SubscriberDTLSPassiveMode subscriber_dtls_passive_mode = 25;
+    repeated PublisherOpusLowBitrate publisher_opus_low_bitrate = 26;
+    repeated PublisherOpusDRED publisher_opus_dred = 27;
+    repeated SDKAndroidDestroySessionOnTaskRemoved sdk_android_destroy_session_on_task_removed = 28;
+}
+
+message CapabilitiesAnswer {
+    OfferAnswerMode offer_answer_mode = 1;
+    InitialSubscriberOffer initial_subscriber_offer = 2;
+    SlotsMode slots_mode = 3;
+    SimulcastMode simulcast_mode = 4;
+    SelfVADStatus self_vad_status = 5;
+    DataChannelSharing data_channel_sharing = 6;
+    VideoEncoderConfigSupport video_encoder_config = 7;
+    DataChannelVideoCodec data_channel_video_codec = 8;
+    BandwidthLimitationReason bandwidth_limitation_reason = 9;
+    ServerLayoutTransition server_layout_transition = 10;
+    PinLayout pin_layout = 11;
+    JoinOrderLayout join_order_layout = 12;
+    SendSelfViewVideoSlot send_self_view_video_slot = 13;
+    SDKDefaultDeviceManagement sdk_default_device_management = 14;
+    SDKPublisherOptimizeBitrate sdk_publisher_optimize_bitrate = 15;
+    SDKNetworkPathMonitor sdk_network_path_monitor = 16;
+    PublishVp9 publisher_vp9 = 17;
+    SVCMode svc_mode = 18;
+    SDKNetworkLostDetection sdk_network_lost_detection = 19;
+    FixedIceCandidatesPoolSize fixed_ice_candidates_pool_size = 20;
+    SubscriberOfferAsyncAck subscriber_offer_async_ack = 21;
+    AndroidBluetoothRoutingFix android_bluetooth_routing_fix = 22;
+    SDKAndroidTelecomIntegration sdk_android_telecom_integration = 23;
+    SetActiveCodecsMode set_active_codecs_mode = 24;
+    SubscriberDTLSPassiveMode subscriber_dtls_passive_mode = 25;
+    PublisherOpusLowBitrate publisher_opus_low_bitrate = 26;
+    PublisherOpusDRED publisher_opus_dred = 27;
+    SDKAndroidDestroySessionOnTaskRemoved sdk_android_destroy_session_on_task_removed = 28;
+}

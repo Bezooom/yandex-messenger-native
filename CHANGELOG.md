@@ -7,6 +7,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 Current release: **2.173.0** (2026-08-15).
 
+## Unreleased
+
+### Added
+* **Live Telemost calls**: Goloom signaling (`wss://goloom.strm.yandex.net/join`, prost types from the APK schemas) + WebRTC via `webrtcbin` (two PCs: publish/subscribe, ICE trickle, server-provided STUN/TURN).
+* **Call window**: states, timer, participant roster, mute/end, in-window peer video (RGBA frames → `MemoryTexture`), incoming-call ringing bar, copy-link, open-in-browser fallback.
+* **Meetings Cloud API** using APK method names (`create_personal_meeting` / `start_meeting_call` / `end_personal_meeting` / `meeting_info[s]`); the chat call button creates a meeting and opens the window.
+* System package `gstreamer1.0-nice` is required for ICE (otherwise webrtcbin creates no transports).
+* **Screen sharing**: third m-line built dynamically on first enable (re-offer, no negotiation stall); portal capture on Wayland (`YM_SHARE_PORTAL`, `portal` feature, picker dialog) with ximagesrc fallback.
+* **Local camera preview** (PiP) from the same pipeline.
+* **Incoming calls**: invites from WS traffic (direct methods + links with call markers; a bare link never rings) raise the ringing window with accept via the shared join flow.
+* **Voice transcriptions**: "Recognize speech" button with retry, tolerant response parsing.
+* **Real voice messages**: Opus/OGG recording with waveform meter (appsink polling, EOS finalization), playbin player (play/pause, progress, single active), voice-type send with attachment instead of text placeholder.
+* **In-chat video player**: inline (play/pause, scrub, time, EOS), frames via appsink→Picture.
+* **Light Yandex theme by default** + dark night: tokens split into `theme-tokens-{night,light}.css`, live switch in settings; token-parity test catches CSS parser errors.
+
+### Known limitations
+* Meetings HTTP paths are best-effort, pending live-server verification (debug dumps included).
+
 ## 2.173.0 - 2026-08-15
 
 ### Added

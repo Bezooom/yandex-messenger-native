@@ -23,7 +23,7 @@ pub use bot::BotReplyMarkup;
 pub use folder::ChatFolder;
 pub use poll::{Poll, PollAnswer};
 pub use reaction::ExtendedReactionsConfig;
-pub use saved_message::SavedMessage;
+pub use saved_message::{SavedFilter, SavedMessage};
 pub use scheduled_message::ScheduledMessage;
 pub use sticker::{Sticker, StickerPack, StickerPackList};
 pub use telemost::*;
@@ -155,6 +155,7 @@ pub enum MessageType {
     Sticker,
     AnimatedEmoji,
     ScreenShare,
+    #[serde(other)]
     Unknown,
 }
 
@@ -172,25 +173,44 @@ pub struct Message {
     pub from_id: String,
     pub message_id: Option<String>, // Internal message ID
     pub rmid: Option<String>,       // Reply message ID
+    #[serde(default)]
     pub type_: MessageType,
     pub text: Option<String>,
+    #[serde(default)]
     pub entities: Vec<MessageEntity>,
     pub reply_to: Option<MessageId>,
     pub forward: Option<ForwardInfo>,
+    #[serde(default)]
     pub media: Vec<MediaAttachment>,
+    #[serde(default)]
     pub reactions: Vec<Reaction>,
     pub thread_id: Option<String>,
+    #[serde(default)]
     pub has_thread: bool,
+    #[serde(default)]
     pub pinned: bool,
+    #[serde(default)]
     pub edited: bool,
     pub edited_at: Option<DateTime<Utc>>,
+    #[serde(default = "default_true")]
     pub sent: bool,
+    #[serde(default = "default_true")]
     pub delivered: bool,
+    #[serde(default = "default_true")]
     pub read: bool,
+    #[serde(default = "default_now")]
     pub created: DateTime<Utc>,
     pub updated: Option<DateTime<Utc>>,
     /// Poll data (if message is a poll)
     pub poll: Option<Poll>,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_now() -> DateTime<Utc> {
+    chrono::Utc::now()
 }
 
 impl Message {
@@ -292,8 +312,11 @@ pub struct MessageEntity {
 /// Media attachment
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MediaAttachment {
+    #[serde(default)]
     pub id: String,
+    #[serde(default)]
     pub type_: MediaType,
+    #[serde(default)]
     pub url: String,
     pub thumbnail_url: Option<String>,
     pub width: Option<u32>,
@@ -303,6 +326,9 @@ pub struct MediaAttachment {
     pub filename: Option<String>,
     pub mime_type: Option<String>,
     pub waveform: Option<Vec<f32>>, // waveform data for voice messages
+    /// Server-side voice transcription, if provided with the attachment.
+    #[serde(default)]
+    pub transcription: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -316,7 +342,14 @@ pub enum MediaType {
     Sticker,
     AnimatedEmoji,
     Thumbnail,
+    #[serde(other)]
     Unknown,
+}
+
+impl Default for MediaType {
+    fn default() -> Self {
+        MediaType::Unknown
+    }
 }
 
 /// Forward info

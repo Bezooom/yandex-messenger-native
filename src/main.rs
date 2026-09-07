@@ -1,4 +1,5 @@
 use std::sync::{Arc, Mutex};
+use std::{cell::RefCell, collections::HashSet, rc::Rc};
 
 use adw::prelude::*;
 use gtk::prelude::*;
@@ -6,6 +7,10 @@ use gtk::Orientation;
 use libadwaita as adw;
 
 use crate::api::auth::AuthManager;
+use crate::api::goloom_call::{CallController, CallParams};
+use crate::api::goloom_media::MediaEngine;
+#[cfg(not(feature = "gstreamer"))]
+use crate::api::goloom_media::NullMediaEngine;
 use crate::core::AppController;
 use crate::ui::{AuthDialog, TelemostWindow};
 
@@ -86,20 +91,16 @@ fn run(app: &adw::Application) {
 fn start_main_window(app: &adw::Application, auth: Arc<AuthManager>, access_token: String) {
     let controller = Arc::new(AppController::new(auth.clone(), access_token));
 
-    // Load and apply the premium theme CSS
-    load_theme_css();
-
     // Load persisted settings
     let settings_store = ui::settings::SettingsStore::new().ok();
     let app_settings = settings_store
         .as_ref()
         .map(|s| s.load())
         .unwrap_or_default();
+    // Theme (light by default) before anything paints.
+    ui::settings::apply_theme(app_settings.dark_theme);
     ui::notifications::set_notifications_enabled(app_settings.notifications_enabled);
     ui::settings::apply_reduced_motion(app_settings.reduced_motion);
-    if let Some(gtk_settings) = gtk::Settings::default() {
-        gtk_settings.set_gtk_application_prefer_dark_theme(app_settings.dark_theme);
-    }
     let minimize_to_tray = Arc::new(std::sync::atomic::AtomicBool::new(
         app_settings.minimize_to_tray,
     ));
@@ -158,16 +159,86 @@ fn start_main_window(app: &adw::Application, auth: Arc<AuthManager>, access_toke
 }
 
 fn load_theme_css() {
-    let provider = gtk::CssProvider::new();
-    let css_bytes = include_str!("ui/theme.css");
-    provider.load_from_string(css_bytes);
-    if let Some(display) = gtk::gdk::Display::default() {
-        gtk::style_context_add_provider_for_display(
-            &display,
-            &provider,
-            gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
-        );
+    // Kept for reference; theming now goes through settings::apply_theme,
+    // which layers the token palette over theme.css in one provider.
+    ui::settings::apply_theme(
+        ui::settings::SettingsStore::new()
+            .ok()
+            .map(|s| s.load())
+            .unwrap_or_default()
+            .dark_theme,
+    );
+}
+
+/// Build media engines for a call: real WebRTC or signaling-only fallback.
+fn make_call_engines() -> (Box<dyn MediaEngine>, Box<dyn MediaEngine>) {
+    // Sinks are replaced by the controller; dummies suffice here.
+    let (dummy_pub, _) = tokio::sync::mpsc::unbounded_channel();
+    let (dummy_sub, _) = tokio::sync::mpsc::unbounded_channel();
+    #[cfg(feature = "gstreamer")]
+    {
+        use crate::api::goloom_media::EngineRole;
+        use crate::api::gst_webrtc::{EngineSource, GstEngineConfig, GstMediaEngine, RemoteSink};
+        let version = env!("CARGO_PKG_VERSION").to_string();
+        let pub_cfg = GstEngineConfig {
+            role: EngineRole::Publisher,
+            audio: true,
+            video: true,
+            source: EngineSource::Auto,
+            audio_sink: RemoteSink::Auto,
+            video_sink: RemoteSink::Auto,
+            app_version: version.clone(),
+        };
+        let sub_cfg = GstEngineConfig {
+            role: EngineRole::Subscriber,
+            audio: true,
+            video: true,
+            source: EngineSource::Auto,
+            audio_sink: RemoteSink::Auto,
+            video_sink: RemoteSink::Frames,
+            app_version: version,
+        };
+        (
+            Box::new(GstMediaEngine::new(dummy_pub, pub_cfg)),
+            Box::new(GstMediaEngine::new(dummy_sub, sub_cfg)),
+        )
     }
+    #[cfg(not(feature = "gstreamer"))]
+    {
+        (
+            Box::new(NullMediaEngine::new(dummy_pub)),
+            Box::new(NullMediaEngine::answer_only(dummy_sub)),
+        )
+    }
+}
+
+/// Join a meeting (shared by outgoing calls and incoming accepts):
+/// credentials → engines → controller → live window.
+async fn join_meeting_call(
+    ctrl: Arc<AppController>,
+    app: gtk::Application,
+    title: String,
+    meeting_id: String,
+    join_url: Option<String>,
+) {
+    let tele = ctrl.telemost_client();
+    let call_info = match tele.start_meeting_call(&meeting_id).await {
+        Ok(c) => c,
+        Err(e) => {
+            log::error!("start_meeting_call failed: {e}");
+            return;
+        }
+    };
+    let params = CallParams::from_meeting(&meeting_id, &call_info, None, env!("CARGO_PKG_VERSION"));
+    let (publish, subscribe) = make_call_engines();
+    let handle = CallController::spawn(params, publish, subscribe);
+    let win = TelemostWindow::new(app.upcast_ref(), tele.clone());
+    #[cfg(not(feature = "gstreamer"))]
+    win.set_notice(
+        "Сборка без GStreamer: только сигналинг и список участников. Видео — в браузере по ссылке.",
+    );
+    win.attach_call(handle, &title, join_url, Some(meeting_id));
+    win.show();
 }
 
 fn create_app_layout(
@@ -403,24 +474,31 @@ fn create_app_layout(
             }
 
             let ctrl = ctrl_call.clone();
-            let telemost_client = ctrl.telemost_client();
             let app_clone = app_clone.clone();
             glib::spawn_future_local(async move {
-                match ctrl.start_call(&chat_id).await {
-                    Ok(call) => {
-                        let _call_url = ctrl.telemost_url(&chat_id, Some(&call.call_id));
-                        let telemost_win =
-                            TelemostWindow::new(app_clone.upcast_ref(), telemost_client.clone());
-                        telemost_win.show();
-                    }
+                // 1. Personal meeting for the call.
+                let Some(uid) = ctrl.current_uid() else {
+                    log::error!("call needs login (no session uid)");
+                    return;
+                };
+                let tele = ctrl.telemost_client();
+                let meeting = match tele.create_personal_meeting(&uid).await {
+                    Ok(m) => m,
                     Err(e) => {
-                        log::error!("Failed to start call: {}", e);
-                        let _call_url = ctrl.telemost_url(&chat_id, None);
-                        let telemost_win =
-                            TelemostWindow::new(app_clone.upcast_ref(), telemost_client.clone());
-                        telemost_win.show();
+                        log::error!("create_personal_meeting failed: {e}");
+                        return;
                     }
-                }
+                };
+                // 2-4. Join it (shared with incoming accepts).
+                let join_url = Some(tele.join_url(&meeting));
+                join_meeting_call(
+                    ctrl,
+                    app_clone.upcast(),
+                    format!("Звонок · {chat_id}"),
+                    meeting.meeting_id,
+                    join_url,
+                )
+                .await;
             });
         },
     );
@@ -548,20 +626,46 @@ fn create_app_layout(
         });
     });
 
+    // Server-side delete (after the undo window expires)
+    let ctrl_del = controller.clone();
+    let cv_del = chat_view.clone();
+    chat_view.on_delete(move |chat_id, message_id| {
+        let ctrl = ctrl_del.clone();
+        let cv = cv_del.clone();
+        glib::spawn_future_local(async move {
+            match ctrl.delete_message(&chat_id, &message_id).await {
+                Ok(()) => {
+                    log::info!("Message {} deleted on server", message_id);
+                    cv.remove_message(&message_id);
+                }
+                Err(e) => {
+                    log::warn!("delete_message failed: {}", e);
+                    cv.cancel_pending_delete();
+                    cv.show_error(&format!("Не удалено: {}", e));
+                }
+            }
+        });
+    });
+
     // History pagination
     let ctrl_older = controller.clone();
     let cv_older = chat_view.clone();
-    chat_view.on_load_older(move |chat_id, oldest_id| {
+    chat_view.on_load_older(move |chat_id, oldest_id, cursor| {
         let ctrl = ctrl_older.clone();
         let cv = cv_older.clone();
         glib::spawn_future_local(async move {
-            match ctrl.load_older_messages(&chat_id, &oldest_id, 50).await {
-                Ok(older) => {
-                    cv.prepend_messages(older);
+            match ctrl
+                .load_older_messages(&chat_id, &oldest_id, cursor, 100)
+                .await
+            {
+                Ok((older, next_cursor)) => {
+                    cv.prepend_messages(older, next_cursor);
                 }
                 Err(e) => {
                     log::warn!("load_older_messages: {}", e);
-                    cv.prepend_messages(vec![]);
+                    // Keep `has_more_history` untouched so a transient
+                    // network error doesn't permanently kill scroll-up.
+                    cv.set_pagination_loading(false);
                 }
             }
         });
@@ -1140,9 +1244,13 @@ fn create_app_layout(
         // Subscribe to state changes
         let ws_for_state = ctrl_ws.ws().clone();
         let ctrl_for_state = ctrl_ws.clone();
+        // Ping channel: Connected events hop to the main thread, where the
+        // non-Send ChatView can be touched.
+        let (tx_connected, mut rx_connected) = tokio::sync::mpsc::unbounded_channel::<()>();
         let ws_state_cb = move |state: crate::api::WSState| {
             let _ws = ws_for_state.clone();
             let ctrl = ctrl_for_state.clone();
+            let txc = tx_connected.clone();
             glib::idle_add_once(move || {
                 glib::spawn_future_local(async move {
                     match state {
@@ -1153,6 +1261,7 @@ fn create_app_layout(
                             if ok > 0 || left > 0 {
                                 log::info!("Outbox flush: sent={}, remaining={}", ok, left);
                             }
+                            let _ = txc.send(());
                         }
                         crate::api::WSState::Disconnected => {
                             log::warn!("WebSocket disconnected — reconnecting...");
@@ -1169,6 +1278,28 @@ fn create_app_layout(
         };
         ctrl_ws.ws().on_state_change(ws_state_cb).await;
 
+        // Heal chats opened via fallback before WS was up: on every
+        // (re)connect, reload the selected chat through full WS history.
+        {
+            let ctrl = ctrl_ws.clone();
+            let cv = cv_for_ws.clone();
+            glib::spawn_future_local(async move {
+                while rx_connected.recv().await.is_some() {
+                    let Some(sel) = ctrl.get_selected_chat_id().await else {
+                        continue;
+                    };
+                    if !ctrl.history_needs_refresh(&sel).await {
+                        continue;
+                    }
+                    log::info!("Refreshing {} via WS history after connect", sel);
+                    match ctrl.fetch_fresh_messages(&sel).await {
+                        Ok(msgs) => cv.set_messages(msgs),
+                        Err(e) => log::warn!("Post-connect history refresh failed: {}", e),
+                    }
+                }
+            });
+        }
+
         // Subscribe to incoming messages
         let (tx_msg, mut rx_msg) =
             tokio::sync::mpsc::unbounded_channel::<crate::models::WSMessage>();
@@ -1182,6 +1313,8 @@ fn create_app_layout(
         let cl_for_rx = cl_for_ws.clone();
         let ctrl_for_rx = ctrl_ws.clone();
         let tray_for_rx = tray_ws.clone();
+        let ctrl_for_ring = controller.clone();
+        let ringing_meetings: Rc<RefCell<HashSet<String>>> = Rc::new(RefCell::new(HashSet::new()));
 
         glib::spawn_future_local(async move {
             while let Some(ws_msg) = rx_msg.recv().await {
@@ -1195,11 +1328,61 @@ fn create_app_layout(
                     .and_then(|m| m.as_str())
                     .unwrap_or("");
 
+                // Incoming call invites → ringing window (deduped).
+                // The GTK application handle comes from the global default
+                // (owned lookup) so the pump captures nothing borrowed.
+                if let Some(invite) =
+                    crate::models::telemost::extract_invite(method, &ws_msg.message)
+                {
+                    if !ringing_meetings.borrow().contains(&invite.meeting_id) {
+                        ringing_meetings
+                            .borrow_mut()
+                            .insert(invite.meeting_id.clone());
+                        let Some(gtk_app) = gtk::gio::Application::default()
+                            .and_then(|a| a.downcast::<gtk::Application>().ok())
+                        else {
+                            log::warn!("ringing: no default GTK application");
+                            continue;
+                        };
+                        let ctrl = ctrl_for_ring.clone();
+                        let peer = invite
+                            .peer_name
+                            .clone()
+                            .unwrap_or_else(|| "Входящий звонок".to_string());
+                        let meeting = crate::models::telemost::PersonalMeeting {
+                            meeting_id: invite.meeting_id.clone(),
+                            join_url: invite.join_url.clone(),
+                            title: None,
+                            extra: serde_json::Value::Null,
+                        };
+                        let win = TelemostWindow::new(&gtk_app, ctrl.telemost_client());
+                        win.show_incoming(&peer, &meeting);
+                        let title = format!("Входящий · {peer}");
+                        let join_url = invite.join_url.clone();
+                        win.on_accept(move |mid| {
+                            let ctrl = ctrl.clone();
+                            let app = gtk_app.clone();
+                            let title = title.clone();
+                            let join_url = join_url.clone();
+                            glib::spawn_future_local(async move {
+                                join_meeting_call(ctrl, app, title.clone(), mid, join_url.clone())
+                                    .await;
+                            });
+                        });
+                        win.show();
+                    }
+                }
+
                 match method {
                     "new_message" => {
                         let messages =
                             crate::api::HttpClient::parse_ws_incoming_messages(&ws_msg.message);
                         if !messages.is_empty() {
+                            // Add all messages to app state (for any chat)
+                            for msg in &messages {
+                                ctrl.handle_incoming_message(msg.clone()).await;
+                            }
+
                             for msg in &messages {
                                 let mut sender = "Yandex User".to_string();
                                 if let Some(chat) = ctrl
@@ -1359,7 +1542,45 @@ fn create_app_layout(
     iv_container.set_visible(false);
     overlay.add_overlay(&iv_container);
 
+    // Close button (top-right ✕) — without it the opened photo could not
+    // be dismissed: ImageViewer::close() only flips a flag nobody checks.
+    let iv_close_btn = gtk::Button::builder()
+        .icon_name("window-close-symbolic")
+        .tooltip_text("Закрыть (Esc)")
+        .halign(gtk::Align::End)
+        .valign(gtk::Align::Start)
+        .margin_top(12)
+        .margin_end(12)
+        .css_classes(vec!["circular".to_string()])
+        .visible(false)
+        .build();
+    overlay.add_overlay(&iv_close_btn);
+    {
+        let ivc = iv_container.clone();
+        let ivcb = iv_close_btn.clone();
+        iv_close_btn.connect_clicked(move |_| {
+            ivc.set_visible(false);
+            ivcb.set_visible(false);
+        });
+    }
+    // Esc also dismisses the viewer.
+    {
+        let ivc = iv_container.clone();
+        let ivcb = iv_close_btn.clone();
+        let esc = gtk::EventControllerKey::new();
+        esc.connect_key_pressed(move |_, keyval, _, _| {
+            if keyval == gtk::gdk::Key::Escape && ivc.is_visible() {
+                ivc.set_visible(false);
+                ivcb.set_visible(false);
+                return glib::Propagation::Stop;
+            }
+            glib::Propagation::Proceed
+        });
+        overlay.add_controller(esc);
+    }
+
     let iv_for_open = image_viewer.clone();
+    let iv_close_for_open = iv_close_btn.clone();
     chat_view.on_image_open(move |url, filename, all_images| {
         let current_idx = all_images.iter().position(|(u, _)| u == &url).unwrap_or(0);
 
@@ -1373,6 +1594,7 @@ fn create_app_layout(
         });
 
         iv_for_open.container.set_visible(true);
+        iv_close_for_open.set_visible(true);
     });
 
     let main_box = gtk::Box::new(Orientation::Vertical, 0);

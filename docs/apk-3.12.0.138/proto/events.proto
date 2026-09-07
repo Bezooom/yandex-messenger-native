@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package videoplatform.speakerroom.common.telemetry;
+
+option go_package = "a.yandex-team.ru/videoplatform/webrtc/common/proto/telemetry;telemetry";
+option swift_prefix = "Goloom";
+option java_multiple_files = true;
+option java_package = "ru.yandex.goloom.lib.model.telemetry";
+
+// Device specific events
+message DeviceInfo {
+    string device_id = 1;
+    string kind = 2; // audioinput, videoinput, audiooutput
+    string label = 3;
+    string group = 4;
+    optional string constraints = 5;
+}
+
+message SelectDeviceEvent {
+    DeviceInfo device_info = 1;
+}
+
+message ApplyDevicesEvent {
+    repeated DeviceInfo devices_info = 1;
+    bool send_audio = 2;
+    bool send_video = 3;
+}
+
+message UpdatedCurrentDevicesEvent {
+    repeated DeviceInfo devices_info = 1;
+    bool send_audio = 2;
+    bool send_video = 3;
+}
+
+// Sharing specific events
+// ...
+
+message EventTelemetry {
+    double timestamp = 1;
+    /*
+    select-device for SelectDeviceEvent
+    apply-devices for ApplyDevicesEvent
+    updated-current-devices for UpdatedCurrentDevicesEvent
+    */
+    string type = 2;
+    string id = 3;
+
+    oneof Event {
+        SelectDeviceEvent select_device = 4;
+        ApplyDevicesEvent apply_devices = 5;
+        UpdatedCurrentDevicesEvent updated_current_devices = 6;
+    }
+}

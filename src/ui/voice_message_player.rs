@@ -2,11 +2,17 @@
 
 use gtk::prelude::*;
 use gtk::{Box as GtkBox, Button, Label, Orientation, ProgressBar};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use std::time::Instant;
 
+use crate::core::voice_player::VoicePlayer;
 use crate::models::VoiceMessage;
+
+// Only one voice bubble plays at a time across the whole app.
+thread_local! {
+    static ACTIVE_VOICE: RefCell<Option<Rc<VoiceMessagePlayer>>> =
+        const { RefCell::new(None) };
+}
 
 /// VoiceMessagePlayer — UI component for displaying and playing voice messages.
 ///
@@ -46,6 +52,20 @@ pub struct VoiceMessagePlayer {
     download_btn: Button,
     /// Reply button widget
     reply_btn: Button,
+    /// On-demand transcription fetch button.
+    transcribe_btn: Button,
+    /// Transcription fetch in flight.
+    transcribe_busy: Rc<Cell<bool>>,
+    /// Whether the fetch button is currently offered.
+    transcribe_offered: Rc<Cell<bool>>,
+    /// Real audio backend (playbin over temp file).
+    backend: Rc<RefCell<VoicePlayer>>,
+    /// Downloaded bytes, cached for replay without refetch.
+    audio_cache: Rc<RefCell<Option<Vec<u8>>>>,
+    /// A fetch is in flight (ignore extra taps).
+    fetching: Rc<Cell<bool>>,
+    /// Media loaded (pause/resume path vs fetch path).
+    loaded: Rc<Cell<bool>>,
 }
 
 // ── Helper: format seconds as mm:ss ──────────────────────────────────
@@ -185,7 +205,6 @@ impl VoiceMessagePlayer {
         // ── Transcription box ────────────────────────────────────────
         let transcription_box = GtkBox::new(Orientation::Vertical, 4);
         transcription_box.set_css_classes(&["transcription-box"]);
-        transcription_box.set_visible(voice.is_transcribing || voice.has_transcription());
 
         let transcription_label = Label::builder()
             .css_classes(vec!["transcription-text"])
@@ -194,18 +213,41 @@ impl VoiceMessagePlayer {
             .xalign(0.0)
             .build();
 
+        // On-demand recognition (server-side; fetched once per bubble).
+        let transcribe_btn = Button::builder()
+            .label("Распознать речь")
+            .css_classes(["btn-text", "transcribe-btn"])
+            .tooltip_text("Запросить транскрипцию у сервера")
+            .build();
+        transcribe_btn.set_halign(gtk::Align::Start);
+
+        // One of: spinner (transcribing), text, error, or fetch button.
+        // (Box starts visible; every branch below sets both flags.)
+        // Visibility is tracked in `transcribe_offered`: GtkWidget::is_visible
+        // folds in unmapped ancestors, so it can't drive this logic.
+        let offered = Rc::new(Cell::new(false));
         if voice.is_transcribing {
             Self::set_transcription_spinning(&transcription_label);
-        } else if let Some(ref text) = voice.transcribed_text {
-            if !text.is_empty() {
-                transcription_label.set_label(text);
-            }
+            transcription_box.set_visible(true);
+            transcribe_btn.set_visible(false);
+        } else if let Some(text) = voice.transcribed_text.as_deref().filter(|t| !t.is_empty()) {
+            transcription_label.set_label(text);
+            transcription_box.set_visible(true);
+            transcribe_btn.set_visible(false);
         } else if let Some(ref err) = voice.transcribe_error {
             transcription_label.set_label(&format!("Error: {}", err));
             transcription_label.add_css_class("transcription-error");
+            transcription_box.set_visible(true);
+            transcribe_btn.set_visible(false);
+        } else {
+            // Nothing yet: offer one-tap fetch instead of an empty box.
+            transcription_box.set_visible(true);
+            transcribe_btn.set_visible(true);
+            offered.set(true);
         }
 
         transcription_box.append(&transcription_label);
+        transcription_box.append(&transcribe_btn);
 
         // ── Assemble ─────────────────────────────────────────────────
         container.append(&top_row);
@@ -213,7 +255,7 @@ impl VoiceMessagePlayer {
         container.append(&bottom_row);
         container.append(&transcription_box);
 
-        VoiceMessagePlayer {
+        let this = VoiceMessagePlayer {
             container,
             voice,
             is_playing: RefCell::new(is_playing),
@@ -227,7 +269,52 @@ impl VoiceMessagePlayer {
             transcription_box,
             download_btn,
             reply_btn,
-        }
+            transcribe_btn,
+            transcribe_busy: Rc::new(Cell::new(false)),
+            transcribe_offered: offered.clone(),
+            backend: Rc::new(RefCell::new(VoicePlayer::new())),
+            audio_cache: Rc::new(RefCell::new(None)),
+            fetching: Rc::new(Cell::new(false)),
+            loaded: Rc::new(Cell::new(false)),
+        };
+        this.enable_transcribe_fetch();
+        this
+    }
+
+    /// Wire the one-tap transcription fetch (called once at construction).
+    fn enable_transcribe_fetch(&self) {
+        let this = Rc::new(self.clone_ref());
+        let message_id = self.voice.message_id.clone();
+        self.transcribe_btn.connect_clicked(move |_| {
+            // Single flight per bubble; the button hides while fetching.
+            if this.transcribe_busy.get() {
+                return;
+            }
+            this.transcribe_busy.set(true);
+            this.transcribe_btn.set_visible(false);
+            this.transcribe_offered.set(false);
+            this.update_transcription(true, None, None);
+            let this = this.clone();
+            let message_id = message_id.clone();
+            glib::spawn_future_local(async move {
+                match fetch_transcription(&message_id).await {
+                    Ok(text) => {
+                        this.transcribe_busy.set(false);
+                        this.update_transcription(false, text, None);
+                    }
+                    Err(e) => {
+                        log::warn!("transcription failed: {e}");
+                        this.transcribe_busy.set(false);
+                        this.update_transcription(false, None, Some(e));
+                        // Offer retry on failure (after update hid the button).
+                        this.transcribe_btn.set_label("Повторить");
+                        this.transcribe_btn.set_visible(true);
+                        this.transcribe_offered.set(true);
+                        this.transcription_box.set_visible(true);
+                    }
+                }
+            });
+        });
     }
 
     /// Update the play/pause button icon based on playing state.
@@ -247,41 +334,122 @@ impl VoiceMessagePlayer {
 
     // ── Public methods ──────────────────────────────────────────────
 
-    /// Toggle play/pause state.
+    /// Toggle play/pause with the real GStreamer backend.
     ///
-    /// In the stub implementation this only updates the UI. A real
-    /// implementation would use GStreamer to start/stop playback.
+    /// First tap downloads the audio (cached for replay), then `playbin`
+    /// drives `progress_bar`/`time_label` through a 100ms pump. Without the
+    /// `gstreamer` feature the backend reports an honest error instead of a
+    /// fake animation.
     pub fn toggle_play(&self) {
-        let mut playing = self.is_playing.borrow_mut();
-        *playing = !*playing;
+        let this = Rc::new(self.clone_ref());
+        Self::toggle_shared(this);
+    }
 
-        Self::update_play_icon(&self.play_pause_btn, *playing);
-
-        if *playing {
-            // Start stub progress animation using std::time::Instant
-            let progress = self.current_progress.clone();
-            let player = Rc::new(self.clone_ref());
-            let start_time = Instant::now();
-
-            glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
-                let elapsed = start_time.elapsed().as_secs_f64();
-                let duration_secs = player.voice.duration;
-                let new_progress = (elapsed / duration_secs).min(1.0);
-
-                if new_progress >= 1.0 {
-                    // Reset on completion
-                    *progress.borrow_mut() = 0.0;
-                    *player.is_playing.borrow_mut() = false;
-                    Self::update_play_icon(&player.play_pause_btn, false);
-                    return glib::ControlFlow::Break;
-                }
-
-                *progress.borrow_mut() = new_progress;
-                glib::ControlFlow::Continue
-            });
-        } else {
-            // Pause: keep current progress
+    fn toggle_shared(this: Rc<Self>) {
+        // Pause path.
+        if this.backend.borrow().is_playing() {
+            this.backend.borrow_mut().pause();
+            *this.is_playing.borrow_mut() = false;
+            Self::update_play_icon(&this.play_pause_btn, false);
+            return;
         }
+        // Resume path (media already loaded).
+        if this.loaded.get() {
+            // Stop any other bubble first.
+            Self::claim_active(&this);
+            match this.backend.borrow_mut().resume() {
+                Ok(()) => {
+                    *this.is_playing.borrow_mut() = true;
+                    Self::update_play_icon(&this.play_pause_btn, true);
+                    Self::start_progress_pump(this.clone());
+                }
+                Err(e) => {
+                    log::warn!("voice resume failed: {e}");
+                    this.loaded.set(false);
+                }
+            }
+            return;
+        }
+        // Fetch path (first tap).
+        if this.fetching.get() {
+            return;
+        }
+        this.fetching.set(true);
+        this.play_pause_btn.set_sensitive(false);
+        let url = this.voice.url.clone();
+        glib::spawn_future_local(async move {
+            let result = fetch_audio_bytes(&url).await;
+            this.fetching.set(false);
+            this.play_pause_btn.set_sensitive(true);
+            match result {
+                Ok(bytes) => {
+                    *this.audio_cache.borrow_mut() = Some(bytes.clone());
+                    match this.backend.borrow_mut().play_bytes(&bytes, "ogg") {
+                        Ok(()) => {
+                            this.loaded.set(true);
+                            Self::claim_active(&this);
+                            *this.is_playing.borrow_mut() = true;
+                            Self::update_play_icon(&this.play_pause_btn, true);
+                            Self::start_progress_pump(this.clone());
+                        }
+                        Err(e) => {
+                            log::warn!("voice play failed: {e}");
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::warn!("voice download failed: {e}");
+                }
+            }
+        });
+    }
+
+    /// Stop whatever is playing and mark `this` active.
+    fn claim_active(this: &Rc<Self>) {
+        let prev = ACTIVE_VOICE.replace(Some(this.clone()));
+        if let Some(old) = prev {
+            if !Rc::ptr_eq(&old, this) {
+                old.stop_playback();
+            }
+        }
+    }
+
+    /// Halt playback and reset the button (used when another bubble starts).
+    pub fn stop_playback(&self) {
+        self.backend.borrow_mut().stop();
+        self.loaded.set(false);
+        *self.is_playing.borrow_mut() = false;
+        Self::update_play_icon(&self.play_pause_btn, false);
+        self.set_progress(0.0);
+    }
+
+    /// 100ms pump: bus (EOS) + position → progress bar and time label.
+    fn start_progress_pump(this: Rc<Self>) {
+        let backend = this.backend.clone();
+        glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+            let mut player = backend.borrow_mut();
+            player.pump();
+            if player.eos_reached() {
+                drop(player);
+                *this.is_playing.borrow_mut() = false;
+                this.loaded.set(false);
+                Self::update_play_icon(&this.play_pause_btn, false);
+                this.set_progress(1.0);
+                return glib::ControlFlow::Break;
+            }
+            let position = player.position().map(|p| p.as_secs_f64()).unwrap_or(0.0);
+            let duration = player
+                .duration()
+                .map(|d| d.as_secs_f64())
+                .filter(|d| *d > 0.0)
+                .unwrap_or(this.voice.duration.max(0.1));
+            drop(player);
+            this.set_progress((position / duration).clamp(0.0, 1.0));
+            if !*this.is_playing.borrow() {
+                return glib::ControlFlow::Break;
+            }
+            glib::ControlFlow::Continue
+        });
     }
 
     /// Set the playback progress (0.0–1.0).
@@ -342,9 +510,15 @@ impl VoiceMessagePlayer {
         text: Option<String>,
         error: Option<String>,
     ) {
-        self.transcription_box.set_visible(
-            is_transcribing || text.as_ref().map_or(false, |t| !t.is_empty()) || error.is_some(),
-        );
+        // The fetch button only lives while there is nothing to show.
+        let has_content =
+            is_transcribing || text.as_ref().map_or(false, |t| !t.is_empty()) || error.is_some();
+        if has_content {
+            self.transcribe_btn.set_visible(false);
+            self.transcribe_offered.set(false);
+        }
+        self.transcription_box
+            .set_visible(has_content || self.transcribe_offered.get());
 
         if is_transcribing {
             Self::set_transcription_spinning(&self.transcription_label);
@@ -390,6 +564,149 @@ impl VoiceMessagePlayer {
             transcription_box: self.transcription_box.clone(),
             download_btn: self.download_btn.clone(),
             reply_btn: self.reply_btn.clone(),
+            transcribe_btn: self.transcribe_btn.clone(),
+            transcribe_busy: self.transcribe_busy.clone(),
+            transcribe_offered: self.transcribe_offered.clone(),
+            backend: self.backend.clone(),
+            audio_cache: self.audio_cache.clone(),
+            fetching: self.fetching.clone(),
+            loaded: self.loaded.clone(),
         }
+    }
+}
+
+/// Download voice bytes (auth-aware, 6MB cap). Mirrors the attachment
+/// fetcher in `chat_view` without depending on it.
+async fn fetch_audio_bytes(url: &str) -> Result<Vec<u8>, String> {
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return Err("no voice url".to_string());
+    }
+    let (oauth, cookie) = crate::ui::chat_view::messenger_auth_for_fetch();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(20))
+        .build()
+        .map_err(|e| format!("http client: {e}"))?;
+    let mut req = client
+        .get(url)
+        .header(
+            "User-Agent",
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        )
+        .header("Origin", "https://yandex.ru")
+        .header("Referer", "https://yandex.ru/chat");
+    if let Some(a) = oauth {
+        req = req.header("Authorization", a);
+    }
+    if let Some(c) = cookie {
+        req = req.header("Cookie", c);
+    }
+    let resp = req.send().await.map_err(|e| format!("fetch: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("fetch HTTP {}", resp.status()));
+    }
+    let bytes = resp.bytes().await.map_err(|e| format!("body: {e}"))?;
+    if bytes.is_empty() {
+        return Err("empty audio".to_string());
+    }
+    if bytes.len() > 6 * 1024 * 1024 {
+        return Err("audio too large".to_string());
+    }
+    Ok(bytes.to_vec())
+}
+
+/// Tolerant transcription payload parse (mirrors the API client shapes).
+fn parse_transcription_text(json: &serde_json::Value) -> Option<String> {
+    if let Some(t) = json.get("text").and_then(|t| t.as_str()) {
+        if !t.trim().is_empty() {
+            return Some(t.to_string());
+        }
+    }
+    if let Some(msg) = json.get("message") {
+        if let Some(t) = msg.get("text").and_then(|t| t.as_str()) {
+            if !t.trim().is_empty() {
+                return Some(t.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Fetch server-side transcription for a voice message id.
+async fn fetch_transcription(message_id: &str) -> Result<Option<String>, String> {
+    if message_id.trim().is_empty() {
+        return Err("no message id".to_string());
+    }
+    let (oauth, cookie) = crate::ui::chat_view::messenger_auth_for_fetch();
+    let url = format!(
+        "{}api/get_transcription?messageId={}",
+        crate::config::API_BASE_URL,
+        urlencoding::encode(message_id)
+    );
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("http client: {e}"))?;
+    let mut req = client
+        .get(&url)
+        .header(
+            "User-Agent",
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        )
+        .header("Origin", "https://yandex.ru")
+        .header("Referer", "https://yandex.ru/chat");
+    if let Some(a) = oauth {
+        req = req.header("Authorization", a);
+    }
+    if let Some(c) = cookie {
+        req = req.header("Cookie", c);
+    }
+    let resp = req.send().await.map_err(|e| format!("fetch: {e}"))?;
+    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    if !resp.status().is_success() {
+        return Err(format!("fetch HTTP {}", resp.status()));
+    }
+    let json: serde_json::Value = resp.json().await.map_err(|e| format!("parse: {e}"))?;
+    Ok(parse_transcription_text(&json))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn transcription_parse_shapes() {
+        assert_eq!(
+            parse_transcription_text(&serde_json::json!({"text": "привет"})).as_deref(),
+            Some("привет")
+        );
+        assert_eq!(
+            parse_transcription_text(&serde_json::json!({"message": {"text": "x"}})).as_deref(),
+            Some("x")
+        );
+        assert!(parse_transcription_text(&serde_json::json!({"text": "  "})).is_none());
+        assert!(parse_transcription_text(&serde_json::json!({})).is_none());
+    }
+
+    #[test]
+    fn transcribe_button_lifecycle() {
+        crate::ui::run_gtk_test(|| {
+            // Fresh bubble without transcription offers one-tap fetch.
+            let voice = VoiceMessage::new(
+                "m1".into(),
+                "https://example.invalid/v.ogg".into(),
+                3.0,
+                vec![],
+            );
+            let player = VoiceMessagePlayer::new(voice);
+            assert!(player.transcribe_offered.get());
+            // Result hides the button; error re-offers retry.
+            player.update_transcription(false, Some("hi".into()), None);
+            assert!(!player.transcribe_offered.get());
+            player.update_transcription(false, None, Some("nope".into()));
+            // update() itself hides; the fetch flow re-shows explicitly.
+            assert!(!player.transcribe_offered.get());
+        });
     }
 }

@@ -19,14 +19,14 @@
 | Chat List | Beta | nheko-style dense list, 54px avatars, RU previews; mute/pin/archive/mark_read/delete |
 | Text Messaging | Beta | Send + reply/edit + outbox + drafts + history pagination + **delivery/read ticks** |
 | Files & Attachments | Beta | Upload→send; **Download / Open**; **DnD** files; **Ctrl+V** images |
-| Voice Messages | Stub | Hidden without `YM_ENABLE_VOICE`; playback stub |
-| Video Playback | Stub | No player |
-| Calls (Telemost) | Stub | UI shell with `YM_ENABLE_TELEMOST_UI`, no WebRTC |
+| Voice Messages | Beta | Opus/OGG recording + waveform (GStreamer), play/pause via playbin, voice-type send (no text placeholder) |
+| Video Playback | Beta | Inline chat player: play/pause, scrub, time (GStreamer) |
+| Calls (Telemost) | Beta | Live window: Goloom signaling + WebRTC (publish/subscribe), roster, in-window video, ringing; meetings REST is best-effort |
 | Desktop Notifications | Beta | `notify-rust`, respects mute + settings |
 | System Tray | Beta | StatusNotifierItem (`ksni`), close-to-tray, unread badge |
 | Settings | Beta | Notifications / tray / dark theme / reduce animations |
 | Offline Cache | Beta | SQLite (`cache.db`) upsert + JSON L2; cold-start hydrate |
-| Theme | Beta | Telegram Desktop night tokens, adaptive sidebar (~32% / max 420px) |
+| Theme | Beta | Light Yandex theme by default + dark night, switch in settings |
 
 ### Feature Flags
 
@@ -42,8 +42,9 @@ When a flag is off, the corresponding stub elements are hidden from the interfac
 ### Known Limitations
 
 - **Session cookies**: captured on WebView login; `scripts/login_browser.py` remains as fallback
-- **Voice / Telemost**: stubs, hidden without feature flags (no WebRTC)
-- **Video player**: not implemented
+- **Voice**: record/play behind `YM_ENABLE_VOICE` (needs a `gstreamer`-feature build; transcription display only, no fetching)
+- **Telemost**: live calls behind `YM_ENABLE_TELEMOST_UI` (needs a `gstreamer`-feature build + `gstreamer1.0-nice`); meetings REST and parts of SDP policy are best-effort, pending live verification
+- **Video player**: inline in chat (play/pause/scrub); needs `gstreamer`
 - **Chat actions API**: best-effort reverse-engineered RPC names
 - **WS status events**: depend on server payload; history flags best-effort
 
@@ -90,7 +91,7 @@ sudo apt install -y \
   libssl-dev libnotify-dev libdbus-1-dev libwebkitgtk-6.0-dev
 ```
 
-*Note: For voice recording support, it is recommended to install GStreamer packages (`libgstreamer1.0-dev`, `libgstreamer-plugins-base1.0-dev`).*
+*Note: For voice recording support, it is recommended to install GStreamer packages (`libgstreamer1.0-dev`, `libgstreamer-plugins-base1.0-dev`). Calls (the `gstreamer` feature: `webrtcbin`) additionally require the ICE plugin `gstreamer1.0-nice` — without it webrtcbin creates no transports and `! webrtc.` linking fails.*
 
 ---
 

@@ -48,11 +48,33 @@ impl ImageViewer {
     }
 
     pub fn show(&self, url: &str, filename: &str) {
-        self.image.set_from_file(Some(url));
         *self.zoom_level.borrow_mut() = 1.0;
         *self.closed.borrow_mut() = false;
         *self.current_url.borrow_mut() = url.to_string();
         *self.current_filename.borrow_mut() = filename.to_string();
+        // Placeholder until bytes arrive. NOTE: gtk Image::set_from_file
+        // cannot fetch remote URLs (that path rendered as a red
+        // "broken image" icon) — download with messenger auth instead.
+        self.image
+            .set_from_icon_name(Some("image-x-generic-symbolic"));
+        self.image.set_pixel_size(96);
+        let img = self.image.clone();
+        let url_owned = url.to_string();
+        glib::spawn_future_local(async move {
+            match fetch_viewer_bytes(&url_owned).await {
+                Ok(bytes) => {
+                    if let Err(e) = set_viewer_bytes(&img, &bytes) {
+                        log::warn!("Image viewer decode failed: {}", e);
+                        img.set_from_icon_name(Some("image-missing-symbolic"));
+                    }
+                }
+                Err(e) => {
+                    log::warn!("Image viewer download failed: {}", e);
+                    img.set_from_icon_name(Some("image-missing-symbolic"));
+                    img.set_tooltip_text(Some(&format!("Не загрузилось: {}", e)));
+                }
+            }
+        });
 
         // Add swipe gesture for navigation
         let swipe = gtk::GestureSwipe::new();
@@ -337,6 +359,110 @@ impl ImageViewer {
         popover.set_child(Some(&box_));
         popover
     }
+}
+
+/// Viewer download cap (full-res view, but no multi-100MB surprises).
+const VIEWER_DOWNLOAD_MAX_BYTES: usize = 40 * 1024 * 1024;
+/// Downscale side for gigantic images so the viewer never OOMs.
+const VIEWER_MAX_SIDE: i32 = 2048;
+
+/// URL fallback variants: both file hosts (net/ru).
+fn viewer_url_variants(url: &str) -> Vec<String> {
+    let mut out = vec![url.to_string()];
+    const HOSTS: [&str; 2] = [
+        crate::config::FILE_PUBLIC_HOST,
+        crate::config::FILE_PRIVATE_HOST,
+    ];
+    for host in HOSTS {
+        let host = host.trim_end_matches('/');
+        if url.starts_with(host) {
+            for other in HOSTS {
+                let other = other.trim_end_matches('/');
+                if other != host {
+                    out.push(url.replacen(host, other, 1));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Download image bytes with messenger auth (OAuth + session cookies).
+async fn fetch_viewer_bytes(url: &str) -> Result<Vec<u8>, String> {
+    if url.starts_with("file:") {
+        if let Ok((path, _)) = glib::filename_from_uri(url) {
+            let bytes =
+                std::fs::read(&path).map_err(|e| format!("local read: {}", e))?;
+            if bytes.is_empty() {
+                return Err("empty local file".into());
+            }
+            return Ok(bytes);
+        }
+    }
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return Err("unsupported url".into());
+    }
+    let (oauth, cookie) = crate::ui::chat_view::messenger_auth_for_fetch();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(20))
+        .build()
+        .map_err(|e| format!("client: {}", e))?;
+    let mut last_err = String::from("no candidates");
+    for u in viewer_url_variants(url) {
+        let mut req = client
+            .get(&u)
+            .header(
+                "User-Agent",
+                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            )
+            .header("Origin", "https://yandex.ru")
+            .header("Referer", "https://yandex.ru/chat");
+        if let Some(ref a) = oauth {
+            req = req.header("Authorization", a);
+        }
+        if let Some(ref c) = cookie {
+            req = req.header("Cookie", c);
+        }
+        match req.send().await {
+            Ok(resp) if resp.status().is_success() => match resp.bytes().await {
+                Ok(b) if !b.is_empty() && b.len() <= VIEWER_DOWNLOAD_MAX_BYTES => {
+                    return Ok(b.to_vec())
+                }
+                Ok(b) => last_err = format!("bad body ({} bytes)", b.len()),
+                Err(e) => last_err = format!("body: {}", e),
+            },
+            Ok(resp) => last_err = format!("HTTP {}", resp.status()),
+            Err(e) => last_err = format!("fetch: {}", e),
+        }
+    }
+    Err(last_err)
+}
+
+/// Decode bytes into the viewer widget (downscaling huge images).
+fn set_viewer_bytes(img: &gtk::Image, bytes: &[u8]) -> Result<(), String> {
+    let loader = gtk::gdk_pixbuf::PixbufLoader::new();
+    loader
+        .write(bytes)
+        .map_err(|e| format!("pixbuf write: {}", e))?;
+    loader.close().map_err(|e| format!("pixbuf close: {}", e))?;
+    let pixbuf = loader
+        .pixbuf()
+        .ok_or_else(|| "pixbuf loader empty".to_string())?;
+    let (w, h) = (pixbuf.width(), pixbuf.height());
+    let shown = if w > VIEWER_MAX_SIDE || h > VIEWER_MAX_SIDE {
+        let scale = (VIEWER_MAX_SIDE as f64 / w.max(h) as f64).min(1.0);
+        let nw = ((w as f64) * scale).round().max(1.0) as i32;
+        let nh = ((h as f64) * scale).round().max(1.0) as i32;
+        pixbuf
+            .scale_simple(nw, nh, gtk::gdk_pixbuf::InterpType::Bilinear)
+            .unwrap_or(pixbuf)
+    } else {
+        pixbuf
+    };
+    img.set_pixel_size(-1);
+    img.set_from_pixbuf(Some(&shown));
+    img.set_tooltip_text(None);
+    Ok(())
 }
 
 impl Clone for ImageViewer {

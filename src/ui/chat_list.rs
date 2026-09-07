@@ -3,7 +3,6 @@
 use gtk::glib;
 use gtk::prelude::ListModelExt;
 use gtk::prelude::*;
-use gtk::CssProvider;
 use gtk::{
     Box as GtkBox, Button, Entry, Label, Orientation, Popover, ScrolledWindow, Separator,
     SingleSelection, StringList,
@@ -167,8 +166,6 @@ impl ChatListPanel {
     }
 
     pub fn new(auth: Arc<AuthManager>) -> Self {
-        Self::apply_css();
-
         let chats: Arc<Mutex<Vec<Chat>>> = Arc::new(Mutex::new(Vec::new()));
         let visible: Arc<Mutex<Vec<usize>>> = Arc::new(Mutex::new(Vec::new()));
 
@@ -1320,107 +1317,6 @@ impl ChatListPanel {
             .find(|c| c.id == chat_id)
             .map(|c| c.muted)
             .unwrap_or(false)
-    }
-
-    fn apply_css() {
-        let provider = CssProvider::new();
-        let css = r#"
-            .avatar-label {
-                font-weight: 700;
-                font-size: 14px;
-                color: #ffffff;
-            }
-            .chat-type-icon {
-                font-size: 14px;
-                color: #6b7280;
-                padding: 0 4px;
-            }
-            .online-dot {
-                min-width: 10px;
-                min-height: 10px;
-                background: #22c55e;
-                border: 2px solid #ffffff;
-                border-radius: 50%;
-                box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.2);
-            }
-            .away-dot {
-                min-width: 10px;
-                min-height: 10px;
-                background: #f59e0b;
-                border: 2px solid #ffffff;
-                border-radius: 50%;
-            }
-            .offline-dot {
-                min-width: 10px;
-                min-height: 10px;
-                background: #9ca3af;
-                border: 2px solid #ffffff;
-                border-radius: 50%;
-            }
-            .pinned-indicator {
-                font-size: 11px;
-                color: #6b7280;
-                padding: 0 4px;
-            }
-            .skeleton {
-                background: linear-gradient(90deg, #e8ebef 25%, #f0f2f5 50%, #e8ebef 75%);
-                background-size: 200% 100%;
-                animation: skeleton-loading 1.5s ease-in-out infinite;
-                border-radius: 8px;
-            }
-            .skeleton-row {
-                min-height: 60px;
-                margin: 4px 6px;
-            }
-            .skeleton-title {
-                min-height: 14px;
-                min-width: 60px;
-                margin-top: 8px;
-                border-radius: 4px;
-            }
-            .skeleton-preview {
-                min-height: 10px;
-                min-width: 80px;
-                margin-top: 6px;
-                border-radius: 4px;
-            }
-            @keyframes skeleton-loading {
-                0% { background-position: 200% 0; }
-                100% { background-position: -200% 0; }
-            }
-
-            /* ── ListView row hover ── */
-            .chat-row:hover {
-                background-color: @bg_hover;
-            }
-            .chat-row:active {
-                background-color: @bg_active;
-            }
-            .chat-row:selected {
-                background-color: @bg_selected;
-            }
-
-            /* ── Empty state ── */
-            .empty-state {
-                padding: 24px;
-            }
-            .empty-state-icon {
-                color: @text_tertiary;
-            }
-
-            /* ── Bot chat styles ── */
-            .bot-avatar {
-                background: linear-gradient(135deg, #6366F1, #8B5CF6);
-            }
-        "#;
-        if let Some(display) = gtk::gdk::Display::default() {
-            provider.load_from_string(css);
-            gtk::style_context_add_provider_for_display(
-                &display,
-                &provider,
-                gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
-            );
-        }
     }
 
     pub fn load_chats(&mut self, _auth: &Arc<AuthManager>) {

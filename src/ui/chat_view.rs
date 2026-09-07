@@ -106,6 +106,8 @@ pub struct ChatView {
     in_recording_mode: Mutex<bool>,
     /// Callback for saving a message to favorites
     on_save: Arc<Mutex<Option<Box<dyn Fn(String, String, Option<String>) + Send>>>>,
+    /// Server-side delete after the undo window: (chat_id, message_id)
+    on_delete: Arc<Mutex<Option<StdBox<dyn Fn(String, String)>>>>,
     undo_bar: GtkBox,
     undo_label: Label,
     undo_btn: Button,
@@ -138,12 +140,14 @@ pub struct ChatView {
     on_schedule: Arc<Mutex<Option<StdBox<dyn Fn(String, String, chrono::DateTime<chrono::Utc>)>>>>,
     /// Callback for canceling a scheduled message
     on_cancel_schedule: Arc<Mutex<Option<StdBox<dyn Fn(String, String)>>>>,
-    /// Load older history: (chat_id, oldest_message_id)
-    on_load_older: Arc<Mutex<Option<StdBox<dyn Fn(String, String)>>>>,
+    /// Load older history: (chat_id, oldest_message_id, server cursor)
+    on_load_older: Arc<Mutex<Option<StdBox<dyn Fn(String, String, Option<String>)>>>>,
     /// Prevent concurrent pagination requests
     loading_older: Mutex<bool>,
     /// Whether more history may exist above
     has_more_history: Mutex<bool>,
+    /// Server pagination cursor for the next older page (None = use oldest id)
+    pagination_cursor: Mutex<Option<String>>,
     /// Top bar: spinner while loading older messages
     pagination_bar: GtkBox,
     /// Stick viewport to newest messages after open / append (async layout-safe).
@@ -155,6 +159,7 @@ impl ChatView {
         let container = GtkBox::new(Orientation::Vertical, 0);
         container.set_hexpand(true);
         container.set_vexpand(true);
+        container.add_css_class("chat-view");
 
         // Header bar
         let (header, title_label, status_label, search_btn, call_btn, menu_btn) =
@@ -502,6 +507,7 @@ impl ChatView {
             pinned_label,
             pinned_message_id,
             on_save: Arc::new(Mutex::new(None)),
+            on_delete: Arc::new(Mutex::new(None)),
             bot_panel: Mutex::new(None),
             bot_info: Mutex::new(None),
             scheduled_messages: Mutex::new(Vec::new()),
@@ -517,6 +523,7 @@ impl ChatView {
             on_load_older: Arc::new(Mutex::new(None)),
             loading_older: Mutex::new(false),
             has_more_history: Mutex::new(true),
+            pagination_cursor: Mutex::new(None),
             pagination_bar,
             stick_to_bottom: Mutex::new(false),
         };
@@ -668,13 +675,14 @@ impl ChatView {
                             voice_btn_clone2.add_css_class("recording-active");
                             log::info!("Started voice recording");
 
-                            // Simulate input for testing without actual mic
+                            // Drain encoder + waveform tap like a meter
+                            // (works with a real mic; silent without gstreamer).
                             let rec_clone = rec.clone();
                             glib::timeout_add_local(
                                 std::time::Duration::from_millis(100),
                                 move || {
                                     if rec_clone.is_recording() {
-                                        rec_clone.simulate_input(16000);
+                                        rec_clone.pump();
                                         glib::ControlFlow::Continue
                                     } else {
                                         glib::ControlFlow::Break
@@ -817,6 +825,18 @@ impl ChatView {
             if !msg.reactions.is_empty() {
                 existing.reactions = msg.reactions.clone();
                 need_rerender = true;
+            }
+            // Edited text arriving under the same payload id (edit echo).
+            if let Some(ref t) = msg.text {
+                if !t.trim().is_empty()
+                    && existing.text.as_ref() != Some(t)
+                    && existing.type_ == msg.type_
+                {
+                    existing.text = Some(t.clone());
+                    existing.edited = true;
+                    existing.edited_at = Some(chrono::Utc::now());
+                    need_rerender = true;
+                }
             }
             if msg.read && !existing.read {
                 existing.read = true;
@@ -1645,6 +1665,59 @@ impl ChatView {
         *self.on_save.lock().unwrap() = Some(StdBox::new(callback));
     }
 
+    /// Register server-side delete callback (chat_id, message_id).
+    /// Fired when the undo window expires without undo.
+    pub fn on_delete(&self, callback: impl Fn(String, String) + 'static) {
+        *self.on_delete.lock().unwrap() = Some(StdBox::new(callback));
+    }
+
+    /// Remove a message from the list (after confirmed server delete).
+    /// Splices just that row — no scroll jump.
+    pub fn remove_message(&self, message_id: &str) {
+        {
+            let mut messages = self.messages.lock().unwrap();
+            let before = messages.len();
+            messages.retain(|m| {
+                m.id != message_id && m.message_id.as_deref() != Some(message_id)
+            });
+            if messages.len() == before {
+                return;
+            }
+        }
+        let store = &self.messages_store;
+        let n = store.n_items();
+        let mut pos = None;
+        for i in 0..n {
+            if let Some(obj) = store
+                .item(i)
+                .and_then(|o| o.downcast::<crate::ui::message_object::MessageObject>().ok())
+            {
+                let m = obj.message();
+                if m.id == message_id || m.message_id.as_deref() == Some(message_id) {
+                    pos = Some(i);
+                    break;
+                }
+            }
+        }
+        if let Some(p) = pos {
+            store.remove(p);
+        }
+        self.message_rows.lock().unwrap().clear();
+        self.undo_bar.set_visible(false);
+        *self.pending_delete_msg_id.lock().unwrap() = None;
+        *self.pending_delete_row.lock().unwrap() = None;
+    }
+
+    /// Restore a pending-delete row (server delete failed).
+    pub fn cancel_pending_delete(&self) {
+        self.undo_bar.set_visible(false);
+        if let Some(row) = self.pending_delete_row.lock().unwrap().as_ref() {
+            row.set_visible(true);
+        }
+        *self.pending_delete_msg_id.lock().unwrap() = None;
+        *self.pending_delete_row.lock().unwrap() = None;
+    }
+
     /// Callback for inline button clicks
     pub fn on_inline_button_click(&self, callback: impl Fn(String, String) + Send + 'static) {
         *self.on_inline_click.lock().unwrap() = Some(StdBox::new(callback));
@@ -1672,6 +1745,7 @@ impl ChatView {
             self.message_rows.lock().unwrap().clear();
             *self.has_more_history.lock().unwrap() = true;
             *self.loading_older.lock().unwrap() = false;
+            *self.pagination_cursor.lock().unwrap() = None;
             // Next history load must land on the newest messages
             *self.stick_to_bottom.lock().unwrap() = true;
         }
@@ -1880,8 +1954,10 @@ impl ChatView {
         }
 
         self.message_rows.lock().unwrap().clear();
-        // Assume more history if we got a full page
-        *self.has_more_history.lock().unwrap() = messages.len() >= 40;
+        // Fresh page invalidates the older-pages cursor; assume more
+        // history if we got a full first page (initial page size = 100).
+        *self.pagination_cursor.lock().unwrap() = None;
+        *self.has_more_history.lock().unwrap() = messages.len() >= 100;
         *self.loading_older.lock().unwrap() = false;
         *self.messages.lock().unwrap() = messages.clone();
         if messages.is_empty() {
@@ -1906,11 +1982,17 @@ impl ChatView {
     }
 
     /// Prepend older messages (pagination) while trying to keep scroll position.
-    pub fn prepend_messages(&self, older: Vec<Message>) {
+    /// `next_cursor` is the server cursor for the following older page;
+    /// `None` means the server reported the end of history.
+    pub fn prepend_messages(&self, older: Vec<Message>, next_cursor: Option<String>) {
         // Pagination is upward history — do not force bottom
         *self.stick_to_bottom.lock().unwrap() = false;
+        *self.pagination_cursor.lock().unwrap() = next_cursor.clone();
         if older.is_empty() {
-            *self.has_more_history.lock().unwrap() = false;
+            // Empty page ends history only when the server also gives no cursor.
+            if next_cursor.is_none() {
+                *self.has_more_history.lock().unwrap() = false;
+            }
             self.set_pagination_loading(false);
             return;
         }
@@ -1928,11 +2010,18 @@ impl ChatView {
                 .filter(|m| !existing_ids.contains(&m.id))
                 .collect();
             if filtered.is_empty() {
-                *self.has_more_history.lock().unwrap() = false;
+                // All fetched messages are duplicates — keep paging only if
+                // the server explicitly gave us a cursor for the next page.
+                if next_cursor.is_none() {
+                    *self.has_more_history.lock().unwrap() = false;
+                }
                 self.set_pagination_loading(false);
                 return;
             }
-            *self.has_more_history.lock().unwrap() = filtered.len() >= 20;
+            // More history exists when the server hands us a cursor,
+            // or when we got a full page (page size = 100).
+            *self.has_more_history.lock().unwrap() =
+                next_cursor.is_some() || filtered.len() >= 100;
             filtered.append(&mut *messages);
             filtered.sort_by(|a, b| a.created.cmp(&b.created));
             let mut seen = std::collections::HashSet::new();
@@ -1956,7 +2045,7 @@ impl ChatView {
         self.set_pagination_loading(false);
     }
 
-    pub fn on_load_older(&self, callback: impl Fn(String, String) + 'static) {
+    pub fn on_load_older(&self, callback: impl Fn(String, String, Option<String>) + 'static) {
         *self.on_load_older.lock().unwrap() = Some(StdBox::new(callback));
     }
 
@@ -2071,10 +2160,11 @@ impl ChatView {
             let Some(oldest_id) = oldest_id else {
                 return;
             };
+            let cursor = this.pagination_cursor.lock().unwrap().clone();
             *this.loading_older.lock().unwrap() = true;
             this.set_pagination_loading(true);
             if let Some(ref cb) = *this.on_load_older.lock().unwrap() {
-                cb(chat_id, oldest_id);
+                cb(chat_id, oldest_id, cursor);
             } else {
                 this.set_pagination_loading(false);
             }
@@ -2741,10 +2831,13 @@ impl ChatView {
         let pinned_id_outer = self.pinned_message_id.clone();
         let on_thread_open_outer = self.on_thread_open.clone();
         let on_save_outer = self.on_save.clone();
+        let on_delete_outer = self.on_delete.clone();
 
         let view_for_menu = self.clone();
         let bubble_for_menu = bubble.clone();
-        let bubble_clone = Arc::downgrade(&Arc::new(bubble.clone()));
+        // Proper weak widget ref: the temporary-Arc downgrade used before
+        // always failed, leaving the popover parentless (menu never shown).
+        let bubble_weak = bubble.downgrade();
         right_click_gesture.connect_pressed(move |gesture, _n_press, x, y| {
             let _ = gesture;
             let _ = x;
@@ -2754,9 +2847,10 @@ impl ChatView {
                 .has_arrow(false)
                 .autohide(true)
                 .build();
-            if let Some(bubble_strong) = bubble_clone.upgrade() {
-                popover.set_parent(bubble_strong.as_ref());
-            }
+            let Some(bubble_strong): Option<GtkBox> = bubble_weak.upgrade() else {
+                return;
+            };
+            popover.set_parent(&bubble_strong);
 
             let vbox = gtk::Box::new(gtk::Orientation::Vertical, 2);
             vbox.add_css_class("message-context-menu");
@@ -2806,7 +2900,7 @@ impl ChatView {
             vbox.append(&btn_thread_reply);
 
             if is_sent_msg {
-                let btn_edit = gtk::Button::with_label("Изменить");
+                let btn_edit = gtk::Button::with_label("Редактировать");
                 let msg_id_edit = msg_clone2.id.clone();
                 let msg_text_edit = msg_clone2.text.clone().unwrap_or_default();
                 let popover_clone_edit = popover.clone();
@@ -2885,6 +2979,8 @@ impl ChatView {
 
             let btn_delete = gtk::Button::with_label("Удалить");
             let msg_id_del = msg_clone2.id.clone();
+            let chat_id_del = msg_clone2.chat_id.clone();
+            let on_delete_del = on_delete_outer.clone();
             let popover_clone3 = popover.clone();
             let undo_bar_del = undo_bar_del_outer.clone();
             let pending_msg_del = pending_msg_del_outer.clone();
@@ -2903,23 +2999,58 @@ impl ChatView {
                 *pending_row_del.lock().unwrap() = Some(row_del.clone());
 
                 let msg_id_timeout = msg_id_del.clone();
+                let chat_id_timeout = chat_id_del.clone();
                 let undo_bar_timeout = undo_bar_del.clone();
                 let pending_msg_timeout = pending_msg_del.clone();
                 let pending_row_timeout = pending_row_del.clone();
+                let on_delete_timeout = on_delete_del.clone();
 
                 glib::timeout_add_local_once(std::time::Duration::from_secs(5), move || {
                     let current_pending = pending_msg_timeout.lock().unwrap().clone();
                     if current_pending.as_ref() == Some(&msg_id_timeout) {
-                        // 5 seconds passed and still pending
+                        // Undo window expired — confirm server-side delete.
                         undo_bar_timeout.set_visible(false);
                         *pending_msg_timeout.lock().unwrap() = None;
                         *pending_row_timeout.lock().unwrap() = None;
-                        log::info!("Message {} permanently deleted", msg_id_timeout);
+                        log::info!("Message {} delete confirmed", msg_id_timeout);
+                        if let Some(cb) = on_delete_timeout.lock().unwrap().as_ref() {
+                            cb(chat_id_timeout.clone(), msg_id_timeout.clone());
+                        }
                     }
                 });
 
                 popover_clone3.popdown();
             });
+
+            // Debug helper for broken attachments: copy media ids/urls +
+            // resolved download candidates to the clipboard.
+            if !msg_clone2.media.is_empty() {
+                let btn_urls = gtk::Button::with_label("🔗 URL вложения");
+                let media_dump = msg_clone2.media.clone();
+                let popover_clone_urls = popover.clone();
+                btn_urls.connect_clicked(move |_| {
+                    let mut lines = Vec::new();
+                    for m in &media_dump {
+                        lines.push(format!(
+                            "[{:?}] id={} url={} file={}",
+                            m.type_,
+                            m.id,
+                            m.url,
+                            m.filename.clone().unwrap_or_default()
+                        ));
+                        for cand in candidate_image_urls(&m.url, Some(&m.id)) {
+                            lines.push(format!("  -> {}", cand));
+                        }
+                    }
+                    let dump = lines.join("\n");
+                    log::info!("Attachment URLs:\n{}", dump);
+                    if let Some(display) = gtk::gdk::Display::default() {
+                        display.clipboard().set_text(&dump);
+                    }
+                    popover_clone_urls.popdown();
+                });
+                vbox.append(&btn_urls);
+            }
 
             vbox.append(&btn_copy);
             vbox.append(&btn_forward);
@@ -3057,11 +3188,16 @@ impl ChatView {
                 });
                 video_box.add_controller(hover_out);
 
-                // Click to open video viewer
+                // Click swaps the preview for a real inline player.
                 let gesture = gtk::GestureClick::new();
+                let video_box_player = video_box.clone();
                 gesture.connect_pressed(move |_gesture, _n_press, _x, _y| {
-                    log::info!("Opening video: {}", url);
-                    // TODO: Open video player
+                    while let Some(child) = video_box_player.first_child() {
+                        video_box_player.remove(&child);
+                    }
+                    let player = crate::ui::video_player::VideoPlayer::new();
+                    video_box_player.append(player.container());
+                    player.open_url(&url);
                 });
                 video_box.add_controller(gesture);
 
@@ -3131,6 +3267,7 @@ impl ChatView {
                 filename: Some(name),
                 mime_type: None,
                 waveform: None,
+                transcription: None,
             };
             bubble.append(&self.build_file_attachment_row(&fake));
         }
@@ -3144,13 +3281,18 @@ impl ChatView {
             {
                 let duration = voice_media.duration.unwrap_or(0) as f64;
                 let waveform = voice_media.waveform.clone().unwrap_or_default();
+                // Server-side recognition arrives with the attachment.
+                let transcribed = voice_media
+                    .transcription
+                    .clone()
+                    .filter(|t| !t.trim().is_empty());
 
                 let voice_msg = crate::models::VoiceMessage {
                     message_id: msg.id.clone(),
                     url: voice_media.url.clone(),
                     duration,
                     waveform,
-                    transcribed_text: None, // Could be parsed if available
+                    transcribed_text: transcribed,
                     is_transcribing: false,
                     transcribe_error: None,
                 };
@@ -3204,22 +3346,42 @@ impl ChatView {
                 bubble.add_css_class("bubble-emoji-only");
             }
 
-            // max_width_chars prevents GtkBox height-for-width CRITICAL:
-            // "minimum width of N, but minimum width for height of 1048576 is M"
-            let label = Label::builder()
-                .label(&display_text)
-                .use_markup(true)
-                .wrap(true)
-                .wrap_mode(gtk::pango::WrapMode::WordChar)
-                .max_width_chars(if is_emoji { 16 } else { 42 })
-                .width_chars(1)
-                .xalign(0.0)
-                .hexpand(false)
-                .css_classes(vec!["message-text".to_string()])
-                .build();
-            label.set_natural_wrap_mode(gtk::NaturalWrapMode::None);
+            // Pure visual messages (photo/video/voice with no text) already
+            // render their own preview/player above — a redundant "📷 Фото"
+            // text label underneath only confuses. Captions still show.
+            let text_empty = msg
+                .text
+                .as_ref()
+                .map(|t| t.trim().is_empty())
+                .unwrap_or(true);
+            let has_visual = msg.media.iter().any(|m| {
+                matches!(
+                    m.type_,
+                    crate::models::MediaType::Image
+                        | crate::models::MediaType::Video
+                        | crate::models::MediaType::Voice
+                )
+            });
+            if text_empty && has_visual {
+                bubble.add_css_class("bubble-media-only");
+            } else {
+                // max_width_chars prevents GtkBox height-for-width CRITICAL:
+                // "minimum width of N, but minimum width for height of 1048576 is M"
+                let label = Label::builder()
+                    .label(&display_text)
+                    .use_markup(true)
+                    .wrap(true)
+                    .wrap_mode(gtk::pango::WrapMode::WordChar)
+                    .max_width_chars(if is_emoji { 16 } else { 42 })
+                    .width_chars(1)
+                    .xalign(0.0)
+                    .hexpand(false)
+                    .css_classes(vec!["message-text".to_string()])
+                    .build();
+                label.set_natural_wrap_mode(gtk::NaturalWrapMode::None);
 
-            bubble.append(&label);
+                bubble.append(&label);
+            }
         }
 
         // Bot badge indicator
@@ -3791,7 +3953,7 @@ const INLINE_PREVIEW_MAX_SIDE: u32 = 480;
 const INLINE_DOWNLOAD_MAX_BYTES: usize = 25 * 1024 * 1024;
 
 /// Load OAuth + session cookies for files.messenger downloads (sync, cheap).
-fn messenger_auth_for_fetch() -> (Option<String>, Option<String>) {
+pub(crate) fn messenger_auth_for_fetch() -> (Option<String>, Option<String>) {
     let mut oauth = None;
     let mut cookie = None;
     if let Some(dir) = dirs::config_dir() {
@@ -3894,6 +4056,7 @@ fn candidate_image_urls(url: &str, file_id: Option<&str>) -> Vec<String> {
             // Some CDNs want stripped `file/` prefix
             if let Some(rest) = id.strip_prefix("file/") {
                 push_unique(&mut out, format!("{}/file_shortterm/{}", host, rest));
+                push_unique(&mut out, format!("{}/{}", host, rest));
             }
         }
     }
@@ -4265,3 +4428,4 @@ fn format_date_separator(dt: &chrono::DateTime<chrono::Utc>) -> String {
         format!("{} {} {}", local_dt.day(), month_name, local_dt.year())
     }
 }
+

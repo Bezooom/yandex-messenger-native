@@ -1,0 +1,110 @@
+/* ============================================================
+   Yandex Messenger — Telegram Desktop–inspired layout & tokens
+   Source of truth (palette keys):
+     telegramdesktop/tdesktop → night.tdesktop-theme / colors.tdesktop-theme
+   Layout patterns:
+     Nheko-Reborn/nheko → ChatPage.qml SplitView + RoomList.qml row geometry
+   Brand yellow kept only for app identity (icon / rare accents).
+   ============================================================ */
+
+/* ==========================================================
+   Color Palette — mapped from TG night.tdesktop-theme
+   ========================================================== */
+
+/* Brand (Yandex identity, not primary chrome) */
+@define-color brand_yellow         #ffcc00;
+@define-color brand_yellow_hover   #ffd633;
+@define-color brand_yellow_active  #e6b800;
+@define-color brand_yellow_fg      #17212b;
+
+/* windowBg / windowFg */
+@define-color bg_root              #17212b;
+@define-color bg_sidebar           #17212b; /* dialogs share windowBg in night */
+@define-color bg_chat              #0e1621; /* classic TG chat canvas (slightly deeper) */
+@define-color bg_header            #17212b; /* topBarBg */
+@define-color bg_hover             #202b36; /* dialogsBgOver */
+@define-color bg_selected          #2b5278; /* dialogsBgActive — solid, not tint */
+@define-color bg_active            #232e3c; /* windowBgOver */
+@define-color bg_composer          #242f3d; /* filterInputInactiveBg / compose field */
+@define-color bg_elevated          #242f3d;
+@define-color bg_list_sep          rgba(255, 255, 255, 0.04);
+
+@define-color border_color         #232f39; /* menuSeparatorFg */
+@define-color border_light         #2c3847;
+@define-color border_faint         rgba(255, 255, 255, 0.03);
+@define-color border_active        #2f6ea5; /* activeButtonBg */
+
+@define-color text_primary         #f5f5f5; /* windowFg / dialogsNameFg */
+@define-color text_secondary       #7f91a4; /* dialogsTextFg */
+@define-color text_tertiary        #708499; /* windowSubTextFg */
+@define-color text_muted           #6d7f8f; /* msgInDateFg */
+@define-color text_dim             #576673;
+@define-color text_on_brand        #17212b; /* dark on brand yellow */
+@define-color text_on_selected     #ffffff;
+@define-color text_date            #8696a8; /* dialogsDateFg */
+@define-color text_link            #70baf5; /* historyLinkInFg */
+@define-color text_accent          #6ab3f3; /* windowActiveTextFg */
+
+/* Bubbles — msgInBg / msgOutBg */
+@define-color bubble_received      #182533;
+@define-color bubble_sent          #2b5278;
+@define-color bubble_sent_hover    #315a80;
+@define-color bubble_received_hover #1c2b3a;
+@define-color tick_read            #72bcfd; /* dialogsSentIconFg */
+@define-color tick_delivered       #72bcfd;
+@define-color tick_pending         #647d96; /* dialogsSendingIconFg */
+
+@define-color status_online        #4fae4e;
+@define-color status_away          #fcbe05;
+@define-color status_offline       #708499;
+@define-color status_dnd           #ff525d;
+
+/* activeButtonBg */
+@define-color accent_blue          #2f6ea5;
+@define-color accent_blue_hover    #3476ab;
+@define-color accent_red           #e92539;
+@define-color accent_green         #4fae4e;
+@define-color danger               #e92539;
+@define-color warning              #fcbe05;
+@define-color unread_bg            #4082bc; /* dialogsUnreadBg */
+@define-color unread_muted_bg      #3e546a; /* dialogsUnreadBgMuted */
+@define-color service_bg           #213040; /* msgServiceBg (approx, no alpha in GTK) */
+
+@define-color scrollbar_track      transparent;
+@define-color scrollbar_handle     rgba(255, 255, 255, 0.28); /* scrollBarBg-ish */
+@define-color scrollbar_handle_hover rgba(255, 255, 255, 0.40);
+@define-color scrollbar_handle_active rgba(255, 255, 255, 0.50);
+
+@define-color popover_bg           #17212b; /* menuBg */
+@define-color popover_border       #232f39;
+@define-color popover_shadow       rgba(0, 0, 0, 0.45);
+
+/* Message content on bubbles (must contrast bubble_* above) */
+@define-color msg_out_text         #e4ecf2; /* historyTextOutFg */
+@define-color msg_out_subtle       #7da8d3; /* msgOutDateFg */
+@define-color msg_out_faint        rgba(255, 255, 255, 0.5);
+@define-color msg_out_medium       rgba(255, 255, 255, 0.7);
+@define-color msg_out_tick         #cce8ff;
+@define-color service_text         rgba(255, 255, 255, 0.85);
+
+/* Selected-row content */
+@define-color selected_preview     rgba(255, 255, 255, 0.78);
+@define-color selected_time        rgba(255, 255, 255, 0.72);
+@define-color unread_active_bg     #ffffff;
+@define-color unread_active_fg     #2b5278; /* dialogsUnreadFgActive */
+
+/* Surfaces */
+@define-color avatar_bg            #2A2A2E;
+@define-color avatar_text          #ffffff;
+@define-color hover_fill           #2a3645;
+@define-color input_fill           rgba(255, 255, 255, 0.03);
+@define-color input_fill_hover     rgba(255, 255, 255, 0.05);
+@define-color input_hover_border   rgba(255, 255, 255, 0.15);
+@define-color field_border         transparent;
+@define-color icon_dim             rgba(255, 255, 255, 0.5);
+@define-color switch_track         rgba(255, 255, 255, 0.15);
+@define-color surface_overlay      rgba(255, 255, 255, 0.06);
+@define-color hover_overlay        rgba(255, 255, 255, 0.1);
+@define-color divider              rgba(255, 255, 255, 0.06);
+@define-color unread_fg            #ffffff;
+

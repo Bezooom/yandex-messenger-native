@@ -69,8 +69,6 @@ pub struct SavedPanel {
 
 impl SavedPanel {
     pub fn new(_auth: Arc<AuthManager>) -> Self {
-        Self::apply_css();
-
         let messages: Rc<RefCell<Vec<SavedMessage>>> = Rc::new(RefCell::new(Vec::new()));
         let current_filter = Rc::new(RefCell::new(SavedFilter::All));
         let back_callback: Rc<RefCell<Option<Box<dyn Fn()>>>> = Rc::new(RefCell::new(None));
@@ -462,61 +460,6 @@ impl SavedPanel {
         row.append(&date_label);
 
         row
-    }
-
-    fn apply_css() {
-        let provider = gtk::CssProvider::new();
-        let css = r#"
-            .saved-panel {
-                background: @bg_chat;
-            }
-            .saved-message-row {
-                padding: 6px 8px;
-                border-radius: 8px;
-            }
-            .saved-message-row:hover {
-                background: @bg_hover;
-            }
-            .saved-message-row:hover .saved-note {
-                color: @text_secondary;
-            }
-            .saved-type-icon {
-                color: @text_tertiary;
-            }
-            .saved-filter-bar {
-                padding: 2px 0;
-            }
-            .saved-filter-btn {
-                font-size: 12px;
-                border-radius: 6px;
-                padding: 4px 8px;
-            }
-            .saved-filter-btn.active {
-                background: @bg_selected;
-                color: @text_primary;
-            }
-            .saved-filter-btn.active image {
-                color: @brand_yellow;
-            }
-            .saved-note {
-                font-size: 11px;
-                color: @text_secondary;
-                margin-top: 2px;
-            }
-            .saved-date {
-                font-size: 10px;
-                color: @text_tertiary;
-                margin-left: 8px;
-            }
-        "#;
-        if let Some(display) = gtk::gdk::Display::default() {
-            provider.load_from_string(css);
-            gtk::style_context_add_provider_for_display(
-                &display,
-                &provider,
-                gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
-            );
-        }
     }
 
     /// Set messages from the API

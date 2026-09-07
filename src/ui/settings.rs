@@ -2,6 +2,7 @@
 
 use gtk::prelude::*;
 use gtk::{Box as GtkBox, CheckButton, Label, Orientation, Window};
+use libadwaita as adw;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::fs;
@@ -21,12 +22,57 @@ pub struct AppSettings {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            dark_theme: true,
+            // Yandex official look is light; night stays one toggle away.
+            dark_theme: false,
             notifications_enabled: true,
             minimize_to_tray: true,
             reduced_motion: false,
         }
     }
+}
+
+/// Apply a theme variant: token palette + shared structure in ONE provider
+/// (concatenated, so token order is deterministic).
+pub fn apply_theme(dark: bool) {
+    thread_local! {
+        static PROVIDER: std::cell::RefCell<Option<gtk::CssProvider>> =
+            const { std::cell::RefCell::new(None) };
+    }
+
+    let tokens = if dark {
+        include_str!("theme-tokens-night.css")
+    } else {
+        include_str!("theme-tokens-light.css")
+    };
+    let css = format!("{tokens}\n{}", include_str!("theme.css"));
+    PROVIDER.with(|cell| {
+        if cell.borrow().is_none() {
+            let p = gtk::CssProvider::new();
+            if let Some(display) = gtk::gdk::Display::default() {
+                gtk::style_context_add_provider_for_display(
+                    &display,
+                    &p,
+                    gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+                );
+            }
+            *cell.borrow_mut() = Some(p);
+        }
+        cell.borrow()
+            .as_ref()
+            .expect("theme provider")
+            .load_from_string(&css);
+    });
+    if let Some(settings) = gtk::Settings::default() {
+        settings.set_gtk_application_prefer_dark_theme(dark);
+    }
+    // Libadwaita ignores prefer-dark-theme (see runtime warning) and follows
+    // the system color-scheme instead — force ours so its base widgets
+    // (list views, sidebars,一分 dialogs) match the active palette.
+    adw::StyleManager::default().set_color_scheme(if dark {
+        adw::ColorScheme::ForceDark
+    } else {
+        adw::ColorScheme::ForceLight
+    });
 }
 
 /// Apply reduced-motion preference to the default GTK display (CSS class on root).
@@ -208,9 +254,7 @@ pub fn show_settings_window(
         dark.connect_toggled(move |btn| {
             let active = btn.is_active();
             settings.borrow_mut().dark_theme = active;
-            if let Some(disp) = gtk::Settings::default() {
-                disp.set_gtk_application_prefer_dark_theme(active);
-            }
+            apply_theme(active);
             persist();
         });
     }
@@ -259,7 +303,7 @@ mod tests {
         let store = SettingsStore::new_with_path(path.clone());
 
         let default_settings = store.load();
-        assert_eq!(default_settings.dark_theme, true);
+        assert_eq!(default_settings.dark_theme, false);
         assert_eq!(default_settings.notifications_enabled, true);
         assert_eq!(default_settings.minimize_to_tray, true);
         assert_eq!(default_settings.reduced_motion, false);
@@ -280,5 +324,185 @@ mod tests {
         assert_eq!(loaded.reduced_motion, true);
 
         let _ = fs::remove_file(&path);
+    }
+
+    fn token_names(css: &str) -> std::collections::BTreeSet<String> {
+        css.lines()
+            .filter_map(|l| {
+                let l = l.trim_start();
+                l.strip_prefix("@define-color")
+                    .map(|rest| rest.split_whitespace().next().unwrap_or("").to_string())
+            })
+            .filter(|n| !n.is_empty())
+            .collect()
+    }
+
+    fn token_values(css: &str) -> std::collections::BTreeMap<String, String> {
+        css.lines()
+            .filter_map(|l| {
+                let l = l.trim_start();
+                let rest = l.strip_prefix("@define-color")?;
+                let mut parts = rest.split_whitespace();
+                let name = parts.next()?.to_string();
+                let value: String = parts.collect::<Vec<_>>().join(" ");
+                let value = value.split(';').next()?.trim().to_string();
+                Some((name, value))
+            })
+            .collect()
+    }
+
+    /// sRGB hex → relative luminance (WCAG).
+    fn luminance(hex: &str) -> Option<f64> {
+        let hex = hex.strip_prefix('#')?;
+        if hex.len() != 6 {
+            return None;
+        }
+        let channel = |i: usize| {
+            let v = u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).ok()? as f64 / 255.0;
+            Some(if v <= 0.03928 {
+                v / 12.92
+            } else {
+                ((v + 0.055) / 1.055).powf(2.4)
+            })
+        };
+        Some(0.2126 * channel(0)? + 0.7152 * channel(1)? + 0.0722 * channel(2)?)
+    }
+
+    fn contrast(fg: &str, bg: &str) -> Option<f64> {
+        let (l1, l2) = (luminance(fg)?, luminance(bg)?);
+        let (hi, lo) = if l1 > l2 { (l1, l2) } else { (l2, l1) };
+        Some((hi + 0.05) / (lo + 0.05))
+    }
+
+    #[test]
+    fn test_default_is_light() {
+        // Yandex official look is light out of the box.
+        assert!(!AppSettings::default().dark_theme);
+    }
+
+    #[test]
+    fn test_token_files_parity() {
+        // Both palettes must define exactly the same tokens or structural
+        // CSS breaks on one variant.
+        let night = include_str!("theme-tokens-night.css");
+        let light = include_str!("theme-tokens-light.css");
+        let night_names = token_names(night);
+        let light_names = token_names(light);
+        assert!(!night_names.is_empty());
+        assert_eq!(night_names, light_names);
+        // Structural CSS must not define tokens of its own (single source).
+        let structural = include_str!("theme.css");
+        assert!(
+            token_names(structural).is_empty(),
+            "tokens belong in theme-tokens-*.css"
+        );
+        // Every @token used must be defined (at-rules like @keyframes and
+        // @media are not color tokens).
+        let at_rules = [
+            "media",
+            "import",
+            "charset",
+            "keyframes",
+            "font-face",
+            "supports",
+        ];
+        let used: std::collections::BTreeSet<String> = structural
+            .split('@')
+            .skip(1)
+            .filter_map(|s| {
+                s.split(|c: char| !(c.is_alphanumeric() || c == '_' || c == '-'))
+                    .next()
+                    .filter(|n| !n.is_empty() && !at_rules.contains(n))
+                    .map(str::to_string)
+            })
+            .collect();
+        let undefined: Vec<_> = used.difference(&night_names).collect();
+        assert!(
+            undefined.is_empty(),
+            "undefined tokens used by theme.css: {undefined:?}"
+        );
+    }
+
+    #[test]
+    fn test_apply_theme_both_variants() {
+        // Provider load must not crash on either palette (parse warnings,
+        // if any, go to the log, not the test).
+        crate::ui::run_gtk_test(|| {
+            apply_theme(true);
+            apply_theme(false);
+            // Leave the suite in the default (light) state.
+            apply_theme(AppSettings::default().dark_theme);
+        });
+    }
+
+    /// WCAG contrast of the pairs that carry message text. Catches
+    /// light-text-on-light-bubble regressions when palettes evolve.
+    /// Thresholds: 4.5 body text, 3.0 secondary/timestamps.
+    #[test]
+    fn test_no_invalid_gtk_properties() {
+        // GtkCssProvider only warns on unknown properties (see test log),
+        // so ban the web-CSS strays structurally. Allowed: min-/max- forms.
+        let structural = include_str!("theme.css");
+        let banned = [
+            "display:",
+            "align-items:",
+            "justify-content:",
+            "flex:",
+            "flex-direction:",
+            "grid-",
+            "margin-end:",
+            "max-width:",
+            "overflow:",
+        ];
+        let mut hits = Vec::new();
+        for (i, line) in structural.lines().enumerate() {
+            let code = line.split("/*").next().unwrap_or("");
+            for prop in banned {
+                // Match `name:` at declaration start (not min-/max- prefixed).
+                let decl = code.trim_start();
+                if decl.starts_with(prop) || decl.starts_with(&format!("*{prop}")) {
+                    hits.push((i + 1, line.trim().to_string()));
+                }
+            }
+        }
+        assert!(hits.is_empty(), "non-GTK properties: {hits:?}");
+    }
+    #[test]
+    fn test_token_contrast() {
+        let palettes = [
+            ("night", include_str!("theme-tokens-night.css")),
+            ("light", include_str!("theme-tokens-light.css")),
+        ];
+        // (fg, bg, min_ratio)
+        let pairs = [
+            ("text_primary", "bg_chat", 4.5),
+            ("text_primary", "bg_sidebar", 4.5),
+            ("text_primary", "bg_composer", 4.5),
+            ("text_primary", "bubble_received", 4.5),
+            ("msg_out_text", "bubble_sent", 4.5),
+            ("unread_fg", "unread_bg", 3.0),
+            ("text_on_selected", "bg_selected", 3.0),
+            ("avatar_text", "avatar_bg", 3.0),
+            ("text_secondary", "bg_chat", 3.0),
+            ("msg_out_subtle", "bubble_sent", 3.0),
+            ("text_on_brand", "brand_yellow", 3.0),
+        ];
+        for (which, css) in palettes {
+            let values = token_values(css);
+            for (fg, bg, min) in pairs {
+                let f = values
+                    .get(fg)
+                    .unwrap_or_else(|| panic!("{which}: missing token {fg}"));
+                let b = values
+                    .get(bg)
+                    .unwrap_or_else(|| panic!("{which}: missing token {bg}"));
+                let ratio = contrast(f, b)
+                    .unwrap_or_else(|| panic!("{which}: non-hex pair {fg}={f} on {bg}={b}"));
+                assert!(
+                    ratio >= min,
+                    "{which}: {fg} on {bg} = {ratio:.2} (need {min})"
+                );
+            }
+        }
     }
 }

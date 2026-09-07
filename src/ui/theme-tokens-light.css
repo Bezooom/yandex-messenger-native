@@ -1,0 +1,101 @@
+/* ============================================================
+   Yandex Messenger — light (official) palette
+   Same token names as theme-tokens-night.css — structural theme.css
+   works unchanged. Values follow messenger.yandex.ru / Yandex Blue.
+   ============================================================ */
+
+/* Brand (Yandex identity) */
+@define-color brand_yellow         #ffcc00;
+@define-color brand_yellow_hover   #ffd633;
+@define-color brand_yellow_active  #e6b800;
+@define-color brand_yellow_fg      #1a1b22;
+
+/* windowBg / windowFg */
+@define-color bg_root              #ffffff;
+@define-color bg_sidebar           #ffffff;
+@define-color bg_chat              #ffffff; /* light canvas behind bubbles */
+@define-color bg_header            #ffffff;
+@define-color bg_hover             #f2f4f7;
+@define-color bg_selected          #d7e8ff; /* selected row: light blue */
+@define-color bg_active            #e4e9ef;
+@define-color bg_composer          #ffffff;
+@define-color bg_elevated          #ffffff;
+@define-color bg_list_sep          rgba(0, 0, 0, 0.06);
+
+@define-color border_color         #e0e3e8;
+@define-color border_light         #d0d5db;
+@define-color border_faint         rgba(0, 0, 0, 0.05);
+@define-color border_active        #0077ff;
+
+@define-color text_primary         #1a1b22;
+@define-color text_secondary       #5b6472;
+@define-color text_tertiary        #8a94a0;
+@define-color text_muted           #8a94a0;
+@define-color text_dim             #a7b0bb;
+@define-color text_on_brand        #1a1b22;
+@define-color text_on_selected     #0f1419;
+@define-color text_date            #8a94a0;
+@define-color text_link            #0066cc;
+@define-color text_accent          #0077ff;
+
+/* Bubbles — incoming soft light, outgoing light blue (dark text both) */
+@define-color bubble_received      #f2f4f7;
+@define-color bubble_sent          #d7e8ff;
+@define-color bubble_sent_hover    #cbdefc;
+@define-color bubble_received_hover #e9edf1;
+@define-color tick_read            #0077ff;
+@define-color tick_delivered       #0077ff;
+@define-color tick_pending         #9aa3ad;
+
+@define-color status_online        #4fae4e;
+@define-color status_away          #e8a800;
+@define-color status_offline       #9aa3ad;
+@define-color status_dnd           #e92539;
+
+/* activeButtonBg */
+@define-color accent_blue          #0077ff;
+@define-color accent_blue_hover    #0066dd;
+@define-color accent_red           #e92539;
+@define-color accent_green         #4fae4e;
+@define-color danger               #e92539;
+@define-color warning              #d99300;
+@define-color unread_bg            #0077ff;
+@define-color unread_muted_bg      #9aa3ad;
+@define-color service_bg           #dde2e8;
+@define-color scrollbar_track      transparent;
+@define-color scrollbar_handle     rgba(0, 0, 0, 0.25);
+@define-color scrollbar_handle_hover rgba(0, 0, 0, 0.35);
+@define-color scrollbar_handle_active rgba(0, 0, 0, 0.45);
+
+@define-color popover_bg           #ffffff;
+@define-color popover_border       #e0e3e8;
+@define-color popover_shadow       rgba(0, 0, 0, 0.18);
+
+/* Message content on bubbles (must contrast bubble_* above) */
+@define-color msg_out_text         #0f1419;
+@define-color msg_out_subtle       #5b7fa6;
+@define-color msg_out_faint        rgba(15, 20, 25, 0.5);
+@define-color msg_out_medium       rgba(15, 20, 25, 0.65);
+@define-color msg_out_tick         #0077ff;
+@define-color service_text         #5b6472;
+
+/* Selected-row content */
+@define-color selected_preview     rgba(15, 20, 25, 0.7);
+@define-color selected_time        rgba(15, 20, 25, 0.6);
+@define-color unread_active_bg     #0077ff;
+@define-color unread_active_fg     #ffffff;
+
+/* Surfaces */
+@define-color avatar_bg            #e2e6eb;
+@define-color avatar_text          #5b6472;
+@define-color hover_fill           rgba(0, 0, 0, 0.05);
+@define-color input_fill           #f2f4f7;
+@define-color input_fill_hover     #e9edf1;
+@define-color input_hover_border   #c4ccd4;
+@define-color field_border         #e0e3e8;
+@define-color icon_dim             rgba(15, 20, 25, 0.5);
+@define-color switch_track         rgba(0, 0, 0, 0.18);
+@define-color surface_overlay      rgba(0, 0, 0, 0.05);
+@define-color hover_overlay        rgba(0, 0, 0, 0.06);
+@define-color divider              rgba(0, 0, 0, 0.08);
+@define-color unread_fg            #ffffff;

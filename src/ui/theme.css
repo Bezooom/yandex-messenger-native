@@ -1,84 +1,3 @@
-/* ============================================================
-   Yandex Messenger — Telegram Desktop–inspired layout & tokens
-   Source of truth (palette keys):
-     telegramdesktop/tdesktop → night.tdesktop-theme / colors.tdesktop-theme
-   Layout patterns:
-     Nheko-Reborn/nheko → ChatPage.qml SplitView + RoomList.qml row geometry
-   Brand yellow kept only for app identity (icon / rare accents).
-   ============================================================ */
-
-/* ==========================================================
-   Color Palette — mapped from TG night.tdesktop-theme
-   ========================================================== */
-
-/* Brand (Yandex identity, not primary chrome) */
-@define-color brand_yellow         #ffcc00;
-@define-color brand_yellow_hover   #ffd633;
-@define-color brand_yellow_active  #e6b800;
-@define-color brand_yellow_fg      #17212b;
-
-/* windowBg / windowFg */
-@define-color bg_root              #17212b;
-@define-color bg_sidebar           #17212b; /* dialogs share windowBg in night */
-@define-color bg_chat              #0e1621; /* classic TG chat canvas (slightly deeper) */
-@define-color bg_header            #17212b; /* topBarBg */
-@define-color bg_hover             #202b36; /* dialogsBgOver */
-@define-color bg_selected          #2b5278; /* dialogsBgActive — solid, not tint */
-@define-color bg_active            #232e3c; /* windowBgOver */
-@define-color bg_composer          #242f3d; /* filterInputInactiveBg / compose field */
-@define-color bg_elevated          #242f3d;
-@define-color bg_list_sep          rgba(255, 255, 255, 0.04);
-
-@define-color border_color         #232f39; /* menuSeparatorFg */
-@define-color border_light         #2c3847;
-@define-color border_faint         rgba(255, 255, 255, 0.03);
-@define-color border_active        #2f6ea5; /* activeButtonBg */
-
-@define-color text_primary         #f5f5f5; /* windowFg / dialogsNameFg */
-@define-color text_secondary       #7f91a4; /* dialogsTextFg */
-@define-color text_tertiary        #708499; /* windowSubTextFg */
-@define-color text_muted           #6d7f8f; /* msgInDateFg */
-@define-color text_dim             #576673;
-@define-color text_on_brand        #ffffff;
-@define-color text_on_selected     #ffffff;
-@define-color text_date            #8696a8; /* dialogsDateFg */
-@define-color text_link            #70baf5; /* historyLinkInFg */
-@define-color text_accent          #6ab3f3; /* windowActiveTextFg */
-
-/* Bubbles — msgInBg / msgOutBg */
-@define-color bubble_received      #182533;
-@define-color bubble_sent          #2b5278;
-@define-color bubble_sent_hover    #315a80;
-@define-color bubble_received_hover #1c2b3a;
-@define-color tick_read            #72bcfd; /* dialogsSentIconFg */
-@define-color tick_delivered       #72bcfd;
-@define-color tick_pending         #647d96; /* dialogsSendingIconFg */
-
-@define-color status_online        #4fae4e;
-@define-color status_away          #fcbe05;
-@define-color status_offline       #708499;
-@define-color status_dnd           #ff525d;
-
-/* activeButtonBg */
-@define-color accent_blue          #2f6ea5;
-@define-color accent_blue_hover    #3476ab;
-@define-color accent_red           #e92539;
-@define-color accent_green         #4fae4e;
-@define-color danger               #e92539;
-@define-color warning              #fcbe05;
-@define-color unread_bg            #4082bc; /* dialogsUnreadBg */
-@define-color unread_muted_bg      #3e546a; /* dialogsUnreadBgMuted */
-@define-color service_bg           #213040; /* msgServiceBg (approx, no alpha in GTK) */
-
-@define-color scrollbar_track      transparent;
-@define-color scrollbar_handle     rgba(255, 255, 255, 0.28); /* scrollBarBg-ish */
-@define-color scrollbar_handle_hover rgba(255, 255, 255, 0.40);
-@define-color scrollbar_handle_active rgba(255, 255, 255, 0.50);
-
-@define-color popover_bg           #17212b; /* menuBg */
-@define-color popover_border       #232f39;
-@define-color popover_shadow       rgba(0, 0, 0, 0.45);
-
 /* ==========================================================
    Global Transitions & Typography
    ========================================================== */
@@ -279,7 +198,7 @@ button.danger:hover {
    ========================================================== */
 
 entry {
-  background-color: rgba(255, 255, 255, 0.03);
+  background-color: @input_fill;
   border: 1px solid @border_color;
   border-radius: 12px;
   padding: 10px 14px;
@@ -290,7 +209,7 @@ entry {
 
 entry:focus {
   border-color: @border_light;
-  background-color: rgba(255, 255, 255, 0.05);
+  background-color: @input_fill_hover;
   box-shadow: none;
   outline: none;
 }
@@ -309,7 +228,7 @@ entry > text {
 .search-bar {
   background-color: @bg_composer;
   border-radius: 22px;
-  border: none;
+  border: 1px solid @field_border;
   padding: 8px 14px;
   color: @text_primary;
   min-height: 36px;
@@ -318,12 +237,12 @@ entry > text {
 }
 
 .search-bar:hover {
-  background-color: #2a3645;
-  border: none;
+  background-color: @hover_fill;
+  border: 1px solid @field_border;
 }
 
 .search-bar:focus {
-  border: none;
+  border: 1px solid @border_active;
   background-color: @bg_composer;
   box-shadow: none;
   outline: none;
@@ -409,6 +328,16 @@ listview > row {
   min-width: 0;
 }
 
+/* Own the list canvas explicitly: libadwaita base widgets must never leak
+   the system color-scheme through transparent rows. */
+listview,
+listview viewport,
+.chat-list scrolledwindow,
+.chat-list viewport {
+  background-color: @bg_sidebar;
+  background-image: none;
+}
+
 /* Main split: TG-like 1px divider (not a fat handle) */
 .main-paned > separator {
   background-color: @border_color;
@@ -462,14 +391,14 @@ listview > row:hover {
  * Active: solid dialogsBgActive #2b5278, light text — not a yellow tint.
  */
 .chat-row {
-  padding: 6px 8px;
+  padding: 8px 10px;
   border-radius: 0;
   margin: 0;
   border: none;
   border-bottom: none;
   background-color: transparent;
   transition: background-color 80ms ease;
-  min-height: 56px;
+  min-height: 60px;
 }
 
 .chat-row:hover {
@@ -491,16 +420,16 @@ listview > row:hover {
 }
 
 .chat-row:selected .chat-preview {
-  color: rgba(255, 255, 255, 0.78);
+  color: @selected_preview;
 }
 
 .chat-row:selected .chat-time {
-  color: rgba(255, 255, 255, 0.72);
+  color: @selected_time;
 }
 
 .chat-row:selected .unread-badge {
-  background-color: #ffffff;
-  color: #2b5278; /* dialogsUnreadFgActive */
+  background-color: @unread_active_bg;
+  color: @unread_active_fg; /* dialogsUnreadFgActive */
 }
 
 /* ==========================================================
@@ -509,7 +438,7 @@ listview > row:hover {
 
 .avatar {
   border-radius: 50%;
-  background-color: #2A2A2E;
+  background-color: @avatar_bg;
   color: @text_primary;
   font-weight: 600;
   font-size: 16px;
@@ -519,15 +448,15 @@ listview > row:hover {
 .avatar-label {
   font-weight: 500;
   font-size: 16px;
-  color: #ffffff;
+  color: @avatar_text;
 }
 
 .avatar-icon {
-  color: #ffffff;
+  color: @avatar_text;
 }
 
 .avatar-fallback {
-  background-color: #2A2A2E;
+  background-color: @avatar_bg;
   color: white;
   font-weight: bold;
   border-radius: 50%;
@@ -627,7 +556,7 @@ listview > row:hover {
 /* dialogsUnreadBg */
 .unread-badge {
   background-color: @unread_bg;
-  color: #ffffff;
+  color: @unread_fg;
   font-size: 12px;
   font-weight: 600;
   border-radius: 12px;
@@ -690,7 +619,12 @@ listview > row:hover {
   padding: 12px 20px 24px 20px;
 }
 
-.chat-scrolled-window {
+.chat-view {
+  background-color: @bg_chat;
+}
+
+.chat-scrolled-window,
+.chat-scrolled-window viewport {
   /* Flat Android chat canvas — no fancy gradients */
   background-color: @bg_chat;
   background-image: none;
@@ -729,12 +663,12 @@ listview > row:hover {
 
 /* TG bubble geometry: large radius, slightly sharper "tail" corner */
 .message-bubble {
-  padding: 8px 11px 5px 11px;
+  padding: 9px 12px 7px 12px;
   margin: 1px 0;
   color: @text_primary;
   font-size: 14.5px;
   line-height: 1.35;
-  border-radius: 12px;
+  border-radius: 14px;
 }
 
 .message-bubble label {
@@ -748,7 +682,7 @@ listview > row:hover {
 .bubble-received {
   background-color: @bubble_received;
   border: none;
-  border-radius: 12px 12px 12px 4px;
+  border-radius: 14px 14px 14px 5px;
   box-shadow: none;
 }
 
@@ -760,8 +694,8 @@ listview > row:hover {
 .bubble-sent {
   background-color: @bubble_sent;
   background-image: none;
-  color: #e4ecf2; /* historyTextOutFg */
-  border-radius: 12px 12px 4px 12px;
+  color: @msg_out_text; /* historyTextOutFg */
+  border-radius: 14px 14px 5px 14px;
   border: none;
   box-shadow: none;
 }
@@ -773,7 +707,7 @@ listview > row:hover {
 
 .bubble-sent .message-text,
 .bubble-sent label {
-  color: #e4ecf2;
+  color: @msg_out_text;
 }
 
 /* Meta footer: time + ticks */
@@ -790,22 +724,22 @@ listview > row:hover {
 }
 
 .bubble-sent .message-time {
-  color: #7da8d3; /* msgOutDateFg */
+  color: @msg_out_subtle; /* msgOutDateFg */
 }
 
 .bubble-received .message-time {
-  color: #6d7f8f; /* msgInDateFg */
+  color: @text_muted; /* msgInDateFg */
 }
 
 .message-edited {
   font-size: 10px;
   font-style: italic;
   color: @text_tertiary;
-  margin-end: 2px;
+  margin-right: 2px;
 }
 
 .bubble-sent .message-edited {
-  color: rgba(255, 255, 255, 0.5);
+  color: @msg_out_faint;
 }
 
 .message-ticks {
@@ -828,14 +762,14 @@ listview > row:hover {
   color: @tick_read;
 }
 
-.bubble-sent .ticks-pending { color: rgba(255, 255, 255, 0.4); }
-.bubble-sent .ticks-delivered { color: rgba(255, 255, 255, 0.7); }
-.bubble-sent .ticks-read { color: #cce8ff; }
+.bubble-sent .ticks-pending { color: @msg_out_faint; }
+.bubble-sent .ticks-delivered { color: @msg_out_medium; }
+.bubble-sent .ticks-read { color: @msg_out_tick; }
 
 /* msgServiceBg pill */
 .date-separator {
   background-color: @service_bg;
-  color: rgba(255, 255, 255, 0.85);
+  color: @service_text;
   font-size: 12px;
   font-weight: 500;
   padding: 3px 10px;
@@ -895,7 +829,7 @@ box.message-input-area {
 .input-pill {
   background-color: @bg_composer; /* filter/compose field */
   border-radius: 20px;
-  border: none;
+  border: 1px solid @field_border;
   padding: 2px 6px;
   margin: 0;
   min-height: 42px;
@@ -905,9 +839,9 @@ box.message-input-area {
 }
 
 .input-pill:focus-within {
-  border: none;
+  border: 1px solid @border_active;
   box-shadow: none;
-  background-color: #2a3645;
+  background-color: @bg_composer;
 }
 
 /* Text field must eat remaining width (not stay content-sized) */
@@ -995,7 +929,7 @@ box.message-input-area {
   background: transparent;
   border: none;
   border-radius: 50%;
-  color: rgba(255, 255, 255, 0.5);
+  color: @icon_dim;
   padding: 8px;
   transition: color 0.15s ease, background-color 0.15s ease;
   min-width: 36px;
@@ -1003,7 +937,7 @@ box.message-input-area {
 }
 
 .icon-btn:hover {
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: @hover_overlay;
   color: @brand_yellow;
 }
 
@@ -1195,7 +1129,7 @@ popover > contents > .send-at-body {
 
 .sticker-thumb {
   border-radius: 8px;
-  background-color: rgba(255, 255, 255, 0.06);
+  background-color: @surface_overlay;
 }
 
 .sticker-search-entry {
@@ -1237,7 +1171,7 @@ popover > contents > .send-at-body {
 }
 
 .emoji-category-bar {
-  background-color: rgba(255, 255, 255, 0.03);
+  background-color: @input_fill;
   border-radius: 10px;
   padding: 2px;
 }
@@ -1352,7 +1286,7 @@ popover > contents > .send-at-body {
   border-radius: 50%;
   min-width: 40px;
   min-height: 40px;
-  background-color: #2A2A2E;
+  background-color: @avatar_bg;
 }
 
 /* ==========================================================
@@ -1402,7 +1336,7 @@ popover > contents > .send-at-body {
 }
 
 .reaction-divider {
-  background-color: rgba(255, 255, 255, 0.06);
+  background-color: @divider;
   border-radius: 1px;
   margin: 4px 8px;
 }
@@ -1526,13 +1460,13 @@ popover > contents > .send-at-body {
 }
 
 .poll-progress-bar {
-  background-color: rgba(255, 255, 255, 0.06);
+  background-color: @surface_overlay;
   border-radius: 4px;
   min-width: 100px;
 }
 
 .poll-progress-bar trough {
-  background-color: rgba(255, 255, 255, 0.06);
+  background-color: @surface_overlay;
   border-radius: 4px;
 }
 
@@ -1563,8 +1497,7 @@ popover > contents > .send-at-body {
 
 .folder-sidebar {
   background-color: @bg_sidebar;
-  border-right: none;
-  background-color: rgba(20, 20, 24, 0.85);
+  border-right: 1px solid @border_color;
 }
 
 .folder-add-btn {
@@ -1602,7 +1535,7 @@ popover > contents > .send-at-body {
 }
 
 .folder-item:checked {
-  background-color: rgba(255, 255, 255, 0.06);
+  background-color: @surface_overlay;
   color: @brand_yellow;
 }
 
@@ -1675,7 +1608,7 @@ popover > contents > .send-at-body {
 
 .auth-entry:focus {
   border-color: @border_light;
-  background-color: rgba(255, 255, 255, 0.02);
+  background-color: @input_fill;
   box-shadow: none;
 }
 
@@ -1754,7 +1687,7 @@ button.auth-primary:disabled {
 }
 
 .empty-chat:hover {
-  background-color: rgba(255, 255, 255, 0.02);
+  background-color: @input_fill;
 }
 
 .empty-chat-logo {
@@ -1823,7 +1756,7 @@ button.auth-primary:disabled {
 switch {
   border-radius: 16px;
   padding: 3px;
-  background-color: rgba(255, 255, 255, 0.15);
+  background-color: @switch_track;
   outline: none;
 }
 
@@ -1935,13 +1868,11 @@ switch slider {
 .skeleton-title {
   border-radius: 6px;
   min-height: 12px;
-  max-width: 70%;
 }
 
 .skeleton-preview {
   border-radius: 6px;
   min-height: 10px;
-  max-width: 90%;
   opacity: 0.85;
 }
 
@@ -1979,7 +1910,6 @@ switch slider {
   font-size: 12.5px;
   color: @text_tertiary;
   line-height: 1.45;
-  max-width: 200px;
 }
 
 /* Welcome / empty conversation */
@@ -2011,7 +1941,6 @@ switch slider {
 .empty-chat-subtitle {
   font-size: 13.5px;
   color: @text_tertiary;
-  max-width: 280px;
   line-height: 1.5;
 }
 
@@ -2075,7 +2004,7 @@ tooltip > label {
 }
 
 .voice-waveform trough {
-  background-color: rgba(255, 255, 255, 0.06);
+  background-color: @surface_overlay;
   border-radius: 2px;
 }
 
@@ -2107,7 +2036,7 @@ tooltip > label {
 }
 
 .call-btn:hover {
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: @hover_overlay;
 }
 
 .call-btn.call-active {
@@ -2125,7 +2054,6 @@ tooltip > label {
 .video-area {
   background-color: @bg_root;
   border-radius: 12px;
-  overflow: hidden;
   box-shadow: none;
   border: 1px solid @border_color;
 }
@@ -2151,7 +2079,6 @@ tooltip > label {
 .video-content {
   background-color: transparent;
   border-radius: 12px;
-  overflow: hidden;
 }
 
 /* Call Timer */
@@ -2204,9 +2131,6 @@ tooltip > label {
   color: white;
   font-weight: 600;
   font-size: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .participant-avatar.online {
@@ -2221,8 +2145,8 @@ tooltip > label {
 
 .call-control-btn {
   border-radius: 50%;
-  width: 56px;
-  height: 56px;
+  min-width: 56px;
+  min-height: 56px;
   background: rgba(255, 255, 255, 0.08);
   border: none;
   color: @text_primary;
@@ -2250,7 +2174,7 @@ tooltip > label {
 .call-control-btn.end-call {
   background: @accent_red;
   color: white;
-  width: auto;
+  min-width: 0;
   padding: 12px 24px;
   border-radius: 28px;
 }
@@ -2307,9 +2231,8 @@ tooltip > label {
 }
 
 .thread-header {
-  background-color: rgba(10, 10, 12, 0.9);
-  border-bottom: none;
-  background-color: rgba(20, 20, 24, 0.85);
+  background-color: @bg_header;
+  border-bottom: 1px solid @border_color;
   padding: 12px 20px;
 }
 
@@ -2391,7 +2314,7 @@ tooltip > label {
 }
 
 .video-play-btn:hover {
-  background-color: rgba(255, 255, 255, 0.35);
+  background-color: @text_tertiary;
 }
 
 .inline-video-duration {
@@ -2406,8 +2329,7 @@ tooltip > label {
 
 .saved-panel {
   background-color: @bg_chat;
-  border-right: none;
-  background-color: rgba(20, 20, 24, 0.85);
+  border-right: 1px solid @border_color;
   padding: 8px 0;
 }
 
@@ -2481,8 +2403,7 @@ tooltip > label {
 
 .bot-panel {
    background-color: @bg_chat;
-   border-right: none;
-   background-color: rgba(20, 20, 24, 0.85);
+   border-right: 1px solid @border_color;
    padding: 16px;
 }
 
@@ -2498,8 +2419,8 @@ tooltip > label {
 
 .bot-header {
    padding: 12px 0;
-   border-bottom: none;
-   background-color: rgba(20, 20, 24, 0.85);
+   border-bottom: 1px solid @border_color;
+   background-color: @bg_header;
    margin-bottom: 12px;
 }
 
@@ -2553,7 +2474,7 @@ tooltip > label {
 }
 
 .inline-button {
-   background-color: rgba(255, 255, 255, 0.06);
+   background-color: @surface_overlay;
    border: 1px solid @border_color;
    border-radius: 8px;
    padding: 8px 16px;
@@ -2578,10 +2499,9 @@ tooltip > label {
 /* Reply keyboard */
 
 .reply-keyboard-view {
-   background-color: transparent;
+   background-color: @bg_elevated;
    padding: 8px;
-   border-top: none;
-   background-color: rgba(20, 20, 24, 0.85);
+   border-top: 1px solid @border_color;
    margin-top: 8px;
 }
 
@@ -2590,7 +2510,7 @@ tooltip > label {
 }
 
 .keyboard-button {
-   background-color: rgba(255, 255, 255, 0.04);
+   background-color: @surface_overlay;
    border: 1px solid @border_color;
    border-radius: 8px;
    padding: 6px 12px;
@@ -2708,7 +2628,7 @@ tooltip > label {
    font-size: 12px;
    padding: 4px 10px;
    border-radius: 6px;
-   background-color: rgba(255, 255, 255, 0.04);
+   background-color: @surface_overlay;
    color: @text_secondary;
    border: 1px solid transparent;
    min-width: 60px;
@@ -2808,14 +2728,12 @@ tooltip > label {
 
 .group-panel {
    background-color: @bg_chat;
-   border-right: none;
-   background-color: rgba(20, 20, 24, 0.85);
+   border-right: 1px solid @border_color;
 }
 
 .group-header {
-   background-color: rgba(10, 10, 12, 0.9);
-   border-bottom: none;
-   background-color: rgba(20, 20, 24, 0.85);
+   background-color: @bg_header;
+   border-bottom: 1px solid @border_color;
    padding: 16px;
 }
 
@@ -2873,7 +2791,7 @@ tooltip > label {
 }
 
 .group-invite-link {
-   background-color: rgba(255, 255, 255, 0.04);
+   background-color: @surface_overlay;
    border: 1px solid @border_color;
    border-radius: 8px;
    padding: 12px;
@@ -2948,16 +2866,16 @@ listview > row:selected .chat-row .chat-title {
 }
 
 listview > row:selected .chat-row .chat-preview {
-  color: rgba(255, 255, 255, 0.78);
+  color: @selected_preview;
 }
 
 listview > row:selected .chat-row .chat-time {
-  color: rgba(255, 255, 255, 0.72);
+  color: @selected_time;
 }
 
 listview > row:selected .chat-row .unread-badge {
-  background-color: #ffffff;
-  color: #2b5278;
+  background-color: @unread_active_bg;
+  color: @unread_active_fg;
 }
 
 /* Send — activeButtonBg circle */
@@ -2994,7 +2912,7 @@ listview > row:selected .chat-row .unread-badge {
 
 /* Input pill subtle hover adjustments and control icons */
 .input-pill .icon-btn {
-  color: rgba(255, 255, 255, 0.55);
+  color: @icon_dim;
   transition: all 180ms cubic-bezier(0.4, 0, 0.2, 1);
   min-width: 32px;
   min-height: 32px;
@@ -3009,7 +2927,7 @@ listview > row:selected .chat-row .unread-badge {
 
 .input-pill .icon-btn:hover {
   color: @accent_blue;
-  background-color: rgba(255, 255, 255, 0.08);
+  background-color: @hover_overlay;
 }
 
 /* Subtle Yandex search branding on header search button */
@@ -3024,13 +2942,13 @@ listview > row:selected .chat-row .unread-badge {
 
 /* Consistent hover/active states for text entries */
 entry:hover {
-  border-color: rgba(255, 255, 255, 0.15);
-  background-color: rgba(255, 255, 255, 0.05);
+  border-color: @input_hover_border;
+  background-color: @input_fill_hover;
 }
 
 entry:focus {
   border-color: @border_light;
-  background-color: rgba(255, 255, 255, 0.06);
+  background-color: @surface_overlay;
   box-shadow: none;
 }
 
@@ -3038,7 +2956,7 @@ entry > text > placeholder,
 entry.placeholder,
 .message-entry > text > placeholder,
 .message-entry.placeholder {
-  color: rgba(255, 255, 255, 0.35);
+  color: @text_tertiary;
 }
 
 /* Global readable Yandex-blue hyperlinks */
@@ -3062,7 +2980,7 @@ a:active {
 
 /* Search Bar Focus Indicator Left Icon */
 .search-bar > image.left {
-  color: rgba(255, 255, 255, 0.38);
+  color: @text_tertiary;
 }
 .search-bar:focus > image.left {
   color: @accent_blue;
@@ -3170,7 +3088,7 @@ a:active {
 
 /* Date chips — Android style muted pills */
 .date-separator {
-  background-color: rgba(255, 255, 255, 0.08);
+  background-color: @service_bg;
   color: @text_secondary;
   font-size: 12px;
   font-weight: 500;
@@ -3248,7 +3166,7 @@ a:active {
 }
 
 .placeholder-label {
-  color: rgba(255, 255, 255, 0.35);
+  color: @text_tertiary;
   font-size: 15px;
   padding-left: 8px;
 }

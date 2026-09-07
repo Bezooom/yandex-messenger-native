@@ -1,6 +1,6 @@
 [package]
 name = "yandex-messenger-native"
-version = "2.173.0"
+version = "2.174.0"
 edition = "2021"
 description = "Native Yandex Messenger (Telemost) client for Linux desktop"
 authors = ["BeZoom <naumov122@gmail.com>"]
@@ -36,6 +36,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_urlencoded = "0.7"
 
+# Protobuf (Goloom signaling port from APK schemas)
+prost = "0.14"
+
 # Pin indexmap to avoid hashbrown 0.17.0 (edition2024)
 indexmap = ">=1, <2.5"
 
@@ -63,6 +66,8 @@ gstreamer-audio = { version = "0.22", optional = true }
 gstreamer-base = { version = "0.22", optional = true }
 gstreamer-video = { version = "0.22", optional = true }
 gstreamer-pbutils = { version = "0.22", optional = true }
+gstreamer-webrtc = { version = "0.22", optional = true, features = ["v1_24"] }
+gstreamer-sdp = { version = "0.22", optional = true }
 
 # SQLite
 rusqlite = { version = "0.31", features = ["bundled"] }
@@ -72,6 +77,9 @@ image = "0.25.10"
 notify-rust = "4"
 ksni = "0.2"
 
+# XDG portal (screen-cast picker) — опционально
+ashpd = { version = "0.12", optional = true }
+
 [profile.release]
 opt-level = 3
 lto = true
@@ -80,7 +88,8 @@ strip = true
 [features]
 default = ["in_app_webview"]
 in_app_webview = ["dep:webkit6", "dep:soup3"]
-gstreamer = ["dep:gstreamer", "dep:gstreamer-app", "dep:gstreamer-audio", "dep:gstreamer-base", "dep:gstreamer-video", "dep:gstreamer-pbutils"]
+gstreamer = ["dep:gstreamer", "dep:gstreamer-app", "dep:gstreamer-audio", "dep:gstreamer-base", "dep:gstreamer-video", "dep:gstreamer-pbutils", "dep:gstreamer-webrtc", "dep:gstreamer-sdp"]
+portal = ["dep:ashpd"]
 
 [package.metadata.deb]
 maintainer = "BeZoom"

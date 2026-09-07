@@ -191,6 +191,16 @@ impl Database {
         Ok(())
     }
 
+    /// Delete one message by its composite id.
+    pub fn delete_message(&self, chat_id: &str, msg_id: &str) -> SqlResult<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "DELETE FROM messages WHERE id=?1 AND chat_id=?2",
+            params![msg_id, chat_id],
+        )?;
+        Ok(())
+    }
+
     pub fn get_messages(&self, chat_id: &str, limit: Option<usize>) -> SqlResult<Vec<Message>> {
         let conn = self.conn.lock().unwrap();
         let limit = limit.unwrap_or(500) as i64;

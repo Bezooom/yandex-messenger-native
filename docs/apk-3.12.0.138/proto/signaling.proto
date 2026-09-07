@@ -1,0 +1,1390 @@
+syntax = "proto3";
+
+package videoplatform.speakerroom.common.signaling;
+
+import "google/protobuf/empty.proto";
+import "videoplatform/webrtc/common/proto/capabilities/capabilities.proto";
+import "videoplatform/webrtc/common/proto/telemetry/events.proto";
+
+option go_package = "a.yandex-team.ru/videoplatform/webrtc/common/proto/signaling;signaling";
+option swift_prefix="Goloom";
+option java_multiple_files = true;
+option java_package = "ru.yandex.goloom.lib.model.signaling";
+
+enum WebrtcSdpType {
+    WEBRTC_SDP_TYPE_UNSPECIFIED = 0;
+    /*
+    This type of description uses to start negotiation
+     */
+    OFFER = 1;
+    /*
+    Answer for previously sent description
+     */
+    ANSWER = 2;
+    /*
+    Reject and rollback last offer.
+    !Not implemented by the Pion
+     */
+    REJECT = 3;
+    /*
+    Offer to temporally shut down peer connection
+    !Not implemented by the Pion
+     */
+    OFFER_CLOSE = 4;
+}
+
+enum StatusCode {
+    // [0; 4000) - Ack errors
+    STATUS_CODE_UNSPECIFIED = 0;
+    OK = 1;
+    UNKNOWN_ERROR = 2; // Internal error
+    NOT_ALLOWED = 3; // Operation is not allowed in current state
+    BAD_DESCRIPTION = 4;
+    BAD_CANDIDATE = 5;
+    UNKNOWN_MESSAGE = 6;
+    CONNECTION_CLOSE = 7;
+    REMOTE_DESCRIPTION_REJECTED = 8;
+    LOCAL_DESCRIPTION_REJECTED = 9;
+    TELEMETRY_PROCESSING_ERROR = 10;
+    ACK_TIMEOUT_ERROR = 3106;
+
+    // [4000; 5000) - web socket errors
+    PERMISSION_DENIED = 4000; // Can't authorize a participant by auth in hello message. See reason field for details if any. https://developer.mozilla.org/en-US/docs/Web/API/CloseEvent/reason
+    AUTH_PROVIDER_IS_NOT_AVAILABLE = 4001;
+    HELLO_SHOULD_BE_FIRST = 4002;
+    UNSUPPORTED_CAPABILITIES = 4003;
+    KICKED_OUT = 4004;
+    FOUND_ACTIVE_SESSION = 4005;
+    PARTICIPANT_CONNECTION_ID_MISMATCH = 4006;
+    VALIDATION_ERROR = 4007;
+    TIMEOUT = 4008; // occurs when the server doesn't receive client requests for a long time
+    ROOM_HAS_BEEN_CLOSED = 4009;
+    ROOM_HAS_BEEN_CLOSED_BY_TIMEOUT = 4010;
+    ROOM_HAS_BEEN_UNEXPECTEDLY_CLOSED = 4011;
+
+	// [1002; 2000); 3106; 4008; [4100; 4200) - web socket errors with expected SDK reconnection
+    MOVE_TO_NEW_MEDIA_SERVER = 4100;
+    ROOM_IS_CLOSING = 4101; // room is closing and client needs to reconnect to reopen new room session
+    NETWORK_LOST = 4102;
+    TOO_MANY_MESSAGES = 4103;
+    WEBSOCKET_CLOSED_WITHOUT_CODE = 4104;
+
+    // [5000, 6000) - client SDK errors
+    INIT_CLIENT_ERROR = 5000; // Init PC connection error e.g.
+    USER_EVENT_HANDLER_ERROR = 5001;
+    REQUEST_DEVICES_ERROR = 5002;
+    APPLYING_DEVICES_ERROR = 5003;
+    MEDIA_STREAM_TRACK_ERROR = 5004;
+    DEVICE_CHANGE_STATE_ERROR = 5005;
+    FOUR_K_SHARING_ERROR = 5006;
+    CAPABILITIES_DETECTING_ERROR = 5007;
+    SIGNALING_FAILED = 5008;
+    PUBLISHER_FAILED = 5009;
+    SUBSCRIBER_FAILED = 5010;
+    NOISE_CANCELLATION_ERROR = 5018;
+    VIDEO_PROCESSING_ERROR = 5019;
+
+    //Specific REQUEST_DEVICES_ERROR
+    DEVICES_NOT_FOUND = 5011; // Wrong device id
+    DEVICE_BUSY = 5012; // Medaia is using by another application
+    DEVICE_OVERCONSTRAINED = 5013; // Camera or microphone is not supported selected constrains
+    DEVICE_DENIED_BY_USER = 5014; // Permission request was rejected by user
+    DEVICE_DENIED_BY_SYSTEM = 5015; // The browser have no permission to use media
+    DEVICE_NOT_READY = 5016; // Media is not working correctly
+
+    APPLYING_OUTPUT_DEVICES_ERROR = 5017;
+
+    // [6000, 6800) - STUN errors
+    // code = 6000 + stun error code
+    // List of codes https://www.iana.org/assignments/stun-parameters/stun-parameters.xhtml#stun-parameters-6
+
+    // STUN error code 300
+    // https://www.iana.org/assignments/stun-parameters/stun-parameters.xhtml#stun-parameters-6
+    ICE_CANDIDATE_ERROR_TRY_ALTERNATE = 6300;
+    // STUN error code 400
+    // https://www.iana.org/assignments/stun-parameters/stun-parameters.xhtml#stun-parameters-6
+    ICE_CANDIDATE_ERROR_BAD_REQUEST = 6400;
+    // STUN error code 401
+    // https://www.iana.org/assignments/stun-parameters/stun-parameters.xhtml#stun-parameters-6
+    ICE_CANDIDATE_ERROR_UNAUTHENTICATED = 6401;
+    // STUN error code 403
+    // https://www.iana.org/assignments/stun-parameters/stun-parameters.xhtml#stun-parameters-6
+    ICE_CANDIDATE_ERROR_FORBIDDEN = 6403;
+    // STUN error code 405
+    // https://www.iana.org/assignments/stun-parameters/stun-parameters.xhtml#stun-parameters-6
+    ICE_CANDIDATE_ERROR_MOBILITY_FORBIDDEN = 6405;
+    // STUN error code 420
+    // https://www.iana.org/assignments/stun-parameters/stun-parameters.xhtml#stun-parameters-6
+    ICE_CANDIDATE_ERROR_UNKNOWN_ATTRIBUTE = 6420;
+    // STUN error code 437
+    // https://www.iana.org/assignments/stun-parameters/stun-parameters.xhtml#stun-parameters-6
+    ICE_CANDIDATE_ERROR_ALLOCATION_MISMATCH = 6437;
+    // STUN error code 438
+    // https://www.iana.org/assignments/stun-parameters/stun-parameters.xhtml#stun-parameters-6
+    ICE_CANDIDATE_ERROR_STALE_NONCE = 6438;
+    // STUN error code 440
+    // https://www.iana.org/assignments/stun-parameters/stun-parameters.xhtml#stun-parameters-6
+    ICE_CANDIDATE_ERROR_ADDRESS_FAMILY_NOT_SUPPORTED = 6440;
+    // STUN error code 441
+    // https://www.iana.org/assignments/stun-parameters/stun-parameters.xhtml#stun-parameters-6
+    ICE_CANDIDATE_ERROR_WRONG_CREDENTIALS = 6441;
+    // STUN error code 442
+    // https://www.iana.org/assignments/stun-parameters/stun-parameters.xhtml#stun-parameters-6
+    ICE_CANDIDATE_ERROR_UNSUPPORTED_TRANSPORT_PROTOCOL = 6442;
+    // STUN error code 443
+    // https://www.iana.org/assignments/stun-parameters/stun-parameters.xhtml#stun-parameters-6
+    ICE_CANDIDATE_ERROR_PEER_ADDRESS_FAMILY_MISMATCH = 6443;
+    // STUN error code 446
+    // https://www.iana.org/assignments/stun-parameters/stun-parameters.xhtml#stun-parameters-6
+    ICE_CANDIDATE_ERROR_CONNECTION_ALREADY_EXISTS = 6446;
+    // STUN error code 447
+    // https://www.iana.org/assignments/stun-parameters/stun-parameters.xhtml#stun-parameters-6
+    ICE_CANDIDATE_ERROR_CONNECTION_TIMEOUT_OR_FAILURE = 6447;
+    // STUN error code 486
+    // https://www.iana.org/assignments/stun-parameters/stun-parameters.xhtml#stun-parameters-6
+    ICE_CANDIDATE_ERROR_ALLOCATION_QUOTA_REACHED = 6486;
+    // STUN error code 487
+    // https://www.iana.org/assignments/stun-parameters/stun-parameters.xhtml#stun-parameters-6
+    ICE_CANDIDATE_ERROR_ROLE_CONFLICT = 6487;
+    // STUN error code 500
+    // https://www.iana.org/assignments/stun-parameters/stun-parameters.xhtml#stun-parameters-6
+    ICE_CANDIDATE_ERROR_SERVER_ERROR = 6500;
+    // STUN error code 508
+    // https://www.iana.org/assignments/stun-parameters/stun-parameters.xhtml#stun-parameters-6
+    ICE_CANDIDATE_ERROR_INSUFFICIENT_CAPACITY = 6508;
+    // STUN error code 701
+    // https://www.iana.org/assignments/stun-parameters/stun-parameters.xhtml#stun-parameters-6
+    ICE_CANDIDATE_ERROR_NO_HOST_CANDIDATE_CAN_REACH_THE_SERVER = 6701;
+    // Is not real STUN error. Uses to handle the case when something went wrong with STUN code parsing
+    ICE_CANDIDATE_ERROR_UNKNOWN = 6799;
+}
+
+message Status {
+    StatusCode code = 1;
+    optional string description = 2;
+}
+
+message ClientError {
+    StatusCode code = 1;
+    string description = 2;
+    map<string, string> details = 3;
+    double client_timestamp = 4; // Timestamp when an error is occurred
+}
+
+enum MediaTrackKind {
+    MEDIA_TRACK_KIND_UNSPECIFIED = 0;
+    UNKNOWN = 1;
+    AUDIO = 2;
+    VIDEO = 3;
+    DISPLAY_AUDIO = 4;
+    DISPLAY_VIDEO = 5;
+}
+
+enum ParticipantRole {
+    option deprecated = true;
+    PARTICIPANT_ROLE_UNSPECIFIED = 0;
+    SPEAKER = 1;
+    BROADCAST = 2;
+    DIRECTOR = 3;
+}
+
+message ParticipantMeta {
+    option deprecated = true;
+    // name must be a non-empty string with length <= 255
+    string name = 1;
+    ParticipantRole role = 2;
+    // description must be a string with length <= 255
+    string description = 3;
+    // avatar must be a string with length <= 2000
+    optional string avatar = 4;
+    bool send_audio = 5 [deprecated = true]; // Moved to ParticipantDescription.send_audio
+    bool send_video = 6 [deprecated = true]; // Moved to ParticipantDescription.send_video
+}
+
+enum ConnectionType {
+    CONNECTION_TYPE_UNSPECIFIED = 0;
+	CONNECTION_TYPE_SDK = 1;
+    CONNECTION_TYPE_WHIP = 2;
+    CONNECTION_TYPE_SIP = 3;
+    CONNECTION_TYPE_PSTN = 4;
+}
+
+message ParticipantDescription {
+    reserved 2;
+
+    string id = 1;
+    ParticipantMeta meta = 3 [deprecated = true];
+    map<string, string> participant_attributes = 7;
+    bool send_audio = 4;
+    bool send_video = 5;
+    bool send_sharing = 8;
+    bool hide_from_participants_list = 9;
+    optional uint32 disconnected_at = 6; // unix time stamp or null if participant connected
+    NetworkQualityScore network_score = 10;
+    ConnectionType connection_type = 11;
+    optional string ref_participant_id = 12; // participant_id of sharing participant
+}
+
+/**
+Additional information about publisher streams
+ */
+message PublisherTrackDescription {
+    reserved 4;
+    // mid must be a string with length <= 10
+    string mid = 1 [deprecated = true];
+    oneof transport {
+        string transceiver_mid = 6;
+        string dc_label = 7;
+    }
+    MediaTrackKind kind = 2;
+    int32 priority = 3 [deprecated = true];
+    // This is NOT a datachannel label, this is an arbitrary string
+    string label = 5;
+    // Additional optional information about track including trackId, transceiverId, deviceId or deviceGroupId in format t:{track_id},tr:{transceiver_id},d:{device_id},g:{device_group_id}
+    string description = 10;
+
+    // Tracks with the same group will be in the same slot. Now there is a limit on one audio and one video in the group
+    optional uint32 group_id = 9;
+
+    map<uint32, CodecCapability> codecs = 8;
+}
+
+message CodecCapability {
+    string mime_type = 1;
+    uint32 clock_rate = 2;
+    uint32 channels = 3;
+    string sdp_fmtp_line = 4;
+}
+
+message SubscriberTrackDescription {
+    option deprecated = true;
+    // mid must be a string with length <= 10
+    string mid = 1 [deprecated = true]; // Use slotsConfig instead
+    string track_description_id = 4;
+    MediaTrackKind kind = 2;
+    int32 priority = 3 [deprecated = true];
+}
+
+message PublisherSdpOffer {
+    uint32 pc_seq = 3;
+    string sdp = 1;
+    repeated PublisherTrackDescription tracks = 2;
+}
+
+message PublisherSdpAnswer {
+    uint32 pc_seq = 2;
+    string sdp = 1;
+}
+
+message SubscriberSdpOffer {
+    reserved 2, 3;
+
+    uint32 pc_seq = 4;
+    string sdp = 1;
+}
+
+message SubscriberSdpAnswer {
+    uint32 pc_seq = 2;
+    string sdp = 1;
+}
+
+message WebrtcIceCandidate {
+    uint32 pc_seq = 6;
+    enum Target {
+        TARGET_UNSPECIFIED = 0;
+        PUBLISHER = 1;
+        SUBSCRIBER = 2;
+    }
+    Target target = 1;
+    string candidate = 2;
+    optional string sdp_mid = 3;  // media section identifier. If we have multiplexed traffic always be firs mid thou.
+    optional uint32 sdp_mline_index = 4; // Number in order of selected sdpMid
+    optional string username_fragment = 5; // ice-ufrag for authentication
+}
+
+// UpdateDescription represents full room state. Participants, which do not appear in UpdateDescription must be removed
+// from SDK state (e.g. on reconnect). Think of renaming it to avoid confusion between update and upsert
+message UpdateDescription {
+    repeated ParticipantDescription description = 1; // Participant data
+}
+
+message UpsertDescription {
+    repeated ParticipantDescription description = 1; // Participant data
+}
+
+message RemoveDescription {
+    repeated string description_id = 1; // Participant description IDs to remove
+}
+
+/*
+Because we deal with async operations on both client and server and a lot of them, we use ACK model as proof of work
+is done. It is slightly different from TCP-ASK because meaning not the packet received but that all procedures related
+to the message is done.
+For example for camera enabling:
+- the client creates WebrtcSdp message with OFFER type,
+- meanwhile the client set his own offer description as localDescription
+- now the client going to 'have-local-offer' state
+- the server set SDP from this message as remoteDescription
+- now the server going to 'have-remote-offer' state
+- after callback stateChange received, the server create ack message
+- then the server create WebrtcSdp message with ANSWER type,
+- the client set SDP from this message as remoteDescription
+- now the client going to 'stable' state
+- after callback stateChange received, the client create ack message
+- then the server set his own offer description as localDescription
+- now the server going to 'stable' state
+
+Also before ack received the operation can be aborted or rollback.
+ */
+message Ack {
+    Status status = 1;
+}
+
+/**
+Participant self description. Can be sent sent on login or when participant change display name
+ */
+message Hello {
+    string service_name = 4;
+    string room_id = 2;
+    string participant_id = 1;
+
+    oneof auth {
+        string credentials = 5;
+        string session_secret = 7;
+    }
+
+    ParticipantMeta participant_meta = 3 [deprecated = true];
+    map<string, string> participant_attributes = 12;
+    bool send_audio = 8;
+    bool send_video = 9;
+    bool send_sharing = 13;
+
+    bool disable_subscriber = 14;
+    bool disable_subscriber_audio = 16;
+    bool disable_publisher = 15;
+
+    capabilities.CapabilitiesOffer capabilities_offer = 6;
+    SdkInfo sdk_info = 10;
+    string sdk_initialization_id = 11;
+
+    // If this Hello initiates signaling reconnect then signaling_close_code should contain
+    // close code of previous signaling connection
+    optional StatusCode signaling_close_code = 17;
+    // If this Hello is received from another participant's sharing
+    // then the ref_participant_id should contain the ID of the sharing participant
+    optional string ref_participant_id = 18;
+}
+
+/*
+Basic SDK information
+ */
+message SdkInfo {
+    /*
+    SDK platform
+     */
+    string implementation = 1;
+    /*
+    SDK version
+     */
+    string version = 2;
+    /*
+    LibWebrtc version in MXXX format
+     */
+    optional string webrtc_version = 3; // version of the libwebrtc
+    /*
+    User agent string
+     */
+    string user_agent = 4;
+    /*
+    Accessible thread count
+     */
+    int32 hw_concurrency = 7; // accessible threads
+}
+
+/*
+Extended information about supported codecs by the device
+ */
+message SdkCodecsInfo {
+    enum CodecFeatureSupport {
+        /*
+        No data to determine support
+         */
+        CODEC_FEATURE_SUPPORT_UNSPECIFIED = 0;
+        CODEC_FEATURE_NOT_SUPPORTED = 1;
+        CODEC_FEATURE_SUPPORTED = 2;
+    }
+
+    message CodecInfo {
+        /*
+        Overall support
+         */
+        CodecFeatureSupport supported = 1;
+        /*
+        Power efficient decoding
+         */
+        CodecFeatureSupport hw_decode = 2;
+        /*
+        Power efficient encoding
+         */
+        CodecFeatureSupport hw_encode = 3;
+        /*
+        String representing the video codec ISO box format
+         */
+        string iso_string = 4; // vp09.00.51.08
+    }
+
+    /*
+    Information about vp8 codecs
+     */
+    CodecInfo vp8 = 1;
+    /*
+    Information about h264 codecs
+     */
+    repeated CodecInfo h264 = 2;
+    /*
+    Information about vp9 codecs
+     */
+    repeated CodecInfo vp9 = 3;
+    /*
+    Information about av1 codecs
+     */
+    repeated CodecInfo av1 = 4;
+}
+
+/*
+Deprecated simulcast configuration
+Use VideoLayersConfiguration instead
+ */
+message VideoEncoderConfig{
+    option deprecated = true;
+    message VideoEncoderLayerLimitation{
+        bool active = 1;
+        optional int32 max_bitrate = 2;
+        optional int32 max_framerate = 3;
+        optional double scale_resolution_down_by = 4;
+        optional string scalability_mode = 5;
+    }
+    VideoEncoderLayerLimitation low = 1;
+    VideoEncoderLayerLimitation med = 2;
+    VideoEncoderLayerLimitation hi = 3;
+}
+
+/*
+Configuration for one simulcast layer. For compatability reasons the layer can be limited only by bitrate,
+fps or scale.
+ */
+message LayerConfig {
+    oneof ParamOneOf {
+        /*
+        Bitrate in bps
+        deprecated - Use max_bitrate
+         */
+        int32 bitrate = 1 [deprecated = true];
+        /*
+        Framerate
+        deprecated - Use max_framerate
+         */
+        int32 fps = 2 [deprecated = true];
+        /*
+        Multiplayer to scale down by. Base resolution will divided with the number buy libwebrtc encoder
+        deprecated - Use scale_resolution_down_by
+         */
+        double scale = 3 [deprecated = true];
+    }
+    optional string scalability_mode = 4;
+    optional uint32 start_bitrate = 5;
+    optional uint32 max_bitrate = 6;
+    optional uint32 max_framerate = 7;
+    optional double scale_resolution_down_by = 8;
+}
+message VideoOneLayerConfig {
+    LayerConfig low = 1;
+    uint32 start_bitrate = 2;
+}
+
+message VideoTwoLayersConfig {
+    LayerConfig low = 1;
+    LayerConfig med = 2;
+    uint32 start_bitrate = 3;
+}
+
+message VideoThreeLayersConfig {
+    LayerConfig low = 1;
+    LayerConfig med = 2;
+    LayerConfig hi = 3;
+    uint32 start_bitrate = 4;
+}
+
+message VideoFourLayersConfig {
+    LayerConfig low = 1;
+    LayerConfig med = 2;
+    LayerConfig hi = 3;
+    LayerConfig ultra = 4;
+    uint32 start_bitrate = 5;
+}
+
+/*
+Simulcast configuration
+ */
+message VideoLayersConfiguration {
+    /*
+    Simulcast settings for base resolution lower than 320p
+     */
+    VideoOneLayerConfig l1 = 1;
+    /*
+    Simulcast settings for base resolution lower than 720p but higher than 320p
+     */
+    VideoTwoLayersConfig l2 = 2;
+    /*
+    Simulcast settings for base resolution lower than 1080p but higher than 720p
+     */
+    VideoThreeLayersConfig l3 = 3;
+    /*
+    Simulcast settings for base resolution higher than 1080p
+     */
+    VideoFourLayersConfig l4 = 4;
+}
+
+enum HardwareEncoderMode {
+    HARDWARE_ENCODER_MODE_DISABLED = 0; // hardware encoder is not allowed
+    HARDWARE_ENCODER_MODE_ENABLED = 1; // hardware encoder is allowed
+}
+
+/*
+Specific video codec configuration
+*/
+message VideoCodecConfiguration {
+    VideoLayersConfiguration layers_config = 1;
+    HardwareEncoderMode hardware_encoder_mode = 2;
+    optional capabilities.SimulcastMode simulcast_mode = 3;
+    optional VideoCodec codec = 4;
+}
+
+/*
+Available codecs configuration
+*/
+message CodecsConfiguration {
+    VideoCodecConfiguration vp8 = 1;
+    VideoCodecConfiguration h264 = 2;
+    VideoCodecConfiguration vp9 = 3;
+}
+
+enum VideoCodec {
+    VP8 = 0;
+    H264 = 1;
+    VP9 = 2;
+}
+
+enum AudioCodec {
+    OPUS14 = 0;
+    OPUS15 = 1;
+}
+
+/*
+Message to control/change used codecs
+*/
+message SetActiveCodecs {
+    VideoCodec video_codec = 1;
+    AudioCodec audio_codec = 2;
+}
+
+
+enum TelecomMode {
+  TELECOM_MODE_DISABLED = 0;
+  TELECOM_MODE_ENABLED = 1;
+}
+
+message TelecomConfiguration {
+  TelecomMode telecom_mode = 1;
+}
+
+message ServerHello {
+    message VadConfig {
+        option deprecated = true;
+        float probability_threshold = 1; // [0.0; 1.0]
+        int32 debounce_time_ms = 2;
+        int32 activate_sample_size = 3;
+        int32 deactivate_sample_size = 4;
+    }
+
+    message RTCConfiguration{
+        message IceServers{
+            repeated string urls = 1;
+            string credential = 2;
+            string username = 3;
+        }
+        repeated IceServers ice_servers = 1;
+        optional string ice_transport_policy = 2; // "all" | "relay"
+        optional int32 ice_candidate_pool_size = 3;
+        optional string bundle_policy = 4; // "balanced" | "max-bundle" | "max-compat"
+        optional string rtcpMuxPolicy = 5; // "require"
+    }
+
+    message SdkFeatureFlags {
+        option deprecated = true;
+        bool enable_opus_dtx = 1;
+    }
+
+    message SoundProcessingConfiguration {
+        message DFConfiguration {
+            double max_snr_for_erb = 1;
+            double max_snr_for_df = 2;
+            double max_snr_for_zero_output = 3;
+            double min_chunk_power = 4;
+            double min_high_freq_chunk_rms = 5;
+            string model_version = 6; // v3 | v4
+        }
+
+        DFConfiguration df_configuration = 1;
+    }
+
+    message PingPongConfiguration {
+        uint32 ping_interval = 1;
+        uint32 ack_timeout = 2;
+    }
+
+    message TelemetryConfiguration {
+        uint32 sending_interval = 1;
+    }
+
+    message FourKSharingConfiguration {
+        // https://w3c.github.io/mst-content-hint/#dom-mediastreamtrack-contenthint
+        string default_content_hint = 1;
+        uint32 min_bitrate = 2;
+        uint32 max_bitrate = 3;
+        uint32 min_framerate = 4;
+        uint32 max_framerate = 5;
+        optional VideoCodec codec = 9;
+
+        // Data channel options
+        oneof Retransmits {
+            uint32 max_retransmits = 6;
+            uint32 max_packet_life_time_ms = 7;
+        }
+        uint32 buffered_amount_low_threshold = 8; // In bytes
+    }
+
+    message Configurations {
+        repeated VideoCodecConfiguration video_codec_configurations = 1;
+        repeated FourKSharingConfiguration four_k_sharing_configuration = 2;
+        repeated TelecomConfiguration telecom_configuration = 3;
+    }
+
+    capabilities.CapabilitiesAnswer capabilities_answer = 1; // Does not send on reconnect. Clients must use previously received capabilities_answer.
+    repeated ServingComponent serving_components = 2;
+    string session_secret = 3;
+    VadConfig vad_config = 4;
+    string sfu_peer_initialization_id = 5;
+    optional RTCConfiguration rtc_configuration = 6;
+    string log_endpoint = 7;
+    VideoEncoderConfig video_encoder_config = 8 [deprecated = true]; // Use CodecsConfiguration instead
+    SdkFeatureFlags sdk_feature_flags = 9 [deprecated = true];
+    optional SoundProcessingConfiguration sound_processing_configuration = 10;
+    optional PingPongConfiguration ping_pong_configuration = 11;
+    optional TelemetryConfiguration telemetry_configuration = 12;
+    optional VideoLayersConfiguration video_layers_configuration = 13 [deprecated = true]; // Use CodecsConfiguration instead
+    optional FourKSharingConfiguration four_k_sharing_configuration = 15;
+    /*
+    Disable all running experiments for the client
+     */
+    bool exclude_from_experiments = 14; // only for web
+    optional CodecsConfiguration codecs_configuration = 16;
+    optional SetActiveCodecs active_codecs = 17;
+    optional Configurations configurations = 18;
+}
+
+message SFUHello {
+    string sfu_peer_initialization_id = 1;
+}
+
+enum ComponentType {
+    BORDER = 0;
+    WEBRTC_SERVER = 1;
+    CONTROLLER = 2;
+}
+
+message ServingComponent {
+    ComponentType type = 1;
+    string host = 2;
+    string version = 3;
+}
+
+
+message UpdateParticipantMeta {
+    ParticipantMeta participant_meta = 1 [deprecated = true];
+    map<string, string> participant_attributes = 4;
+    bool send_audio = 2;
+    bool send_video = 3;
+    bool send_sharing = 5;
+    // do not add here tracks updates pls because this message goes (in the near future) to controller not to SFU
+}
+
+message UpdatePublisherTrackDescription {
+    repeated PublisherTrackDescription publisher_track_descriptions = 1;
+}
+
+message VideoSlot {
+    int32 width = 1;
+    int32 height = 2;
+}
+
+message RequestSubscription {
+    option deprecated = true;
+    bool force_new_peer_connnection = 1 [deprecated = true]; // Fixed typo in "connection" in the next field
+    bool force_new_peer_connection = 2;
+}
+
+message ParticipantVideoSlot {
+    option deprecated = true;
+    reserved 3;
+    string participant_id = 1;
+    string track_description_id = 6 [deprecated = true];
+    // mid must be a string with length <= 10
+    string mid = 2;
+    bool vad = 4;
+    bool pinned = 5;
+}
+
+message ParticipantAudioSlot {
+    option deprecated = true;
+
+    reserved 3;
+    string participant_id = 1;
+    string track_description_id = 4;
+    // mid must be a string with length <= 10
+    string mid = 2;
+}
+
+message GridLayoutConfig {
+}
+
+message NLastLayoutConfig {
+    uint32 n_count = 1;
+    bool show_in_subgrid = 2 [deprecated = true];
+}
+
+message JoinOrderLayoutConfig {
+}
+
+message PinLayoutConfig {
+}
+
+enum MediaLimitationReason {
+    UNSPECIFIED = 0;
+    NO_LIMITATION = 1;
+    ROOM_SIZE = 2;
+    BANDWIDTH = 3;
+    BY_USER = 4;
+    UNSUPPORTED_CODEC = 5; // Case when room can not be configured to satisfy available client codec
+}
+
+message SlotsConfig {
+    uint32 key = 9;
+
+    repeated ParticipantVideoSlot video_slots = 1 [deprecated = true];
+    repeated ParticipantAudioSlot audio_slots = 2 [deprecated = true];
+
+    message Slot {
+        message Empty {}
+        message SelfView {}
+        message Participant {
+            string participant_id = 1;
+        }
+        message ParticipantVideoByMid {
+            string participant_id = 1;
+            string mid = 2;
+            MediaLimitationReason limitation_reason = 3;
+        }
+        message ParticipantScreenSharingByDataChannel {
+            string participant_id = 1;
+        }
+        message ParticipantScreenSharingByMid {
+            string participant_id = 1;
+            string mid = 2;
+        }
+
+        oneof SlotOneOf {
+            Empty empty = 1;
+            SelfView self_view = 12;
+            Participant participant = 2;
+            ParticipantVideoByMid participant_video_by_mid = 3;
+            ParticipantScreenSharingByDataChannel participant_screen_sharing_by_data_channel = 4 [deprecated = true];
+            ParticipantScreenSharingByMid participant_screen_sharing_by_mid = 8;
+        }
+
+        bool vad = 5;
+        bool pinned = 6;
+        string label = 7;
+    }
+
+    repeated Slot prev_slots = 10;
+    repeated Slot slots = 3;
+    repeated Slot next_slots = 11;
+
+    // Slots offset for which the current slots config has been constructed.
+    optional uint32 offset = 4;
+
+    oneof View {
+        GridLayoutConfig grid_config = 5;
+        NLastLayoutConfig n_last_config = 6;
+        JoinOrderLayoutConfig join_order_config = 7;
+        PinLayoutConfig pin_config = 8;
+    }
+}
+
+message SlotsMeta {
+    // Optional to be able to perform partial update
+    optional uint32 max_offset = 1;
+}
+
+message SetSlotsOffset {
+    uint32 offset = 1;
+}
+
+message RequestPinnedParticipants {
+    repeated string participants_id = 1;
+}
+
+message SetSlots {
+    uint32 key = 8;
+
+    /*
+    Slots configuration. Part of participants selection and capping mechanisms
+     */
+    repeated VideoSlot slots = 1;
+
+    /*
+    !DEPRECATED do not use
+     */
+    uint32 audio_slots_count = 2 [deprecated = true];
+
+    /*
+    The flag stops SFU to send video traffic to a SDK
+     */
+    bool shutdown_all_video = 5;
+
+    /*
+    !DEPRECATED use self_view_visibility instead
+     */
+    bool with_self_view = 9 [deprecated = true];
+
+    /*
+    Selection of slots filling strategy
+     */
+    oneof View {
+        /*
+        See https://docs.yandex-team.ru/goloom/product/slots/grid
+         */
+        GridLayoutConfig grid_config = 3;
+        /*
+        See https://docs.yandex-team.ru/goloom/product/slots/c-n-last
+         */
+        NLastLayoutConfig n_last_config = 4;
+        /*
+        See https://docs.yandex-team.ru/goloom/product/slots/#neupravlyaemaya-setka
+         */
+        JoinOrderLayoutConfig join_order_config = 6;
+        /*
+        See https://docs.yandex-team.ru/goloom/product/slots/#pin-setka
+         */
+        PinLayoutConfig pin_config = 7;
+    }
+
+    enum SelfViewVisibility {
+        /*
+        Controller MUST use with_self_view flag instead
+         */
+        SELF_VIEW_VISIBILITY_UNSPECIFIED = 0;
+        /*
+        Controller MUST add a self-view slot of position 0 for any GridView
+        - for GridView self-view slot will be added at 0 position
+        - for NLastView self-view slot will be added at 0 position to the nested GridView
+         */
+        SHOW = 1;
+        /*
+        Self-view slot is disabled
+         */
+        HIDE = 2;
+        /*
+        When room have only 1 visible participant, self view for that participant MUST be generated at position 0 for
+        any View configuration. Rule are applying in cases when all except one are disconnected, as well nobody are in.
+
+        On early connection stages a SDK must to imitate this logic as if nobody are in the room until first Slots
+        information will received from Controller
+
+        When room have more than 1 visible participant the option works like SelfViewVisibility.SHOW
+         */
+        ON_LOADING_THEN_SHOW = 3;
+        /*
+        When room have only 1 visible participant, self view for that participant MUST be generated at position 0 for
+        any View configuration. Rule are applying in cases when all except one are disconnected, as well nobody are in.
+
+        On early connection stages a SDK must to imitate this logic as if nobody are in the room until first Slots
+        information will received from Controller
+
+        When room have more than 1 visible participant the option works like SelfViewVisibility.HIDE
+         */
+        ON_LOADING_THEN_HIDE = 4;
+    }
+    /*
+    Uses for control self-view generation strategy
+     */
+    SelfViewVisibility self_view_visibility = 10;
+}
+
+message Telemetry {
+    message ClientCPUStats {
+        double timestamp = 1;
+        string type = 2; // Must be "client-cpu"
+        string id = 3;
+
+        float min = 4;
+        float avg = 5;
+        float max = 6;
+    }
+    message ClientComputePressure { // Web specific stats since that's the only "standart" way: https://w3c.github.io/compute-pressure/
+        double timestamp = 1;
+        string type = 2; // Must be "client-compute-pressure"
+        string id = 3;
+
+        string source = 4; // https://developer.mozilla.org/en-US/docs/Web/API/PressureRecord/source#value
+        string state = 5; // https://developer.mozilla.org/en-US/docs/Web/API/PressureRecord/state#value
+    }
+    message PublisherVideoEncodingStats {
+        double timestamp = 1;
+        string type = 2; // Must be "publisher-video-encoding"
+        string id = 3;
+
+        optional string media_source_id = 4;
+        optional string remote_id = 5;
+        optional string media_track_kind = 6; // video or display_video
+        oneof transport {
+            string mid = 7;
+            string dc_label = 20;
+        }
+
+        uint32 frames_per_second_min = 8;
+        uint32 frames_per_second_max = 9;
+        uint32 frames_per_second_avg = 10;
+        uint32 discarded_frames = 11;
+        uint32 encoding_time_min_ms = 12;
+        uint32 encoding_time_max_ms = 13;
+        uint32 encoding_time_avg_ms = 14;
+        float predicted_bitrate = 15;
+        optional uint32 bwe_processing_time_min_ms = 16;
+        optional uint32 bwe_processing_time_max_ms = 17;
+        optional uint32 bwe_processing_time_avg_ms = 18;
+        optional string quality_limitation_reason = 19;
+    }
+    message PublisherAudioProcessingStats {
+        double timestamp = 1;
+        string type = 2; // Must be "publisher-audio-processing"
+        string id = 3;
+
+        optional string media_source_id = 4;
+        optional string remote_id = 5;
+        optional string mid = 6;
+
+        string processor = 7; // e.g., noise_cancellation
+        optional string processor_version = 19;
+        uint32 preprocessing_time_min_ms = 10;
+        uint32 preprocessing_time_max_ms = 11;
+        uint32 preprocessing_time_avg_ms = 12;
+        uint32 processing_time_min_ms = 13;
+        uint32 processing_time_max_ms = 14;
+        uint32 processing_time_avg_ms = 15;
+        uint32 postprocessing_time_min_ms = 16;
+        uint32 postprocessing_time_max_ms = 17;
+        uint32 postprocessing_time_avg_ms = 18;
+        uint32 too_long_processed_chunks_count = 20;
+    }
+    message PublisherVideoProcessingStats {
+        double timestamp = 1;
+        string type = 2; // Must be "publisher-video-processing"
+        string id = 3;
+
+        optional string media_source_id = 4;
+        optional string remote_id = 5;
+        optional string media_track_kind = 9; // video or display_video
+        oneof transport {
+            string mid = 6;
+            string dc_label = 7;
+        }
+
+        string processor = 8; // e.g., background_blurring
+        optional string processor_version = 17;
+        uint32 processing_time_min_ms = 10;
+        uint32 processing_time_max_ms = 11;
+        uint32 processing_time_avg_ms = 12;
+        uint32 input_fps_min = 13;
+        uint32 input_fps_max = 14;
+        uint32 input_fps_avg = 15;
+        optional uint32 discarded_frames = 16;
+    }
+    message SubscriberVideoProcessingStats {
+        double timestamp = 1;
+        string type = 2; // Must be "subscriber-video-processing"
+        string id = 3;
+
+        string track_identifier = 4;
+        optional string remote_id = 5;
+        optional string mid = 6;
+
+        optional uint32 stalled_time_ms = 7;
+    }
+
+    message InitClientStats {
+        double timestamp = 1;
+        string type = 2; // Must be "init-client-stats"
+        string id = 3;
+
+        message SignalingInitStats {
+            double transport_opened_at_ms = 1;
+            double hello_sent_at_ms = 2; // When hello placed to signaling transport (WS)
+            double server_hello_received_at_ms = 3;
+            double connected_at_ms = 4;
+            uint32 attempts_count = 5; // For the case of reconnecting on handshake state
+        }
+
+        double connection_started_at_ms = 4; // Time of call connectToRoom
+        double before_signaling_connection_configured_at_ms = 5; // Time we are ready to start signaling connecting
+
+        SignalingInitStats signaling_init_stats = 6;
+
+        double after_signaling_connection_configured_at_ms = 7; // Some configuration after signaling establishment based on Server Hello msg and before Publisher and Subscriber connecting.
+
+        message PeerConnectionInitStats {
+            double pc_created_at_ms = 11;
+            double sdp_offer_received_at_ms = 12; // When offer received from server or from local PC
+            double sdp_offer_at_ms = 1; // When SDP offer is set to PC
+            double sdp_offer_sent_at_ms = 13; // When offer placed to signaling transport (WS)
+            double sdp_answer_received_at_ms = 14; // When answer received from server or from local PC
+            double sdp_answer_at_ms = 2; // When SDP answer is set to PC
+            double sdp_answer_sent_at_ms = 15; // When offer placed to signaling transport (WS)
+            double ice_gathering_started_at_ms = 3;
+            double ice_gathering_completed_at_ms = 4;
+            double first_local_ice_candidate_at_ms = 5;
+            double first_remote_ice_candidate_at_ms = 6;
+            double ice_connection_state_checking_at_ms = 7;
+            double ice_connection_state_connected_at_ms = 8;
+            double connecting_at_ms = 9;
+            double connected_at_ms = 10;
+        }
+
+        optional PeerConnectionInitStats publisher_pc_init_stats = 8;
+        optional PeerConnectionInitStats subscriber_pc_init_stats = 9;
+
+        double after_full_connection_configured_at_ms = 10; // After all connection components are establishment we may have some additional work before return control to external code
+    }
+
+    message ApplyDevicesStats {
+        double timestamp = 1;
+        string type = 2; // Must be "apply-devices-stats"
+        string id = 3;
+
+        double applying_started_at_ms = 4; // Apply method call time
+        double output_devices_applied_at_ms = 5; // Output devices is applied.
+        uint32 input_devices_count = 6; // Time of applying depends on count of input devices
+        double devices_requested_at_ms = 7; // Time when SDK got devices from OS
+        double audio_processing_configured_at_ms = 8;
+        double video_processing_configured_at_ms = 9;
+        double applying_finished_at_ms = 10; // Everything is done. Including all side effects.
+    }
+    message SlotSubscriberVideoDecodingStats {
+        double timestamp = 1;
+        string type = 2; // Must be "slot-subscriber-video-decoding"
+        string id = 3;
+
+        string track_identifier = 4;
+        optional string mid = 5;
+		uint32 slot_position = 6;
+
+        optional string new_video_flow_trigger = 7; // ChangeResolution_SetSlots, ChangeResolution_SlotsConfig(move to bigger slot), NewVideoTracks_SetSlotsOffset, NewVideoTracks_SlotsConfig(turn on the video, move slot to current page)
+        optional uint32 new_video_flow_first_decode_ms = 8;
+    }
+
+    message SetSlotsResponseStats {
+        double timestamp = 1;
+        string type = 2; // Must be "set-slots-response"
+        string id = 3;
+
+        uint32 set_slots_key = 4;
+        uint32 slots_config_received_after_ms = 5;
+    }
+
+    message CustomStats {
+        repeated ClientCPUStats client_cpu_stats = 1;
+        repeated PublisherAudioProcessingStats publisher_audio_processing = 2;
+        repeated PublisherVideoProcessingStats publisher_video_processing = 3;
+        repeated PublisherVideoEncodingStats publisher_video_encoding = 4;
+        repeated SubscriberVideoProcessingStats subscriber_video_processing = 5;
+        repeated ClientComputePressure client_compute_pressure_stats = 6;
+        optional InitClientStats init_client_stats = 7;
+        repeated ApplyDevicesStats apply_devices_stats = 8;
+        repeated SlotSubscriberVideoDecodingStats slot_subscriber_video_decoding = 9;
+        repeated SetSlotsResponseStats set_slots_response = 10;
+    }
+
+    reserved 1, 2;
+    repeated string publisher_raw_stats_report = 3;
+    repeated string subscriber_raw_stats_report = 4;
+    CustomStats custom_stats = 5;
+    repeated string room_agent_raw_stats_report = 6 [deprecated = true]; // Temporary solution for getting stats from room agent
+
+    repeated telemetry.EventTelemetry events_report = 7;
+}
+
+message VadActivity {
+    bool active = 1;
+}
+
+message ClientSideVadActivity {
+    string transceiver_mid = 1;
+    bool active = 2;
+}
+
+message RequestPublisherParameters {
+    option deprecated = true;
+    message VideoConfig {
+        message Resolution {
+            int32 width = 1;
+            int32 height = 2;
+        }
+
+        string mid = 1;
+        repeated Resolution resolutions = 2; // for now it is only one resolution
+    }
+
+    uint32 pc_seq = 1;
+    repeated VideoConfig video_configs = 2;
+}
+
+message Notification {
+    string notification_id = 1;
+    string payload = 2;
+}
+
+enum NetworkQualityScore {
+    NETWORK_QUALITY_SCORE_UNSPECIFIED = 0;
+    POOR = 1;
+    GOOD = 2;
+    EXCELLENT = 3;
+}
+
+message ParticipantQualityReport {
+    string participant_id = 1;
+    NetworkQualityScore network_score = 2;
+}
+
+message UpsertParticipantsQualityReport {
+    repeated ParticipantQualityReport participants_quality_report = 1;
+}
+
+message SelfQualityReport {
+    NetworkQualityScore network_score = 1;
+}
+
+message RoomAgentSignaling {
+    // Only as temporary approach
+    option deprecated = true;
+
+    message RoomAgentPeerConnectionEvent {
+        /*
+        One of RTCPeerConnection events (https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection#events)
+        - connectionStateChanged,
+        - iceConnectionStateChanged
+        - iceGatheringStateChanged
+        - signalingStateChanged
+         */
+        string eventName = 1;
+        /*
+        Event state value. See documentation for each event to have a list.
+         */
+        string state = 2;
+    }
+
+    oneof MessageOf {
+        /*
+        RTCCandidate between SIP and RoomAgent
+         */
+        WebrtcIceCandidate webrtc_ice_candidate = 1;
+        /*
+        Offer from RoomAgent or SIP
+         */
+        string sdp_offer = 2;
+        /*
+        Answer from RoomAgent or SIP
+         */
+        string sdp_answer = 3;
+        /**
+        The RTCPeerConnection state changing event
+         */
+        RoomAgentPeerConnectionEvent room_agent_peer_connection_event = 6;
+    }
+}
+
+message Message {
+    reserved 27;
+    /**
+     The message identification used for acknowledge routine.
+
+     The identification MUST be unique for each side, so you MUST to use uuidv4 as a source for it.
+     If a receiver have any messages with duplicate uid, it MAY finish or restart communication session.
+     */
+    string uid = 1;
+
+    oneof MessageOneOf {
+        /*
+        Initial handshake.
+
+        UsedBy: CLIENT
+         */
+        Hello hello = 7;
+
+        /*
+        Initial handshake
+
+        UsedBy: SERVER
+         */
+        ServerHello server_hello = 20;
+
+        // From SFU to border
+        SFUHello sfu_hello = 24;
+
+
+        /**
+        Answer message for the acknowledge routine. It MUST NOT be used as healthcheck for connection or application.
+        Please use ping instead.
+
+        UsedBy: CLIENT, SERVER
+         */
+        Ack ack = 5;
+        /*
+        Ping routine. Can be used from client or server to perform a healthcheck:
+        - connection healthcheck
+        - client or border healthcheck
+        One side sends the message and MUST to set timer for 5000 ms.
+        If the message received, an application MUST respond with an Ack message as fast as it can without blocking any other routines
+        or threads.
+        If the Ack response is not received until end of the timer, connection MUST be closed with
+        code StatusCode.ACK_TIMEOUT_ERROR and MAY contain message with the last timestamp of received message.
+
+        UsedBy: CLIENT, SERVER
+         */
+        google.protobuf.Empty ping = 6;
+
+        ClientError client_error = 22;
+
+
+        /*
+        Change current active page. MUST be followed by slots_config.
+
+        Server can change page if Client generates unsupported offset or all participants from desire page are gone.
+        In such case, Client must to notify host application.
+
+        UsedBy: SERVER, CLIENT
+         */
+        SetSlotsOffset set_slots_offset = 11;
+
+        RequestPinnedParticipants request_pinned_participants = 12;
+
+        /*
+        Set rules for participants selection and capping. MUST be followed by slots_config
+
+        UsedBy: SERVER, CLIENT
+         */
+        SetSlots set_slots = 13;
+        // Capability "SlotsMode" defines from where slots config will be sent
+        SlotsConfig slots_config = 10;
+
+        /*
+        Command to update common slots meta information. Sent when participants' tracks are added or removed.
+
+        UsedBy: SERVER
+         */
+        SlotsMeta slots_meta = 37;
+
+        /*
+        Command to change the simulcast configuration in the runtime. Can be send any time to improve quality video
+        from Publisher or limit bandwidth as protecting mechanism.
+
+        UsedBy: SERVER
+         */
+        VideoLayersConfiguration video_layers_configuration = 32 [deprecated = true]; // Use CodecsConfiguration from ServerHello instead
+
+        VadActivity vad_activity = 23;
+        UpdateParticipantMeta update_me = 8;
+        UpdateDescription update_description = 4;
+        UpsertDescription upsert_description = 14;
+        RemoveDescription remove_description = 15;
+        UpsertParticipantsQualityReport upsert_participants_quality_report = 30;
+        SelfQualityReport self_quality_report = 31;
+
+        /*
+        It is used for testing using the goloom tank. For it to work, you must disable the server_side_vad flag.
+
+        UsedBy: CLIENT
+         */
+        ClientSideVadActivity client_side_vad_activity = 35;
+
+        // From client to SFU
+        PublisherSdpOffer publisher_sdp_offer = 16;
+        SubscriberSdpAnswer subscriber_sdp_answer = 19;
+        RequestSubscription request_subscription = 9 [deprecated = true];
+        UpdatePublisherTrackDescription update_publisher_track_description = 28;
+
+        // From SFU to client
+        PublisherSdpAnswer publisher_sdp_answer = 17;
+        SubscriberSdpOffer subscriber_sdp_offer = 18;
+
+        /*
+
+        UsedBy: CLIENT, SERVER
+         */
+        WebrtcIceCandidate webrtc_ice_candidate = 3;
+
+        /*
+        Client telemetry about quality of the connection
+
+        UsedBy: CLIENT
+         */
+        Telemetry telemetry = 21;
+        /*
+        Information about codecs supported by client. This information used for plan and forecast future codecs support
+        for the SFU
+
+        UsedBy: CLIENT
+         */
+        SdkCodecsInfo sdk_codecs_info = 33;
+
+        /*
+        Notification from the Client's backend to host application
+        See: https://docs.yandex-team.ru/goloom/integration/room#post-/v1/services/servicename/rooms/roomid/notify
+
+        UsedBy: SERVER
+         */
+        Notification notification = 26;
+
+        /*
+        Temporary message used to log down signaling between SIP and RoomAgent
+        Not used in any business logic.
+
+        UsedBy: CLIENT
+         */
+        RoomAgentSignaling room_agent_signaling = 34 [deprecated = true];
+        RequestPublisherParameters request_publisher_parameters = 25 [deprecated = true];
+        /*
+        Change simulcast settings on the go
+        !DEPRECATED: use video_layers_configuration instead
+
+        UsedBy: SERVER
+        */
+        VideoEncoderConfig video_encoder_config = 29 [deprecated = true]; // Use CodecsConfiguration from ServerHello instead
+        /*
+        Change active codecs message
+
+        UsedBy: SERVER
+        */
+        SetActiveCodecs set_active_codecs = 36;
+    }
+}

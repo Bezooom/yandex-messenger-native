@@ -3,7 +3,15 @@
 pub mod auth;
 pub mod bot;
 pub mod folder;
+pub mod goloom;
+pub mod goloom_call;
+pub mod goloom_client;
+pub mod goloom_media;
 pub mod group;
+#[cfg(feature = "gstreamer")]
+pub mod gst_webrtc;
+#[cfg(feature = "portal")]
+pub mod portal_share;
 pub mod saved_message;
 pub mod scheduled_message;
 pub mod session_store;
@@ -77,6 +85,20 @@ pub enum WSState {
 type MessageCallback = Box<dyn Fn(&models::WSMessage) + Send + Sync>;
 type StateCallback = Box<dyn Fn(WSState) + Send + Sync>;
 
+/// Accumulator for one in-flight WS `history` request.
+///
+/// History responses arrive as **uncorrelated** server pushes (`seq=0`):
+/// one binary frame carries many comma-concatenated
+/// `{"ServerMessage": {...}, "Meta": {...}}` objects, optionally followed
+/// by a chat-tail object (`Counters`/`LastSeqNo`). Frames are routed here
+/// by `ChatId`; the request completes on tail or read-quiet timeout.
+#[derive(Debug, Default)]
+struct HistoryCollectorState {
+    acc: Vec<serde_json::Value>,
+    tail_seen: bool,
+    last_activity: Option<std::time::Instant>,
+}
+
 /// WebSocket client for Yandex Messenger API
 pub struct WebSocketClient {
     auth: Arc<AuthManager>,
@@ -90,6 +112,8 @@ pub struct WebSocketClient {
     pending_requests: Arc<Mutex<HashMap<u64, oneshot::Sender<Result<serde_json::Value, String>>>>>,
     /// Current chat being subscribed to
     current_chat_id: Arc<Mutex<Option<String>>>,
+    /// In-flight `history` collectors by chat id
+    history_collectors: Arc<Mutex<HashMap<String, Arc<Mutex<HistoryCollectorState>>>>>,
 }
 
 #[derive(serde::Deserialize)]
@@ -110,6 +134,7 @@ impl WebSocketClient {
             tx: Arc::new(Mutex::new(None)),
             pending_requests: Arc::new(Mutex::new(HashMap::new())),
             current_chat_id: Arc::new(Mutex::new(None)),
+            history_collectors: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -243,6 +268,90 @@ impl WebSocketClient {
                 String::from_utf8(bin[pos..].to_vec()).ok()
             } else {
                 None
+            }
+        }
+    }
+
+    /// Split comma-concatenated top-level JSON objects (`{...},{...}`).
+    /// This is how the server streams `history` responses: many
+    /// `{"ServerMessage": {...}, "Meta": {...}}` objects back-to-back,
+    /// optionally followed by a chat-tail object (`Counters`/`LastSeqNo`).
+    fn split_concat_json(s: &str) -> Vec<serde_json::Value> {
+        let mut out = Vec::new();
+        let bytes = s.as_bytes();
+        let mut idx = 0;
+        while idx < s.len() {
+            while idx < s.len()
+                && (bytes[idx] == b',' || bytes[idx].is_ascii_whitespace())
+            {
+                idx += 1;
+            }
+            if idx >= s.len() {
+                break;
+            }
+            let mut stream =
+                serde_json::Deserializer::from_str(&s[idx..]).into_iter::<serde_json::Value>();
+            match stream.next() {
+                Some(Ok(v)) => {
+                    idx += stream.byte_offset();
+                    out.push(v);
+                }
+                _ => break,
+            }
+        }
+        out
+    }
+
+    /// Chat-tail object terminating a `history` page (no `ServerMessage`).
+    fn is_history_tail(o: &serde_json::Value) -> bool {
+        o.get("Counters").is_some()
+            || (o.get("LastSeqNo").is_some() && o.get("LastEditTsMcs").is_some())
+    }
+
+    /// Route one `0x01` frame's JSON into the matching history collector.
+    /// Strict: ignores anything without `ServerMessage`/tail markers so
+    /// ordinary RPC frames pass through untouched.
+    async fn route_history_frame(
+        collectors: &Arc<Mutex<HashMap<String, Arc<Mutex<HistoryCollectorState>>>>>,
+        json_str: &str,
+    ) {
+        // Fast path: history frames always carry ServerMessage objects.
+        if !json_str.contains("\"ServerMessage\"") && !json_str.contains("\"Counters\"") {
+            return;
+        }
+        let objs = Self::split_concat_json(json_str);
+        if objs.is_empty() {
+            return;
+        }
+        let mut chat_id = String::new();
+        for o in &objs {
+            if let Some(cid) = o
+                .get("ServerMessage")
+                .and_then(|sm| sm.get("ClientMessage"))
+                .and_then(|cm| cm.get("Plain"))
+                .and_then(|p| p.get("ChatId"))
+                .and_then(|v| v.as_str())
+            {
+                chat_id = cid.to_string();
+                break;
+            }
+        }
+        if chat_id.is_empty() {
+            return;
+        }
+        let collector = { collectors.lock().await.get(&chat_id).cloned() };
+        let Some(collector) = collector else {
+            return;
+        };
+        let mut st = collector.lock().await;
+        let now = std::time::Instant::now();
+        for o in objs {
+            if o.get("ServerMessage").is_some() {
+                st.acc.push(o);
+                st.last_activity = Some(now);
+            } else if Self::is_history_tail(&o) {
+                st.tail_seen = true;
+                st.last_activity = Some(now);
             }
         }
     }
@@ -383,6 +492,7 @@ impl WebSocketClient {
         let state = self.state.clone();
         let pending = self.pending_requests.clone();
         let tx_for_ping = self.tx.clone();
+        let history_collectors = self.history_collectors.clone();
 
         // Write loop & heartbeat
         tokio::spawn(async move {
@@ -489,6 +599,17 @@ impl WebSocketClient {
                                             let _ = sender
                                                 .send(Ok(serde_json::json!({"status": "ok"})));
                                         }
+                                    }
+                                }
+
+                                // Route WS `history` payloads (uncorrelated pushes,
+                                // seq=0) into per-chat collectors, if any.
+                                if first_byte == 0x01 && bin.len() > json_start_offset {
+                                    if let Some(json_str) =
+                                        Self::extract_json_payload(&bin[json_start_offset..])
+                                    {
+                                        Self::route_history_frame(&history_collectors, &json_str)
+                                            .await;
                                     }
                                 }
 
@@ -712,6 +833,11 @@ impl WebSocketClient {
         *state == WSState::Connected
     }
 
+    /// Current connection state (for smart history-load waiting).
+    pub async fn connection_state(&self) -> WSState {
+        self.state.lock().await.clone()
+    }
+
     /// Force reconnect by dropping the active WebSocket connection
     pub async fn force_reconnect(&self) {
         let mut tx_opt = self.tx.lock().await;
@@ -845,6 +971,129 @@ impl WebSocketClient {
         }
 
         Err("No messages found in history response".to_string())
+    }
+
+    /// Full chronological history via the push WebSocket.
+    ///
+    /// Reverse-engineered from the web client (`yandex.ru/chat`):
+    /// request frame is `0x01 + msgpack[seq, "history"] + bin-header` with
+    /// JSON `{"RequestId": uuid, "ChatId": ..., "Limit": N,
+    /// "MaxTimestamp": <microseconds>, "Offset": 0}`. The server answers
+    /// with uncorrelated pushes (`seq=0`): comma-concatenated
+    /// `{"ServerMessage": {...}, "Meta": {...}}` objects, optionally
+    /// followed by a chat-tail object. Unlike the `search` fallback, this
+    /// returns **every** message — including textless images and files.
+    ///
+    /// `max_mcs`: upper bound (exclusive-ish) in microseconds; `None` = now.
+    /// Older pages: pass `oldest_loaded_mcs - 1`.
+    pub async fn get_history_messages(
+        &self,
+        chat_id: &str,
+        max_mcs: Option<i64>,
+        limit: usize,
+    ) -> Result<Vec<models::Message>, String> {
+        if !self.is_connected().await {
+            return Err("Not connected".to_string());
+        }
+        let max_ts = max_mcs.unwrap_or_else(|| chrono::Utc::now().timestamp_micros());
+        let state = Arc::new(Mutex::new(HistoryCollectorState::default()));
+        {
+            let mut cols = self.history_collectors.lock().await;
+            cols.insert(chat_id.to_string(), state.clone());
+        }
+        let params = serde_json::json!({
+            "RequestId": uuid::Uuid::new_v4().to_string(),
+            "ChatId": chat_id,
+            "Limit": limit.min(200),
+            "MaxTimestamp": max_ts,
+            "Offset": 0
+        });
+        if let Err(e) = self.send_message("history", params).await {
+            self.history_collectors.lock().await.remove(chat_id);
+            return Err(e);
+        }
+
+        // Collect until chat-tail, read-quiet timeout, or hard deadline.
+        // History frames arrive back-to-back, so a short quiet window is
+        // enough — keeps chat opening snappy.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        let quiet = std::time::Duration::from_millis(1500);
+        loop {
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            let done = {
+                let st = state.lock().await;
+                if st.tail_seen {
+                    true
+                } else {
+                    match st.last_activity {
+                        Some(t) => !st.acc.is_empty() && t.elapsed() > quiet,
+                        None => false,
+                    }
+                }
+            };
+            if done || std::time::Instant::now() >= deadline {
+                break;
+            }
+        }
+        self.history_collectors.lock().await.remove(chat_id);
+
+        let st = state.lock().await;
+        let mut messages: Vec<models::Message> = st
+            .acc
+            .iter()
+            .filter_map(|node| Self::parse_ws_server_message(node, chat_id))
+            .collect();
+        messages.sort_by_key(|m| m.created);
+        // Dedup by id (server may repeat boundary messages across pages).
+        let mut seen = std::collections::HashSet::new();
+        messages.retain(|m| seen.insert(m.id.clone()));
+        if messages.is_empty() {
+            return Err(format!("No history received for chat {}", chat_id));
+        }
+        log::info!(
+            "Loaded {} messages via WS history for {}",
+            messages.len(),
+            chat_id
+        );
+        Ok(messages)
+    }
+
+    /// Parse one WS `history` item (`{"ServerMessage": {...}, "Meta": ...}`).
+    /// `ServerMessage` has exactly the `{ServerMessageInfo, ClientMessage}`
+    /// shape that [`Self::parse_search_message`] expects under `data`.
+    pub fn parse_ws_server_message(
+        node: &serde_json::Value,
+        default_chat: &str,
+    ) -> Option<models::Message> {
+        let sm = node.get("ServerMessage")?;
+        // Delete tombstones carry no content — never render them.
+        if sm
+            .get("ServerMessageInfo")
+            .and_then(|s| s.get("Deleted"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
+            return None;
+        }
+        let chat_id = sm
+            .get("ClientMessage")
+            .and_then(|cm| cm.get("Plain"))
+            .and_then(|p| p.get("ChatId"))
+            .and_then(|v| v.as_str())
+            .unwrap_or(default_chat);
+        let wrapper = serde_json::json!({"data": sm});
+        let mut msg = HttpClient::parse_search_message(&wrapper, chat_id)?;
+        // Partner-seen marker is authoritative for outgoing ticks.
+        let seen = sm
+            .get("ServerMessageInfo")
+            .and_then(|s| s.get("SeenByPartnerMcs"))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+        if seen > 0 {
+            msg.delivered = true;
+            msg.read = true;
+        }
+        Some(msg)
     }
 
     fn get_yuid_from_session() -> Option<String> {
@@ -1141,6 +1390,7 @@ impl WebSocketClient {
                 filename: Some(filename.to_string()),
                 mime_type: Some(mime.to_string()),
                 waveform: None,
+                transcription: None,
             }],
             reactions: vec![],
             thread_id: None,
@@ -1155,6 +1405,77 @@ impl WebSocketClient {
             updated: None,
             poll: None,
         })
+    }
+
+    /// Edit own text message (web-client protocol, reverse-engineered).
+    /// A `push` ClientMessage carrying the SAME `PayloadId` with new text;
+    /// `Timestamp` echoes the original message's server timestamp (µs).
+    /// `message_ref`: payload id or composite `"seq_mid"` id.
+    pub async fn send_edit_message(
+        &self,
+        chat_id: &str,
+        message_ref: &str,
+        text: &str,
+        original_mcs: i64,
+    ) -> Result<u64, String> {
+        let payload_id = message_ref.split('_').last().unwrap_or(message_ref);
+        if payload_id.is_empty() {
+            return Err("Empty message id".to_string());
+        }
+        let yuid = Self::get_yuid_from_session().unwrap_or_default();
+        let payload = serde_json::json!({
+            "RequestId": uuid::Uuid::new_v4().to_string(),
+            "UserAgent": "chats-web/3.29.0",
+            "ClientMessage": {
+                "Plain": {
+                    "ChatId": chat_id,
+                    "PayloadId": payload_id,
+                    "MentionedUserIds": [],
+                    "ForwardedMessageStyles": [],
+                    "UrlPreviewDisabled": false,
+                    "Timestamp": original_mcs,
+                    "Text": { "MessageText": text }
+                },
+                "LogData": {
+                    "YandexUid": yuid,
+                    "UserInterface": 1
+                }
+            },
+            "Meta": { "Origin": 27 },
+            "ClientSupportedFeatures": 1
+        });
+        self.send_message("push", payload).await
+    }
+
+    /// Delete own message (web-client protocol, reverse-engineered).
+    /// A `push` ClientMessage with `Plain{ChatId, Timestamp}` where
+    /// `Timestamp` is the target's `ServerMessageInfo.Timestamp` (µs).
+    pub async fn send_delete_message(
+        &self,
+        chat_id: &str,
+        target_mcs: i64,
+    ) -> Result<u64, String> {
+        if target_mcs <= 0 {
+            return Err("Invalid message timestamp".to_string());
+        }
+        let yuid = Self::get_yuid_from_session().unwrap_or_default();
+        let payload = serde_json::json!({
+            "RequestId": uuid::Uuid::new_v4().to_string(),
+            "UserAgent": "chats-web/3.29.0",
+            "ClientMessage": {
+                "Plain": {
+                    "ChatId": chat_id,
+                    "Timestamp": target_mcs
+                },
+                "LogData": {
+                    "YandexUid": yuid,
+                    "UserInterface": 1
+                }
+            },
+            "Meta": { "Origin": 27 },
+            "ClientSupportedFeatures": 1
+        });
+        self.send_message("push", payload).await
     }
 
     pub async fn subscribe(&self, chat_id: &str) -> Result<u64, String> {
@@ -2228,7 +2549,7 @@ impl HttpClient {
         // 1) Session RPC — full chronological history
         if self.has_session() {
             match self.get_messages_via_session(chat_id, msg_id, limit).await {
-                Ok(msgs) if !msgs.is_empty() => {
+                Ok((msgs, _next_cursor)) if !msgs.is_empty() => {
                     if let Ok(json) = serde_json::to_string(&msgs) {
                         std::fs::write(&cache_file, json).ok();
                     }
@@ -2284,10 +2605,14 @@ impl HttpClient {
         chat_id: &str,
         msg_id: Option<&str>,
         limit: usize,
-    ) -> Result<Vec<models::Message>, String> {
+    ) -> Result<(Vec<models::Message>, Option<String>), String> {
+        // Server supports up to 200 per request
+        let max_per_request = 200;
+        let effective_limit = limit.min(max_per_request);
+
         let mut params = serde_json::json!({
             "chat_id": chat_id,
-            "limit": limit.min(50),
+            "limit": effective_limit,
             "direction": "older"
         });
         if let Some(mid) = msg_id {
@@ -2298,6 +2623,7 @@ impl HttpClient {
 
         // Parse the messages array from the response
         let mut messages = Vec::new();
+        let mut next_cursor = None;
 
         if let Some(items) = data.get("messages").and_then(|v| v.as_array()) {
             for item in items {
@@ -2307,10 +2633,32 @@ impl HttpClient {
             }
         }
 
+        // Check for pagination cursor
+        if let Some(cursor) = data.get("next_from_message_id").and_then(|v| v.as_str()) {
+            if !cursor.is_empty() {
+                next_cursor = Some(cursor.to_string());
+            }
+        } else if let Some(cursor) = data.get("next_message_id").and_then(|v| v.as_str()) {
+            if !cursor.is_empty() {
+                next_cursor = Some(cursor.to_string());
+            }
+        }
+
         // Sort by creation time (oldest first)
         messages.sort_by_key(|m| m.created);
 
-        Ok(messages)
+        Ok((messages, next_cursor))
+    }
+
+    /// Fetch older messages with pagination support (public API).
+    /// Returns (messages, next_cursor) where next_cursor can be used for the next page.
+    pub async fn get_older_messages(
+        &self,
+        chat_id: &str,
+        from_message_id: &str,
+        limit: usize,
+    ) -> Result<(Vec<models::Message>, Option<String>), String> {
+        self.get_messages_via_session(chat_id, Some(from_message_id), limit).await
     }
 
     /// Parse a message from the session-based 'messages' API response.
@@ -2370,18 +2718,25 @@ impl HttpClient {
         let seq_no = item.get("seq_no").and_then(|v| v.as_u64()).unwrap_or(0);
         let reactions = Self::parse_reactions_from_message(item);
 
+        // Flat items may still carry media envelopes — extract, don't drop.
+        let (flat_type, flat_media, flat_caption) = Self::extract_plain_media(item);
+        let mut text = text;
+        if text.as_ref().map(|t| t.trim().is_empty()).unwrap_or(true) {
+            text = flat_caption;
+        }
+
         Some(models::Message {
             id: format!("{}_{}", seq_no, msg_id),
             chat_id: chat_id.to_string(),
             from_id: from_guid,
             message_id: Some(msg_id),
             rmid: None,
-            type_: models::MessageType::Text,
+            type_: flat_type,
             text,
             entities: vec![],
             reply_to: None,
             forward: None,
-            media: vec![],
+            media: flat_media,
             reactions,
             thread_id: None,
             has_thread: false,
@@ -2757,6 +3112,243 @@ impl HttpClient {
         }
     }
 
+    /// Short-term download URL for a `FileInfo.Id2` (`disk/…` or `file/…`).
+    /// Verified live: returns the file bytes with session auth.
+    fn shortterm_url(file_id: &str) -> String {
+        let host = config::FILE_PUBLIC_HOST.trim_end_matches('/');
+        let id = file_id.trim_start_matches('/');
+        format!("{host}/file_shortterm/{id}")
+    }
+
+    /// Decode Yandex voice waveform (base64 ASCII levels, 'A' = silence).
+    /// Reverse-engineered from live payloads: bytes cluster at 65 ('A')
+    /// during pauses and reach ~121 on peaks — map to 0.0–1.0 over /63.
+    fn decode_voice_waveform(b64: &str) -> Vec<f32> {
+        use base64::Engine;
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(b64)
+            .unwrap_or_default();
+        if bytes.is_empty() {
+            return Vec::new();
+        }
+        let mut out: Vec<f32> = bytes
+            .iter()
+            .map(|b| ((*b as f32) - 65.0).max(0.0) / 63.0)
+            .map(|v| v.clamp(0.0, 1.0))
+            .collect();
+        // Cap resolution for the bubble renderer (it shows ≤80 bars).
+        if out.len() > 200 {
+            let step = out.len() as f32 / 200.0;
+            out = (0..200).map(|i| out[(i as f32 * step) as usize]).collect();
+        }
+        out
+    }
+
+    /// File attachment fields shared by Image/MiscFile/Video/Sticker payloads.
+    fn file_attachment(
+        file_info: &serde_json::Value,
+        kind: models::MediaType,
+        extra: &serde_json::Value,
+    ) -> models::MediaAttachment {
+        let id = file_info
+            .get("Id2")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let filename = file_info
+            .get("Name")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let size = file_info.get("Size").and_then(|v| v.as_u64());
+        let mime = filename
+            .as_deref()
+            .map(Self::guess_mime_type)
+            .unwrap_or(match kind {
+                models::MediaType::Video => "video/mp4",
+                models::MediaType::Voice | models::MediaType::Audio => "audio/ogg",
+                _ => "application/octet-stream",
+            })
+            .to_string();
+        models::MediaAttachment {
+            id: id.clone(),
+            type_: kind,
+            url: if id.is_empty() {
+                String::new()
+            } else {
+                Self::shortterm_url(&id)
+            },
+            thumbnail_url: None,
+            width: extra
+                .get("Width")
+                .and_then(|v| v.as_u64())
+                .map(|v| v as u32),
+            height: extra
+                .get("Height")
+                .and_then(|v| v.as_u64())
+                .map(|v| v as u32),
+            size,
+            duration: extra
+                .get("Duration")
+                .and_then(|v| v.as_u64())
+                .map(|ms| ms / 1000),
+            filename,
+            mime_type: Some(mime),
+            waveform: None,
+            transcription: None,
+        }
+    }
+
+    /// Extract (type, attachments, caption) from a Plain/Payload object.
+    ///
+    /// Live shapes (verified 2026-09): `Voice{Duration ms, FileInfo, Text,
+    /// Waveform b64, WasRecognized}`, `Gallery{Items[{Image…}], Text}`,
+    /// `Image{FileInfo, Height, Width}`, `MiscFile{FileInfo}`,
+    /// plus defensive `Video`/`Sticker`. Priority: Voice > Video >
+    /// Image/Gallery > File > Sticker > Text.
+    fn extract_plain_media(
+        plain: &serde_json::Value,
+    ) -> (
+        models::MessageType,
+        Vec<models::MediaAttachment>,
+        Option<String>,
+    ) {
+        let mut media = Vec::new();
+        let mut kind = models::MessageType::Text;
+
+        // Voice (with server transcription + waveform when recognized).
+        if let Some(voice) = plain.get("Voice") {
+            let mut att = Self::file_attachment(
+                voice.get("FileInfo").unwrap_or(&serde_json::Value::Null),
+                models::MediaType::Voice,
+                voice,
+            );
+            // Duration arrives in milliseconds.
+            if let Some(ms) = voice.get("Duration").and_then(|v| v.as_u64()) {
+                att.duration = Some(ms / 1000);
+            }
+            if let Some(wf) = voice.get("Waveform").and_then(|v| v.as_str()) {
+                let decoded = Self::decode_voice_waveform(wf);
+                if !decoded.is_empty() {
+                    att.waveform = Some(decoded);
+                }
+            }
+            att.transcription = voice
+                .get("Text")
+                .and_then(|v| v.as_str())
+                .filter(|t| !t.trim().is_empty())
+                .map(|s| s.to_string());
+            att.mime_type = Some("audio/ogg".to_string());
+            if !att.id.is_empty() || att.transcription.is_some() {
+                kind = models::MessageType::Voice;
+                media.push(att);
+                return (kind, media, None);
+            }
+        }
+
+        // Video (defensive: same FileInfo envelope as images).
+        if let Some(video) = plain.get("Video") {
+            let att = Self::file_attachment(
+                video.get("FileInfo").unwrap_or(&serde_json::Value::Null),
+                models::MediaType::Video,
+                video,
+            );
+            if !att.id.is_empty() {
+                kind = models::MessageType::Video;
+                media.push(att);
+                return (kind, media, None);
+            }
+        }
+
+        // Gallery (multi-image + caption) and single images.
+        let mut caption: Option<String> = None;
+        if let Some(gallery) = plain.get("Gallery") {
+            caption = gallery
+                .get("Text")
+                .and_then(|v| v.as_str())
+                .filter(|t| !t.trim().is_empty())
+                .map(|s| s.to_string());
+            if let Some(items) = gallery.get("Items").and_then(|v| v.as_array()) {
+                for item in items {
+                    if let Some(image) = item.get("Image") {
+                        let att = Self::file_attachment(
+                            image.get("FileInfo").unwrap_or(&serde_json::Value::Null),
+                            models::MediaType::Image,
+                            image,
+                        );
+                        if !att.id.is_empty() {
+                            media.push(att);
+                        }
+                    }
+                }
+            }
+            if !media.is_empty() {
+                kind = models::MessageType::Image;
+                return (kind, media, caption);
+            }
+        }
+        if let Some(image) = plain.get("Image") {
+            let att = Self::file_attachment(
+                image.get("FileInfo").unwrap_or(&serde_json::Value::Null),
+                models::MediaType::Image,
+                image,
+            );
+            if !att.id.is_empty() {
+                return (models::MessageType::Image, vec![att], None);
+            }
+        }
+
+        // Files.
+        if let Some(file) = plain.get("MiscFile").or_else(|| plain.get("File")) {
+            let att = Self::file_attachment(
+                file.get("FileInfo").unwrap_or(file),
+                models::MediaType::Document,
+                file,
+            );
+            if !att.id.is_empty() || att.filename.is_some() {
+                return (models::MessageType::File, vec![att], None);
+            }
+        }
+
+        // Stickers (defensive; shape varies).
+        if let Some(sticker) = plain.get("Sticker") {
+            let att = Self::file_attachment(
+                sticker.get("FileInfo").unwrap_or(sticker),
+                models::MediaType::Sticker,
+                sticker,
+            );
+            if !att.id.is_empty() {
+                return (models::MessageType::Sticker, vec![att], None);
+            }
+        }
+
+        (models::MessageType::Text, media, None)
+    }
+
+    /// Forward author/date from a ForwardedMessages item.
+    fn parse_forward_info(item: &serde_json::Value) -> Option<models::ForwardInfo> {
+        let smi = item.get("ServerMessageInfo")?;
+        let payload = item.get("Payload")?;
+        let from = smi.get("From")?;
+        let name = from
+            .get("DisplayName")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.trim().is_empty())
+            .map(|s| s.to_string());
+        let ts = smi.get("Timestamp").and_then(|v| v.as_i64()).unwrap_or(0);
+        Some(models::ForwardInfo {
+            from_chat_id: payload
+                .get("ChatId")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            from_message_id: payload
+                .get("PayloadId")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            from_name: name,
+            date: normalize_unix_timestamp(ts),
+        })
+    }
+
     /// Parse a single search result item into our Message model.
     fn parse_search_message(item: &serde_json::Value, chat_id: &str) -> Option<models::Message> {
         let data = item.get("data")?;
@@ -2784,7 +3376,7 @@ impl HttpClient {
             normalize_unix_timestamp(timestamp)
         };
 
-        let text = plain
+        let mut text = plain
             .get("Text")
             .and_then(|t| t.get("MessageText"))
             .and_then(|t| t.as_str())
@@ -2804,18 +3396,61 @@ impl HttpClient {
         let reactions = Self::parse_reactions_from_message(data);
 
         let (delivered, read) = Self::parse_delivery_flags(item);
+
+        // Media lives in Plain (Voice/Gallery/Image/MiscFile/Video/Sticker)
+        // or in ForwardedMessages payloads — never ignore it, or images and
+        // files silently vanish from history.
+        let (mut msg_type, mut media, caption) = Self::extract_plain_media(plain);
+        if text.as_ref().map(|t| t.trim().is_empty()).unwrap_or(true) {
+            text = caption;
+        }
+        let mut forward: Option<models::ForwardInfo> = None;
+        if let Some(fw) = data.get("ForwardedMessages").and_then(|v| v.as_array()) {
+            let mut fw_texts: Vec<String> = Vec::new();
+            for fitem in fw {
+                let payload = fitem.get("Payload").unwrap_or(fitem);
+                let (t, mut m, cap) = Self::extract_plain_media(payload);
+                media.append(&mut m);
+                if t != models::MessageType::Text {
+                    msg_type = t;
+                }
+                if let Some(ft) = payload
+                    .get("Text")
+                    .and_then(|t| t.get("MessageText"))
+                    .and_then(|t| t.as_str())
+                    .filter(|t| !t.trim().is_empty())
+                    .map(|s| s.to_string())
+                    .or(cap)
+                {
+                    fw_texts.push(ft);
+                }
+                if forward.is_none() {
+                    forward = Self::parse_forward_info(fitem);
+                }
+            }
+            // Forwarded container messages carry no own text — show the
+            // forwarded content instead of an empty bubble.
+            if text.as_ref().map(|t| t.trim().is_empty()).unwrap_or(true) && !fw_texts.is_empty() {
+                text = Some(fw_texts.join("\n"));
+                if msg_type == models::MessageType::Text && media.is_empty() {
+                    msg_type = models::MessageType::Forward;
+                }
+            }
+        }
+        // Server-side voice transcription rides along inside the
+        // attachment itself (see extract_plain_media).
         Some(models::Message {
             id: format!("{}_{}", seq_no, payload_id),
             chat_id: chat_id.to_string(),
             from_id: from_guid,
             message_id: Some(payload_id),
             rmid: None,
-            type_: models::MessageType::Text,
+            type_: msg_type,
             text,
             entities: vec![],
             reply_to: None,
-            forward: None,
-            media: vec![],
+            forward,
+            media,
             reactions,
             thread_id: None,
             has_thread: false,
@@ -3250,6 +3885,7 @@ impl HttpClient {
                 filename: Some(filename.to_string()),
                 mime_type: Some(mime.to_string()),
                 waveform: None,
+                transcription: None,
             }],
             reactions: vec![],
             thread_id: None,
@@ -4417,6 +5053,122 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
+    /// Live shape (verified 2026-09): Plain.Voice with transcription.
+    fn voice_plain() -> serde_json::Value {
+        serde_json::json!({
+            "ChatId": "c1", "PayloadId": "p1",
+            "Voice": {
+                "Duration": 121650,
+                "FileInfo": {"Id2": "file/c21814d0-7278-4826-970f-83aeb960fd3e", "Name": "abc.0"},
+                "Text": "а привет ещё",
+                "WasRecognized": true,
+                "Waveform": "QUFJQklDSVFBQUFBQUFBQUFSQWhBQkFBQUJFQUFBQUFBUkVBQUJFUUVBRVJJUkFRQXlJeUVoRVJFQUlSQVNBQUVRQUJFQklSRWdFUkFCQUFFQUFBRVJBQkVTRVFFUUVBQUFBUUFCRUJBQkVBQUJJQkVRQUFFQkFT"
+            }
+        })
+    }
+
+    #[test]
+    fn test_voice_payload_parses() {
+        let (kind, media, caption) = HttpClient::extract_plain_media(&voice_plain());
+        assert_eq!(kind, models::MessageType::Voice);
+        assert!(caption.is_none());
+        assert_eq!(media.len(), 1);
+        let a = &media[0];
+        assert_eq!(a.id, "file/c21814d0-7278-4826-970f-83aeb960fd3e");
+        assert_eq!(a.type_, models::MediaType::Voice);
+        assert_eq!(a.duration, Some(121));
+        assert_eq!(a.transcription.as_deref(), Some("а привет ещё"));
+        assert!(a.url.contains("file_shortterm/file/"));
+        let wf = a.waveform.clone().unwrap();
+        assert!(!wf.is_empty());
+        assert!(wf.iter().all(|&v| (0.0..=1.0).contains(&v)));
+        // Silence-heavy recording starts near zero.
+        assert!(wf[0] < 0.1);
+    }
+
+    #[test]
+    fn test_gallery_payload_parses() {
+        let plain = serde_json::json!({
+            "ChatId": "c1", "PayloadId": "p2",
+            "Gallery": {
+                "Items": [
+                    {"Image": {"FileInfo": {"Id2": "disk/012c7356-1111-2222-3333-444455556666", "Name": "a.png", "Size": 186457, "Source": 1}, "Height": 1044, "Width": 1850}},
+                    {"Image": {"FileInfo": {"Id2": "disk/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "Name": "b.png"}, "Height": 100, "Width": 200}}
+                ],
+                "Text": "смотри, какая красивая"
+            }
+        });
+        let (kind, media, caption) = HttpClient::extract_plain_media(&plain);
+        assert_eq!(kind, models::MessageType::Image);
+        assert_eq!(media.len(), 2);
+        assert_eq!(media[0].width, Some(1850));
+        assert_eq!(media[0].height, Some(1044));
+        assert_eq!(media[0].filename.as_deref(), Some("a.png"));
+        assert_eq!(caption.as_deref(), Some("смотри, какая красивая"));
+    }
+
+    #[test]
+    fn test_miscfile_payload_parses() {
+        let plain = serde_json::json!({
+            "ChatId": "c1", "PayloadId": "p3",
+            "MiscFile": {"FileInfo": {"Id2": "disk/a34b10d9-0000-1111-2222-333333333333", "Name": "doc.pdf", "Size": 3977588, "Source": 1}}
+        });
+        let (kind, media, _) = HttpClient::extract_plain_media(&plain);
+        assert_eq!(kind, models::MessageType::File);
+        assert_eq!(media.len(), 1);
+        assert_eq!(media[0].filename.as_deref(), Some("doc.pdf"));
+        assert_eq!(media[0].size, Some(3977588));
+        assert_eq!(media[0].type_, models::MediaType::Document);
+    }
+
+    #[test]
+    fn test_forwarded_image_attaches_and_marks_forward() {
+        let item = serde_json::json!({
+            "data": {
+                "ServerMessageInfo": {
+                    "From": {"Guid": "u1"},
+                    "Timestamp": 1780848861656031i64,
+                    "SeqNo": 5, "Version": 1
+                },
+                "ClientMessage": {"Plain": {"ChatId": "c1", "PayloadId": "p9"}},
+                "ForwardedMessages": [{
+                    "ServerMessageInfo": {
+                        "From": {"Guid": "u2", "DisplayName": "Alice"},
+                        "Timestamp": 1780847506071010i64, "SeqNo": 1, "Version": 1
+                    },
+                    "Payload": {
+                        "ChatId": "c0", "PayloadId": "p8",
+                        "Image": {"FileInfo": {"Id2": "disk/69c9e21f-0000-1111-2222-333333333333", "Name": "s.png", "Size": 13324, "Source": 1}, "Height": 129, "Width": 683}
+                    }
+                }]
+            }
+        });
+        let msg = HttpClient::parse_search_message(&item, "c1").expect("parse");
+        assert_eq!(msg.type_, models::MessageType::Image);
+        assert_eq!(msg.media.len(), 1);
+        assert_eq!(msg.media[0].width, Some(683));
+        let fw = msg.forward.expect("forward info");
+        assert_eq!(fw.from_name.as_deref(), Some("Alice"));
+        assert_eq!(fw.from_message_id.as_deref(), Some("p8"));
+    }
+
+    #[test]
+    fn test_forwarded_text_joins_when_main_empty() {
+        let item = serde_json::json!({
+            "data": {
+                "ServerMessageInfo": {"From": {"Guid": "u1"}, "Timestamp": 1780848861656031i64, "SeqNo": 6, "Version": 1},
+                "ClientMessage": {"Plain": {"ChatId": "c1", "PayloadId": "p10"}},
+                "ForwardedMessages": [{
+                    "ServerMessageInfo": {"From": {"Guid": "u2", "DisplayName": "Bob"}, "Timestamp": 1, "SeqNo": 1, "Version": 1},
+                    "Payload": {"ChatId": "c0", "PayloadId": "p7", "Text": {"MessageText": "hello forward"}}
+                }]
+            }
+        });
+        let msg = HttpClient::parse_search_message(&item, "c1").expect("parse");
+        assert_eq!(msg.text.as_deref(), Some("hello forward"));
+        assert_eq!(msg.type_, models::MessageType::Forward);
+    }
+
     #[test]
     fn test_config_values() {
         // Default OAuth client_id is empty — set via YANDEX_CLIENT_ID (32-char hex).
@@ -4545,5 +5297,98 @@ mod tests {
 
             tokio::time::sleep(std::time::Duration::from_secs(3)).await;
         }
+    }
+
+    #[test]
+    fn test_split_concat_json() {
+        let s = r#"{"a":1},{"ServerMessage":{"x":2}},{"Counters":{"n":5}}"#;
+        let objs = WebSocketClient::split_concat_json(s);
+        assert_eq!(objs.len(), 3);
+        assert_eq!(objs[0].get("a").and_then(|v| v.as_u64()), Some(1));
+        assert!(WebSocketClient::is_history_tail(&objs[2]));
+        assert!(!WebSocketClient::is_history_tail(&objs[1]));
+        // Truncated tail is tolerated (parses the complete prefix).
+        let cut = r#"{"a":1},{"b":"#;
+        assert_eq!(WebSocketClient::split_concat_json(cut).len(), 1);
+        assert!(WebSocketClient::split_concat_json("").is_empty());
+    }
+
+    /// Live shape (verified 2026-09-07): WS `history` item with an image.
+    #[test]
+    fn test_ws_server_message_image_parses() {
+        let node = serde_json::json!({
+            "ServerMessage": {
+                "ClientMessage": {
+                    "Plain": {
+                        "Image": {
+                            "FileInfo": {
+                                "Name": "screenshot-2026-09-07-11-26-38.png",
+                                "Size": 2381,
+                                "Id2": "disk/e51e4083-41a8-4d09-b08f-73c158df8c4d",
+                                "Source": 1
+                            },
+                            "Width": 223,
+                            "Height": 30
+                        },
+                        "ChatId": "c1",
+                        "PayloadId": "db56272c-8437-4ed6-c62e6734"
+                    }
+                },
+                "ServerMessageInfo": {
+                    "Timestamp": 1788769602497045_i64,
+                    "SeqNo": 13692,
+                    "Version": 1,
+                    "From": {"Guid": "u1", "DisplayName": "Aksenov Y."}
+                }
+            },
+            "Meta": {"Origin": 27}
+        });
+        let msg = WebSocketClient::parse_ws_server_message(&node, "c1").expect("parsed");
+        assert_eq!(msg.type_, models::MessageType::Image);
+        assert_eq!(msg.id, "13692_db56272c-8437-4ed6-c62e6734");
+        assert_eq!(msg.media.len(), 1);
+        assert_eq!(msg.media[0].id, "disk/e51e4083-41a8-4d09-b08f-73c158df8c4d");
+        assert!(msg.media[0].url.contains("file_shortterm"));
+        // Microsecond timestamp keeps full precision (08:26:42 UTC = 11:26:42 MSK).
+        assert_eq!(msg.created.format("%H:%M:%S").to_string(), "08:26:42");
+    }
+
+    /// Live shape (verified 2026-09-07): WS `history` item with a docx file.
+    #[test]
+    fn test_ws_server_message_miscfile_parses() {
+        let node = serde_json::json!({
+            "ServerMessage": {
+                "ClientMessage": {
+                    "Plain": {
+                        "MiscFile": {
+                            "FileInfo": {
+                                "Name": "file.docx",
+                                "Size": 4178687,
+                                "Id2": "disk/f49d125c-a802-5e0f-2b51-145c583dca53",
+                                "Source": 1
+                            }
+                        },
+                        "ChatId": "c1",
+                        "PayloadId": "df7df8ce-79f4-055d-994f19a0"
+                    }
+                },
+                "ServerMessageInfo": {
+                    "Timestamp": 1788769947464045_i64,
+                    "SeqNo": 13699,
+                    "Version": 1,
+                    "From": {"Guid": "u1", "DisplayName": "Aksenov Y."},
+                    "SeenByPartnerMcs": 1788769920000000_i64
+                }
+            },
+            "Meta": {"Origin": 27}
+        });
+        let msg = WebSocketClient::parse_ws_server_message(&node, "c1").expect("parsed");
+        assert_eq!(msg.type_, models::MessageType::File);
+        assert_eq!(msg.media.len(), 1);
+        assert_eq!(
+            msg.media[0].filename.as_deref(),
+            Some("file.docx")
+        );
+        assert!(msg.read, "SeenByPartnerMcs marks outgoing as read");
     }
 }

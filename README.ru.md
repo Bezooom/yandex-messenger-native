@@ -19,14 +19,14 @@
 | Список чатов | Beta | Плотный список в стиле nheko, аватары 54px, превью (RU); mute/pin/archive/mark_read/delete |
 | Текстовые сообщения | Beta | Отправка + reply/edit + outbox + черновики + пагинация + **delivery/read ticks** |
 | Файлы и вложения | Beta | Upload→send; **Скачать / Открыть**; **DnD** файлов; **Ctrl+V** картинок |
-| Голосовые сообщения | Заглушка | UI скрыт (`YM_ENABLE_VOICE`); playback stub |
-| Воспроизведение видео | Заглушка | Плеер не реализован |
-| Звонки (Телемост) | Заглушка | UI shell (`YM_ENABLE_TELEMOST_UI`), без WebRTC |
+| Голосовые сообщения | Beta | Запись Opus/OGG + waveform (GStreamer), play/pause через playbin, отправка voice-типом (без текста-заглушки) |
+| Воспроизведение видео | Beta | Инлайн-плеер в чате: play/pause, скраб, время (GStreamer) |
+| Звонки (Телемост) | Beta | Живое окно: Goloom-сигналинг + WebRTC (publish/subscribe), ростер, видео в окне, ringing; REST встреч — best-effort |
 | Системные уведомления | Beta | `notify-rust`, mute + настройки |
 | Системный трей | Beta | StatusNotifierItem (`ksni`), close→tray, badge unread |
 | Настройки | Beta | Уведомления / трей / тёмная тема / уменьшить анимации |
 | Оффлайн-кэш | Beta | SQLite (`cache.db`) upsert + JSON L2; cold start из SQLite |
-| Тема | Beta | Токены Telegram Desktop night, адаптивный сайдбар (~32% / макс. 420px) |
+| Тема | Beta | Светлая Яндекс-тема по умолчанию + тёмная night, переключатель в настройках |
 
 ### Флаги фич (Feature Flags)
 
@@ -42,8 +42,9 @@
 ### Известные ограничения
 
 - **Session cookies**: сохраняются при входе через WebView; fallback-скрипт `scripts/login_browser.py` всё ещё работает
-- **Голосовые / Телемост**: заглушки, скрыты без `YM_ENABLE_VOICE` / `YM_ENABLE_TELEMOST_UI` (нет WebRTC)
-- **Видеоплеер**: не реализован
+- **Голосовые**: запись/плеер за `YM_ENABLE_VOICE` (нужна сборка с фичей `gstreamer`; транскрипция — только отображение, без запроса)
+- **Телемост**: живой звонок за `YM_ENABLE_TELEMOST_UI` (нужна сборка с фичей `gstreamer` + пакет `gstreamer1.0-nice`); REST встреч и часть SDP-политик — best-effort, требуют live-проверки
+- **Видеоплеер**: инлайн в чате (play/pause/скраб); нужен `gstreamer`
 - **Chat actions API**: best-effort reverse RPC — имена методов могут отличаться на стороне сервера
 - **WS status events**: зависят от payload сервера; history flags парсятся best-effort
 
@@ -90,7 +91,7 @@ sudo apt install -y \
   libssl-dev libnotify-dev libdbus-1-dev libwebkitgtk-6.0-dev
 ```
 
-*Примечание: для поддержки записи голосовых сообщений рекомендуется установить пакеты GStreamer (`libgstreamer1.0-dev`, `libgstreamer-plugins-base1.0-dev`).*
+*Примечание: для поддержки записи голосовых сообщений рекомендуется установить пакеты GStreamer (`libgstreamer1.0-dev`, `libgstreamer-plugins-base1.0-dev`). Для звонков (фича `gstreamer`: `webrtcbin`) обязателен ICE-плагин `gstreamer1.0-nice` — без него webrtcbin не создаёт транспорты и линковка `! webrtc.` падает.*
 
 ---
 

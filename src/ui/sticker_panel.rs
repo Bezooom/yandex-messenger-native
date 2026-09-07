@@ -493,38 +493,40 @@ mod tests {
 
     #[test]
     fn test_sticker_panel_workflow() {
-        let _ = gtk::init();
+        // Runs on the shared GTK thread (see run_gtk_test): widgets must
+        // live on the thread that initialized GTK.
+        crate::ui::run_gtk_test(|| {
+            // 1. Test creation
+            let packs = vec![sample_pack(), sample_pack()];
+            let panel = StickerPanel::new(packs);
+            assert!(panel.container().is_visible());
 
-        // 1. Test creation
-        let packs = vec![sample_pack(), sample_pack()];
-        let panel = StickerPanel::new(packs);
-        assert!(panel.container().is_visible());
+            // 2. Test select pack
+            let packs_new = vec![
+                StickerPack {
+                    pack_id: "a".to_string(),
+                    ..sample_pack()
+                },
+                StickerPack {
+                    pack_id: "b".to_string(),
+                    ..sample_pack()
+                },
+                StickerPack {
+                    pack_id: "c".to_string(),
+                    ..sample_pack()
+                },
+            ];
+            let panel2 = StickerPanel::new(packs_new);
+            panel2.select_pack(2);
+            assert_eq!(*panel2.selected_pack.borrow(), 2);
 
-        // 2. Test select pack
-        let packs_new = vec![
-            StickerPack {
-                pack_id: "a".to_string(),
-                ..sample_pack()
-            },
-            StickerPack {
-                pack_id: "b".to_string(),
-                ..sample_pack()
-            },
-            StickerPack {
-                pack_id: "c".to_string(),
-                ..sample_pack()
-            },
-        ];
-        let panel2 = StickerPanel::new(packs_new);
-        panel2.select_pack(2);
-        assert_eq!(*panel2.selected_pack.borrow(), 2);
-
-        // 3. Test update packs
-        let packs_to_update = vec![sample_pack()];
-        let panel3 = StickerPanel::new(packs_to_update);
-        let new_packs = vec![sample_pack(), sample_pack()];
-        panel3.update_packs(new_packs);
-        assert_eq!(panel3.packs.borrow().len(), 2);
+            // 3. Test update packs
+            let packs_to_update = vec![sample_pack()];
+            let panel3 = StickerPanel::new(packs_to_update);
+            let new_packs = vec![sample_pack(), sample_pack()];
+            panel3.update_packs(new_packs);
+            assert_eq!(panel3.packs.borrow().len(), 2);
+        });
     }
 }
 
