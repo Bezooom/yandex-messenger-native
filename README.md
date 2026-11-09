@@ -1,4 +1,52 @@
-# Yandex Messenger Native
+<a id="readme-top"></a>
+<!-- best-readme-template -->
+<div align="center">
+
+  <a href="https://github.com/Bezooom/yandex-messenger-native">
+    <img src="assets/icon.png" alt="Logo" width="120" height="120">
+  </a>
+<h1 align="center">Yandex Messenger Native</h1>
+
+<p align="center">
+  Unofficial lightweight native Linux desktop client for Yandex Messenger — Rust, GTK4, Libadwaita.
+  <br />
+  <br />
+  <a href="https://github.com/Bezooom/yandex-messenger-native/tree/HEAD/docs"><strong>Docs »</strong></a> · <a href="https://github.com/Bezooom/yandex-messenger-native/issues/new?labels=bug">Report Bug</a> · <a href="https://github.com/Bezooom/yandex-messenger-native/issues/new?labels=enhancement">Request Feature</a> · <a href="README.ru.md">Русская версия</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/Bezooom/yandex-messenger-native/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Bezooom/yandex-messenger-native/ci.yml?style=for-the-badge&label=CI&logo=githubactions&logoColor=white" alt="CI" /></a>
+  <a href="https://github.com/Bezooom/yandex-messenger-native/releases/latest"><img src="https://img.shields.io/github/v/release/Bezooom/yandex-messenger-native?style=for-the-badge" alt="Release" /></a>
+  <a href="https://github.com/Bezooom/yandex-messenger-native/blob/HEAD/LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License" /></a>
+  <a href="https://github.com/Bezooom/yandex-messenger-native/stargazers"><img src="https://img.shields.io/github/stars/Bezooom/yandex-messenger-native?style=for-the-badge" alt="Stars" /></a>
+  <a href="https://github.com/Bezooom/yandex-messenger-native/commits"><img src="https://img.shields.io/github/last-commit/Bezooom/yandex-messenger-native?style=for-the-badge" alt="Last commit" /></a>
+  <a href="https://github.com/Bezooom/yandex-messenger-native/issues"><img src="https://img.shields.io/github/issues/Bezooom/yandex-messenger-native?style=for-the-badge" alt="Issues" /></a>
+</p>
+
+</div>
+
+<details open>
+<summary><b>📑 Table of Contents</b></summary>
+
+- [📖 About The Project](#-about-the-project)
+- [Feature Status Matrix](#feature-status-matrix)
+- [Features](#features)
+- [System Requirements](#system-requirements)
+- [🧱 Built With](#-built-with)
+- [Building and Installation](#building-and-installation)
+- [Environment Variables](#environment-variables)
+- [Development & Documentation](#development--documentation)
+- [🗺️ Roadmap](#-roadmap)
+- [🤝 Contributing](#-contributing)
+- [License](#license)
+- [📬 Contact](#-contact)
+- [🙏 Acknowledgments](#-acknowledgments)
+
+</details>
+
+## 📖 About The Project
+
+<p align="center"><img src="screenshot.png" width="800" alt="Screenshot" /></p>
 
 [![CI](https://github.com/Bezooom/yandex-messenger-native/actions/workflows/ci.yml/badge.svg)](https://github.com/Bezooom/yandex-messenger-native/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/Bezooom/yandex-messenger-native)](https://github.com/Bezooom/yandex-messenger-native/releases/latest) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -97,6 +145,16 @@ sudo apt install -y \
 
 ---
 
+## 🧱 Built With
+
+<p>
+<img src="https://img.shields.io/badge/Rust-stable-000000?style=for-the-badge&logo=rust&logoColor=white" alt="Rust" />
+<img src="https://img.shields.io/badge/GTK-4-4A86CF?style=for-the-badge&logo=gtk&logoColor=white" alt="GTK" />
+<img src="https://img.shields.io/badge/Libadwaita-GNOME-4A86CF?style=for-the-badge&logo=gnome&logoColor=white" alt="Libadwaita" />
+<img src="https://img.shields.io/badge/GStreamer-media-FF3131?style=for-the-badge" alt="GStreamer" />
+<img src="https://img.shields.io/badge/SQLite-cache-003B57?style=for-the-badge&logo=sqlite&logoColor=white" alt="SQLite" />
+</p>
+
 ## Building and Installation
 
 ### 1. Compilation
@@ -161,6 +219,38 @@ The client can be configured using the following environment variables:
 * **Detailed roadmap**: [ROADMAP_DETAILED.md](ROADMAP_DETAILED.md) · [ROADMAP_DETAILED.ru.md](ROADMAP_DETAILED.ru.md)
 * **Contributing**: [CONTRIBUTING.md](CONTRIBUTING.md) · [CONTRIBUTING.ru.md](CONTRIBUTING.ru.md)
 
+## 🗺️ Roadmap
+
+Detailed plan: [ROADMAP.md](ROADMAP.md). See the [open issues](https://github.com/Bezooom/yandex-messenger-native/issues) for the full list of ideas and known problems.
+
+## 🤝 Contributing
+
+Contributions are welcome. If you have an idea that would make this better, open an issue or a pull request:
+
+1. Fork the repository
+2. Create a branch (`git checkout -b feature/my-idea`)
+3. Commit (`git commit -m 'feat: my idea'`)
+4. Push (`git push origin feature/my-idea`)
+5. Open a pull request
+
+Detailed guidelines: [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+
+## 📬 Contact
+
+**Pavel Naumov** (Bezooom) — [naumovai.ru](https://naumovai.ru) · [X @Bezooooom](https://x.com/Bezooooom) · naumov122@gmail.com
+
+Project: [https://github.com/Bezooom/yandex-messenger-native](https://github.com/Bezooom/yandex-messenger-native)
+
+## 🙏 Acknowledgments
+
+- [gtk-rs](https://gtk-rs.org) — Rust bindings for GTK4
+- [Libadwaita](https://gnome.pages.gitlab.gnome.org/libadwaita/)
+- [nheko](https://github.com/Nheko-Reborn/nheko) and Telegram Desktop — UI inspiration
+- [Best-README-Template](https://github.com/othneildrew/Best-README-Template)
+- [Shields.io](https://shields.io)
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>

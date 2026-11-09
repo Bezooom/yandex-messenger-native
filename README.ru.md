@@ -1,4 +1,52 @@
-# Yandex Messenger Native
+<a id="readme-top"></a>
+<!-- best-readme-template -->
+<div align="center">
+
+  <a href="https://github.com/Bezooom/yandex-messenger-native">
+    <img src="assets/icon.png" alt="Logo" width="120" height="120">
+  </a>
+<h1 align="center">Yandex Messenger Native</h1>
+
+<p align="center">
+  Неофициальный лёгкий нативный клиент Яндекс Мессенджера для Linux — Rust, GTK4, Libadwaita.
+  <br />
+  <br />
+  <a href="https://github.com/Bezooom/yandex-messenger-native/tree/HEAD/docs"><strong>Документация »</strong></a> · <a href="https://github.com/Bezooom/yandex-messenger-native/issues/new?labels=bug">Сообщить об ошибке</a> · <a href="https://github.com/Bezooom/yandex-messenger-native/issues/new?labels=enhancement">Предложить улучшение</a> · <a href="README.md">English</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/Bezooom/yandex-messenger-native/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Bezooom/yandex-messenger-native/ci.yml?style=for-the-badge&label=CI&logo=githubactions&logoColor=white" alt="CI" /></a>
+  <a href="https://github.com/Bezooom/yandex-messenger-native/releases/latest"><img src="https://img.shields.io/github/v/release/Bezooom/yandex-messenger-native?style=for-the-badge" alt="Release" /></a>
+  <a href="https://github.com/Bezooom/yandex-messenger-native/blob/HEAD/LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License" /></a>
+  <a href="https://github.com/Bezooom/yandex-messenger-native/stargazers"><img src="https://img.shields.io/github/stars/Bezooom/yandex-messenger-native?style=for-the-badge" alt="Stars" /></a>
+  <a href="https://github.com/Bezooom/yandex-messenger-native/commits"><img src="https://img.shields.io/github/last-commit/Bezooom/yandex-messenger-native?style=for-the-badge" alt="Last commit" /></a>
+  <a href="https://github.com/Bezooom/yandex-messenger-native/issues"><img src="https://img.shields.io/github/issues/Bezooom/yandex-messenger-native?style=for-the-badge" alt="Issues" /></a>
+</p>
+
+</div>
+
+<details open>
+<summary><b>📑 Содержание</b></summary>
+
+- [📖 О проекте](#-о-проекте)
+- [Матрица статуса функций](#матрица-статуса-функций)
+- [Возможности](#возможности)
+- [Требования к системе](#требования-к-системе)
+- [Сборка и установка](#сборка-и-установка)
+- [Переменные окружения](#переменные-окружения)
+- [Разработка и документация](#разработка-и-документация)
+- [🗺️ Дорожная карта](#-дорожная-карта)
+- [🤝 Участие в разработке](#-участие-в-разработке)
+- [Лицензия](#лицензия)
+- [🧱 Технологии (Built With)](#-технологии-built-with)
+- [📬 Контакты](#-контакты)
+- [🙏 Благодарности](#-благодарности)
+
+</details>
+
+## 📖 О проекте
+
+<p align="center"><img src="screenshot.png" width="800" alt="Screenshot" /></p>
 
 [![CI](https://github.com/Bezooom/yandex-messenger-native/actions/workflows/ci.yml/badge.svg)](https://github.com/Bezooom/yandex-messenger-native/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/Bezooom/yandex-messenger-native)](https://github.com/Bezooom/yandex-messenger-native/releases/latest) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -161,6 +209,48 @@ sudo apt install -y ./dist/yandex-messenger-native_*_amd64.deb
 * **Детальная дорожная карта**: [ROADMAP_DETAILED.ru.md](ROADMAP_DETAILED.ru.md) · [ROADMAP_DETAILED.md](ROADMAP_DETAILED.md)
 * **Контрибьютинг**: [CONTRIBUTING.ru.md](CONTRIBUTING.ru.md) · [CONTRIBUTING.md](CONTRIBUTING.md)
 
+## 🗺️ Дорожная карта
+
+Подробный план: [ROADMAP.ru.md](ROADMAP.ru.md). Полный список задач и идей — в [issues](https://github.com/Bezooom/yandex-messenger-native/issues).
+
+## 🤝 Участие в разработке
+
+Вклад в проект приветствуется. Если есть идея, как сделать лучше, откройте issue или pull request:
+
+1. Сделайте форк репозитория
+2. Создайте ветку (`git checkout -b feature/my-idea`)
+3. Сделайте коммит (`git commit -m 'feat: my idea'`)
+4. Отправьте ветку (`git push origin feature/my-idea`)
+5. Откройте pull request
+
+Подробные правила: [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Лицензия
 
 Проект распространяется под лицензией MIT. Подробнее см. [LICENSE](LICENSE).
+
+## 🧱 Технологии (Built With)
+
+<p>
+<img src="https://img.shields.io/badge/Rust-stable-000000?style=for-the-badge&logo=rust&logoColor=white" alt="Rust" />
+<img src="https://img.shields.io/badge/GTK-4-4A86CF?style=for-the-badge&logo=gtk&logoColor=white" alt="GTK" />
+<img src="https://img.shields.io/badge/Libadwaita-GNOME-4A86CF?style=for-the-badge&logo=gnome&logoColor=white" alt="Libadwaita" />
+<img src="https://img.shields.io/badge/GStreamer-media-FF3131?style=for-the-badge" alt="GStreamer" />
+<img src="https://img.shields.io/badge/SQLite-cache-003B57?style=for-the-badge&logo=sqlite&logoColor=white" alt="SQLite" />
+</p>
+
+## 📬 Контакты
+
+**Павел Наумов** (Bezooom) — [naumovai.ru](https://naumovai.ru) · [X @Bezooooom](https://x.com/Bezooooom) · naumov122@gmail.com
+
+Проект: [https://github.com/Bezooom/yandex-messenger-native](https://github.com/Bezooom/yandex-messenger-native)
+
+## 🙏 Благодарности
+
+- [gtk-rs](https://gtk-rs.org) — Rust-привязки к GTK4
+- [Libadwaita](https://gnome.pages.gitlab.gnome.org/libadwaita/)
+- [nheko](https://github.com/Nheko-Reborn/nheko) и Telegram Desktop — вдохновение для интерфейса
+- [Best-README-Template](https://github.com/othneildrew/Best-README-Template)
+- [Shields.io](https://shields.io)
+
+<p align="right">(<a href="#readme-top">наверх</a>)</p>
