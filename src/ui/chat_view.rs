@@ -1677,9 +1677,7 @@ impl ChatView {
         {
             let mut messages = self.messages.lock().unwrap();
             let before = messages.len();
-            messages.retain(|m| {
-                m.id != message_id && m.message_id.as_deref() != Some(message_id)
-            });
+            messages.retain(|m| m.id != message_id && m.message_id.as_deref() != Some(message_id));
             if messages.len() == before {
                 return;
             }
@@ -1688,10 +1686,10 @@ impl ChatView {
         let n = store.n_items();
         let mut pos = None;
         for i in 0..n {
-            if let Some(obj) = store
-                .item(i)
-                .and_then(|o| o.downcast::<crate::ui::message_object::MessageObject>().ok())
-            {
+            if let Some(obj) = store.item(i).and_then(|o| {
+                o.downcast::<crate::ui::message_object::MessageObject>()
+                    .ok()
+            }) {
                 let m = obj.message();
                 if m.id == message_id || m.message_id.as_deref() == Some(message_id) {
                     pos = Some(i);
@@ -2020,8 +2018,7 @@ impl ChatView {
             }
             // More history exists when the server hands us a cursor,
             // or when we got a full page (page size = 100).
-            *self.has_more_history.lock().unwrap() =
-                next_cursor.is_some() || filtered.len() >= 100;
+            *self.has_more_history.lock().unwrap() = next_cursor.is_some() || filtered.len() >= 100;
             filtered.append(&mut *messages);
             filtered.sort_by(|a, b| a.created.cmp(&b.created));
             let mut seen = std::collections::HashSet::new();
@@ -4428,4 +4425,3 @@ fn format_date_separator(dt: &chrono::DateTime<chrono::Utc>) -> String {
         format!("{} {} {}", local_dt.day(), month_name, local_dt.year())
     }
 }
-

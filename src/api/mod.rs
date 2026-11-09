@@ -281,9 +281,7 @@ impl WebSocketClient {
         let bytes = s.as_bytes();
         let mut idx = 0;
         while idx < s.len() {
-            while idx < s.len()
-                && (bytes[idx] == b',' || bytes[idx].is_ascii_whitespace())
-            {
+            while idx < s.len() && (bytes[idx] == b',' || bytes[idx].is_ascii_whitespace()) {
                 idx += 1;
             }
             if idx >= s.len() {
@@ -1450,11 +1448,7 @@ impl WebSocketClient {
     /// Delete own message (web-client protocol, reverse-engineered).
     /// A `push` ClientMessage with `Plain{ChatId, Timestamp}` where
     /// `Timestamp` is the target's `ServerMessageInfo.Timestamp` (µs).
-    pub async fn send_delete_message(
-        &self,
-        chat_id: &str,
-        target_mcs: i64,
-    ) -> Result<u64, String> {
+    pub async fn send_delete_message(&self, chat_id: &str, target_mcs: i64) -> Result<u64, String> {
         if target_mcs <= 0 {
             return Err("Invalid message timestamp".to_string());
         }
@@ -2658,7 +2652,8 @@ impl HttpClient {
         from_message_id: &str,
         limit: usize,
     ) -> Result<(Vec<models::Message>, Option<String>), String> {
-        self.get_messages_via_session(chat_id, Some(from_message_id), limit).await
+        self.get_messages_via_session(chat_id, Some(from_message_id), limit)
+            .await
     }
 
     /// Parse a message from the session-based 'messages' API response.
@@ -5385,10 +5380,7 @@ mod tests {
         let msg = WebSocketClient::parse_ws_server_message(&node, "c1").expect("parsed");
         assert_eq!(msg.type_, models::MessageType::File);
         assert_eq!(msg.media.len(), 1);
-        assert_eq!(
-            msg.media[0].filename.as_deref(),
-            Some("file.docx")
-        );
+        assert_eq!(msg.media[0].filename.as_deref(), Some("file.docx"));
         assert!(msg.read, "SeenByPartnerMcs marks outgoing as read");
     }
 }

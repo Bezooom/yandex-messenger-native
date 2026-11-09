@@ -146,11 +146,7 @@ impl AppController {
         let _fetch_guard = self.history_fetch_lock.lock().await;
         let max_mcs = self.resolve_history_cursor(chat_id, before_message_id, cursor);
         if self.ws.is_connected().await {
-            match self
-                .ws
-                .get_history_messages(chat_id, max_mcs, limit)
-                .await
-            {
+            match self.ws.get_history_messages(chat_id, max_mcs, limit).await {
                 Ok(older) if !older.is_empty() => {
                     let next = Self::next_history_cursor(&older, limit);
                     return self.merge_older_messages(chat_id, older, next).await;
@@ -230,7 +226,6 @@ impl AppController {
         older: Vec<Message>,
         next_cursor: Option<String>,
     ) -> Result<(Vec<Message>, Option<String>), String> {
-
         let mut state = self.state.lock().await;
         let existing = state
             .messages_by_chat
@@ -701,11 +696,7 @@ impl AppController {
         }
         let messages = self.http.get_messages_fresh(chat_id, None, 0, 100).await?;
         // HTTP fallback may miss textless media — keep refresh eligibility.
-        self.state
-            .lock()
-            .await
-            .history_via_ws
-            .remove(chat_id);
+        self.state.lock().await.history_via_ws.remove(chat_id);
         let mut state = self.state.lock().await;
         state
             .messages_by_chat
@@ -810,9 +801,8 @@ impl AppController {
                     .messages_by_chat
                     .get(chat_id)
                     .and_then(|msgs| {
-                        msgs.iter().find(|m| {
-                            m.id == mid || m.message_id.as_deref() == Some(mid)
-                        })
+                        msgs.iter()
+                            .find(|m| m.id == mid || m.message_id.as_deref() == Some(mid))
                     })
                     .map(|m| m.created.timestamp_micros())
             };
@@ -1074,9 +1064,8 @@ impl AppController {
                 .messages_by_chat
                 .get(chat_id)
                 .and_then(|msgs| {
-                    msgs.iter().find(|m| {
-                        m.id == message_id || m.message_id.as_deref() == Some(message_id)
-                    })
+                    msgs.iter()
+                        .find(|m| m.id == message_id || m.message_id.as_deref() == Some(message_id))
                 })
                 .map(|m| m.created.timestamp_micros())
         };
@@ -1182,13 +1171,17 @@ impl AppController {
     /// Returns true if the message was added (not a duplicate).
     pub async fn handle_incoming_message(&self, msg: Message) -> bool {
         let mut state = self.state.lock().await;
-        let msgs = state.messages_by_chat.entry(msg.chat_id.clone()).or_default();
+        let msgs = state
+            .messages_by_chat
+            .entry(msg.chat_id.clone())
+            .or_default();
 
         // Check for duplicate
         let is_duplicate = msgs.iter().any(|m| {
             m.id == msg.id
                 || (m.message_id.is_some() && m.message_id == msg.message_id)
-                || m.id.ends_with(&format!("_{}", msg.id.split('_').last().unwrap_or("")))
+                || m.id
+                    .ends_with(&format!("_{}", msg.id.split('_').last().unwrap_or("")))
         });
 
         if is_duplicate {

@@ -391,8 +391,7 @@ fn viewer_url_variants(url: &str) -> Vec<String> {
 async fn fetch_viewer_bytes(url: &str) -> Result<Vec<u8>, String> {
     if url.starts_with("file:") {
         if let Ok((path, _)) = glib::filename_from_uri(url) {
-            let bytes =
-                std::fs::read(&path).map_err(|e| format!("local read: {}", e))?;
+            let bytes = std::fs::read(&path).map_err(|e| format!("local read: {}", e))?;
             if bytes.is_empty() {
                 return Err("empty local file".into());
             }
