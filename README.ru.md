@@ -1,6 +1,8 @@
 # Yandex Messenger Native
 
-**Версия 2.173.0** — нативный Linux-клиент Яндекс Мессенджера на Rust, GTK4 и Libadwaita. Быстрый, лёгкий, с night-темой Telegram Desktop и плотным списком чатов в стиле nheko.
+[![CI](https://github.com/Bezooom/yandex-messenger-native/actions/workflows/ci.yml/badge.svg)](https://github.com/Bezooom/yandex-messenger-native/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/Bezooom/yandex-messenger-native)](https://github.com/Bezooom/yandex-messenger-native/releases/latest) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+**Версия 2.174.0** — нативный Linux-клиент Яндекс Мессенджера на Rust, GTK4 и Libadwaita. Быстрый, лёгкий, с night-темой Telegram Desktop и плотным списком чатов в стиле nheko.
 
 [English version](README.md)
 
