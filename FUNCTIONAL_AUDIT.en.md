@@ -1,6 +1,6 @@
 # Functional audit (what actually works)
 
-> ⚠️ **Historical snapshot from 2026-08-08 (tree ~2.165).** Current status is in [README.md](README.md) and [CHANGELOG.md](CHANGELOG.md) for **2.173.0**. Original Russian audit: [FUNCTIONAL_AUDIT.md](FUNCTIONAL_AUDIT.md).
+> ⚠️ **Historical snapshot from 2026-08-08 (tree ~2.165).** Current status is in [README.md](README.md) and [CHANGELOG.md](CHANGELOG.md) for **2.175.3**. Original Russian audit: [FUNCTIONAL_AUDIT.md](FUNCTIONAL_AUDIT.md).
 
 **Snapshot date:** 2026-08-08  
 **Tree at audit time:** 2.165.0 + uncommitted changes  

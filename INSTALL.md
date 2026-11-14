@@ -2,7 +2,7 @@
 
 [Русская версия](INSTALL.ru.md)
 
-Current release: **2.173.0**.
+Current release: **2.175.3**.
 
 ## Requirements
 
@@ -70,7 +70,7 @@ or
 
 ```bash
 make dist
-sudo apt install -y ./dist/yandex-messenger-native_2.173.0-*_amd64.deb
+sudo apt install -y ./dist/yandex-messenger-native_2.175.3-*_amd64.deb
 ```
 
 ## Environment

@@ -5,7 +5,21 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
-Current release: **2.175.2** (2026-11-14).
+Current release: **2.175.3** (2026-11-14).
+
+## 2.175.3 - 2026-11-14
+
+### Fixed
+* **Sticker thumbnails** no longer get resized to 50 px after the async load: pack chips keep 32 px and grid cells keep 52 px, so the chip row does not clip.
+* **Dock can really shrink**: emoji category tabs are a horizontal scroll strip and `.emoji-picker` minimum dropped from 360 to 280 px. The dock now honours its 300–460 px range instead of being forced back to 360.
+* **Optimistic edits and outbox messages** now carry the account GUID like normal sends, closing the remaining path where own messages could render on the incoming side.
+
+### Added
+* `models::is_own_sender` helper with unit tests: GUID matches, legacy numeric account id matches, peer/system/empty ids do not. Own-message detection no longer lives as an untested inline expression.
+* Emoji panel width test (≤ 320 px) next to the existing sticker panel test (≤ 360 px).
+
+### Docs
+* API, ARCHITECTURE, DEVELOPMENT, SECURITY, INSTALL, TELEMOST plan and both audits bumped to 2.175.3; INSTALL deb example fixed.
 
 ## 2.175.2 - 2026-11-14
 

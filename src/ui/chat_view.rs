@@ -2895,16 +2895,13 @@ impl ChatView {
 
         let is_sent = {
             let account_id = self.auth.account_id_sync();
-            let mut owners: Vec<&str> = Vec::new();
-            if let Some(ref uid) = current_user_id {
-                owners.push(uid.as_str());
-            }
-            if let Some(ref acc) = account_id {
-                owners.push(acc.as_str());
-            }
-            owners
-                .iter()
-                .any(|id| !id.is_empty() && *id == msg.from_id.as_str())
+            crate::models::is_own_sender(
+                msg.from_id.as_str(),
+                &[
+                    current_user_id.as_deref().unwrap_or(""),
+                    account_id.as_deref().unwrap_or(""),
+                ],
+            )
         };
 
         let row = GtkBox::new(Orientation::Horizontal, 0);

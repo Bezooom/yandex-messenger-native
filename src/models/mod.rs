@@ -110,6 +110,13 @@ impl Chat {
     }
 }
 
+/// True when `from_id` belongs to this account: the account GUID or the
+/// legacy numeric account id. Empty ids never match, so `system`/`unknown`
+/// senders stay on the incoming side.
+pub fn is_own_sender(from_id: &str, owner_ids: &[&str]) -> bool {
+    !from_id.is_empty() && owner_ids.iter().any(|id| !id.is_empty() && *id == from_id)
+}
+
 /// Returns true when two message lists are equivalent for UI rendering.
 pub fn messages_equivalent(a: &[Message], b: &[Message]) -> bool {
     if a.len() != b.len() {
@@ -723,5 +730,21 @@ mod tests {
             ..chat
         };
         assert_eq!(chat_with_msg.preview_text(), "Ping");
+    }
+}
+
+#[cfg(test)]
+mod own_sender_tests {
+    use super::is_own_sender;
+
+    #[test]
+    fn matches_guid_and_legacy_account_id_only() {
+        let ids = ["4beaea9a-e09e-4270-9bcf-66da5c0a02c1", "239644570"];
+        assert!(is_own_sender(ids[0], &ids));
+        assert!(is_own_sender(ids[1], &ids));
+        assert!(!is_own_sender("a0c6b401-0cfa-9436-78b9-c76f4784a220", &ids));
+        assert!(!is_own_sender("", &ids));
+        assert!(!is_own_sender("239644570", &["", ""]));
+        assert!(!is_own_sender("system", &ids));
     }
 }

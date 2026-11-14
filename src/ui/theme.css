@@ -1172,7 +1172,7 @@ popover > contents > .send-at-body {
   border: none;
   box-shadow: none;
   border-radius: 0;
-  min-width: 360px;
+  min-width: 280px;
   min-height: 320px;
 }
 

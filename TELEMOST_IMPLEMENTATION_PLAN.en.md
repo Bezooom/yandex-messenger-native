@@ -3,7 +3,7 @@
 [Русская версия](TELEMOST_IMPLEMENTATION_PLAN.md)
 
 > Based on reverse-engineering APK `ru.yandex.telemost` v3.12.0.138  
-> As of **2.175.0** Goloom signaling and `webrtcbin` are in-tree, but media needs the `gstreamer` feature and `gstreamer1.0-nice`; the default binary ships without them.
+> As of **2.175.3** Goloom signaling and `webrtcbin` are in-tree, but media needs the `gstreamer` feature and `gstreamer1.0-nice`; the default binary ships without them.
 
 ## Current state
 
