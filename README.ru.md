@@ -49,7 +49,7 @@
 
 [![CI](https://github.com/Bezooom/yandex-messenger-native/actions/workflows/ci.yml/badge.svg)](https://github.com/Bezooom/yandex-messenger-native/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/Bezooom/yandex-messenger-native)](https://github.com/Bezooom/yandex-messenger-native/releases/latest) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Версия 2.175.0** — нативный Linux-клиент Яндекс Мессенджера (чаты Телемоста) на Rust, GTK4 и Libadwaita. Быстрый, лёгкий, с night-темой Telegram Desktop и плотным списком чатов в стиле nheko.
+**Версия 2.175.1** — нативный Linux-клиент Яндекс Мессенджера (чаты Телемоста) на Rust, GTK4 и Libadwaita. Быстрый, лёгкий, с night-темой Telegram Desktop и плотным списком чатов в стиле nheko.
 
 [English version](README.md)
 
@@ -69,6 +69,12 @@
 - **Один источник непрочитанных**: входящее сообщение увеличивает `state.chats[].unread_count`; заголовок окна, трей и список согласованы, эхо своих отправок игнорируется.
 - **Домашний экран Телемоста**: карточки «Новый чат / звонок / подключиться по ссылке», фильтры Все / Личные / Новые с пустыми состояниями, заголовок окна «Яндекс Телемост — N новое сообщение».
 - **Приватность**: полный дамп bootstrap включается только через `YM_DUMP_BOOTSTRAP=/path`.
+
+### Что изменилось в 2.175.1
+
+- **Эмодзи и стикеры — правый док** с вкладками «Эмодзи / Стикеры», поиском и сеткой категорий, как в Telegram, вместо поповера над композером. Открывается по `Ctrl+Shift+E`.
+- **Просмотрщик картинок исправлен**: `gtk::Picture` с `ContentFit::Contain` заполняет окно вместо миниатюры; кнопки зума реально масштабируют фото.
+- **Окно по умолчанию** 1180×780, чтобы список, чат и док помещались вместе.
 
 ## Матрица статуса функций
 

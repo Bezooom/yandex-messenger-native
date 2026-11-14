@@ -49,7 +49,7 @@
 
 [![CI](https://github.com/Bezooom/yandex-messenger-native/actions/workflows/ci.yml/badge.svg)](https://github.com/Bezooom/yandex-messenger-native/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/Bezooom/yandex-messenger-native)](https://github.com/Bezooom/yandex-messenger-native/releases/latest) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Version 2.175.0** — native Linux desktop client for Yandex Messenger (Telemost chats), built with Rust, GTK4, and Libadwaita. Fast, light, with a Telegram Desktop night theme and an nheko-style dense chat list.
+**Version 2.175.1** — native Linux desktop client for Yandex Messenger (Telemost chats), built with Rust, GTK4, and Libadwaita. Fast, light, with a Telegram Desktop night theme and an nheko-style dense chat list.
 
 [Русская версия](README.ru.md)
 
@@ -69,6 +69,12 @@
 - **Unread has one source of truth**: incoming messages bump `state.chats[].unread_count`; window title, tray and list agree, and your own echo is ignored.
 - **Telemost home**: action hub (new chat / new call / join by link), Все / Личные / Новые filters with matching empty states, window title "Яндекс Телемост — N новое сообщение".
 - **Privacy**: the full bootstrap dump is opt-in via `YM_DUMP_BOOTSTRAP=/path`.
+
+### What changed in 2.175.1
+
+- **Emoji and stickers are a right-hand dock** with «Эмодзи / Стикеры» tabs, search and category grid, Telegram-style, instead of a popover above the composer. `Ctrl+Shift+E` toggles it.
+- **Image viewer fixed**: `gtk::Picture` with `ContentFit::Contain` fills the window instead of showing a thumbnail; zoom buttons now scale the picture.
+- **Default window** is 1180×780 so the list, chat and dock fit together.
 
 ## Feature Status Matrix
 

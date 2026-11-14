@@ -136,7 +136,9 @@ impl StickerPanel {
 
         container.append(&search_entry);
         container.append(&content);
-        container.set_size_request(520, 360);
+        container.set_hexpand(true);
+        container.set_vexpand(true);
+        container.set_size_request(-1, 360);
 
         let panel = StickerPanel {
             container,

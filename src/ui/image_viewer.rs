@@ -8,7 +8,9 @@ use std::rc::Rc;
 /// Image viewer overlay shown on top of chat view
 pub struct ImageViewer {
     pub container: ScrolledWindow,
-    image: gtk::Image,
+    image: gtk::Picture,
+    /// Natural size of the decoded image, used to apply zoom.
+    base_size: Rc<RefCell<(i32, i32)>>,
     current_url: RefCell<String>,
     current_filename: RefCell<String>,
     zoom_level: RefCell<f64>,
@@ -27,9 +29,13 @@ impl ImageViewer {
             .build();
         container.set_css_classes(&["image-viewer"]);
 
-        let image = gtk::Image::new();
-        image.set_halign(gtk::Align::Center);
-        image.set_valign(gtk::Align::Center);
+        let image = gtk::Picture::new();
+        image.set_content_fit(gtk::ContentFit::Contain);
+        image.set_can_shrink(true);
+        image.set_hexpand(true);
+        image.set_vexpand(true);
+        image.set_halign(gtk::Align::Fill);
+        image.set_valign(gtk::Align::Fill);
         image.set_css_classes(&["viewer-image"]);
 
         container.set_child(Some(&image));
@@ -37,6 +43,7 @@ impl ImageViewer {
         Self {
             container,
             image,
+            base_size: Rc::new(RefCell::new((0, 0))),
             current_url: RefCell::new(String::new()),
             current_filename: RefCell::new(String::new()),
             zoom_level: RefCell::new(1.0),
@@ -52,26 +59,22 @@ impl ImageViewer {
         *self.closed.borrow_mut() = false;
         *self.current_url.borrow_mut() = url.to_string();
         *self.current_filename.borrow_mut() = filename.to_string();
-        // Placeholder until bytes arrive. NOTE: gtk Image::set_from_file
-        // cannot fetch remote URLs (that path rendered as a red
-        // "broken image" icon) — download with messenger auth instead.
-        self.image
-            .set_from_icon_name(Some("image-x-generic-symbolic"));
-        self.image.set_pixel_size(96);
+        // Nothing to paint until bytes arrive; Picture fits whatever comes.
+        self.image.set_paintable(None::<&gtk::gdk::Paintable>);
+        self.image.set_size_request(-1, -1);
+        *self.base_size.borrow_mut() = (0, 0);
         let img = self.image.clone();
+        let base = self.base_size.clone();
         let url_owned = url.to_string();
         glib::spawn_future_local(async move {
             match fetch_viewer_bytes(&url_owned).await {
                 Ok(bytes) => {
-                    if let Err(e) = set_viewer_bytes(&img, &bytes) {
+                    if let Err(e) = set_viewer_bytes(&img, &base, &bytes) {
                         log::warn!("Image viewer decode failed: {}", e);
-                        img.set_from_icon_name(Some("image-missing-symbolic"));
                     }
                 }
                 Err(e) => {
                     log::warn!("Image viewer download failed: {}", e);
-                    img.set_from_icon_name(Some("image-missing-symbolic"));
-                    img.set_tooltip_text(Some(&format!("Не загрузилось: {}", e)));
                 }
             }
         });
@@ -81,6 +84,7 @@ impl ImageViewer {
         let ctrl = Rc::new(ImageViewer {
             container: self.container.clone(),
             image: self.image.clone(),
+            base_size: self.base_size.clone(),
             current_url: self.current_url.clone(),
             current_filename: self.current_filename.clone(),
             zoom_level: self.zoom_level.clone(),
@@ -113,15 +117,34 @@ impl ImageViewer {
     pub fn zoom_in(&self) {
         let mut level = self.zoom_level.borrow_mut();
         *level = (*level * 1.2).min(5.0);
+        drop(level);
+        self.apply_zoom();
     }
 
     pub fn zoom_out(&self) {
         let mut level = self.zoom_level.borrow_mut();
         *level = (*level / 1.2).max(0.1);
+        drop(level);
+        self.apply_zoom();
     }
 
     pub fn reset_zoom(&self) {
         *self.zoom_level.borrow_mut() = 1.0;
+        self.apply_zoom();
+    }
+
+    /// Size the picture for the current zoom. At 1.0 it fits the pane.
+    fn apply_zoom(&self) {
+        let (w, h) = *self.base_size.borrow();
+        if w <= 0 || h <= 0 {
+            self.image.set_size_request(-1, -1);
+            return;
+        }
+        let z = *self.zoom_level.borrow();
+        self.image.set_size_request(
+            ((w as f64) * z).round() as i32,
+            ((h as f64) * z).round() as i32,
+        );
     }
 
     /// Download the current image to a file
@@ -208,6 +231,7 @@ impl ImageViewer {
     pub fn controls_popover(&self) -> Popover {
         let container = &self.container;
         let image = &self.image;
+        let base_size = &self.base_size;
         let current_url = &self.current_url;
         let current_filename = &self.current_filename;
         let zoom_level = &self.zoom_level;
@@ -225,6 +249,7 @@ impl ImageViewer {
         let ctrl = Rc::new(ImageViewer {
             container: container.clone(),
             image: image.clone(),
+            base_size: base_size.clone(),
             current_url: current_url.clone(),
             current_filename: current_filename.clone(),
             zoom_level: zoom_level.clone(),
@@ -242,6 +267,7 @@ impl ImageViewer {
         let ctrl = Rc::new(ImageViewer {
             container: container.clone(),
             image: image.clone(),
+            base_size: base_size.clone(),
             current_url: current_url.clone(),
             current_filename: current_filename.clone(),
             zoom_level: zoom_level.clone(),
@@ -261,6 +287,7 @@ impl ImageViewer {
         let ctrl = Rc::new(ImageViewer {
             container: container.clone(),
             image: image.clone(),
+            base_size: base_size.clone(),
             current_url: current_url.clone(),
             current_filename: current_filename.clone(),
             zoom_level: zoom_level.clone(),
@@ -281,6 +308,7 @@ impl ImageViewer {
         let ctrl = Rc::new(ImageViewer {
             container: container.clone(),
             image: image.clone(),
+            base_size: base_size.clone(),
             current_url: current_url.clone(),
             current_filename: current_filename.clone(),
             zoom_level: zoom_level.clone(),
@@ -301,6 +329,7 @@ impl ImageViewer {
         let ctrl = Rc::new(ImageViewer {
             container: container.clone(),
             image: image.clone(),
+            base_size: base_size.clone(),
             current_url: current_url.clone(),
             current_filename: current_filename.clone(),
             zoom_level: zoom_level.clone(),
@@ -318,6 +347,7 @@ impl ImageViewer {
         let ctrl = Rc::new(ImageViewer {
             container: container.clone(),
             image: image.clone(),
+            base_size: base_size.clone(),
             current_url: current_url.clone(),
             current_filename: current_filename.clone(),
             zoom_level: zoom_level.clone(),
@@ -335,6 +365,7 @@ impl ImageViewer {
         let ctrl = Rc::new(ImageViewer {
             container: container.clone(),
             image: image.clone(),
+            base_size: base_size.clone(),
             current_url: current_url.clone(),
             current_filename: current_filename.clone(),
             zoom_level: zoom_level.clone(),
@@ -438,7 +469,11 @@ async fn fetch_viewer_bytes(url: &str) -> Result<Vec<u8>, String> {
 }
 
 /// Decode bytes into the viewer widget (downscaling huge images).
-fn set_viewer_bytes(img: &gtk::Image, bytes: &[u8]) -> Result<(), String> {
+fn set_viewer_bytes(
+    pic: &gtk::Picture,
+    base: &Rc<RefCell<(i32, i32)>>,
+    bytes: &[u8],
+) -> Result<(), String> {
     let loader = gtk::gdk_pixbuf::PixbufLoader::new();
     loader
         .write(bytes)
@@ -458,9 +493,10 @@ fn set_viewer_bytes(img: &gtk::Image, bytes: &[u8]) -> Result<(), String> {
     } else {
         pixbuf
     };
-    img.set_pixel_size(-1);
-    img.set_from_pixbuf(Some(&shown));
-    img.set_tooltip_text(None);
+    let texture = gtk::gdk::Texture::for_pixbuf(&shown);
+    pic.set_paintable(Some(&texture));
+    pic.set_size_request(-1, -1);
+    *base.borrow_mut() = (shown.width(), shown.height());
     Ok(())
 }
 
@@ -469,6 +505,7 @@ impl Clone for ImageViewer {
         Self {
             container: self.container.clone(),
             image: self.image.clone(),
+            base_size: self.base_size.clone(),
             current_url: RefCell::new((*self.current_url.borrow()).clone()),
             current_filename: RefCell::new((*self.current_filename.borrow()).clone()),
             zoom_level: RefCell::new(*self.zoom_level.borrow()),
@@ -477,5 +514,31 @@ impl Clone for ImageViewer {
             image_count: RefCell::new(*self.image_count.borrow()),
             on_navigate: RefCell::new(self.on_navigate.borrow().clone()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn decoded_image_attaches_to_fitting_picture() {
+        crate::ui::run_gtk_test(|| {
+            let viewer = ImageViewer::new();
+            let pixbuf =
+                gtk::gdk_pixbuf::Pixbuf::new(gtk::gdk_pixbuf::Colorspace::Rgb, true, 8, 4, 3)
+                    .expect("pixbuf");
+            let bytes = pixbuf.save_to_bufferv("png", &[]).expect("encode png");
+
+            set_viewer_bytes(&viewer.image, &viewer.base_size, &bytes).expect("decode");
+
+            assert!(viewer.image.paintable().is_some(), "texture attached");
+            assert_eq!(*viewer.base_size.borrow(), (4, 3), "natural size recorded");
+            assert_eq!(
+                viewer.image.content_fit(),
+                gtk::ContentFit::Contain,
+                "viewer fits the window"
+            );
+        });
     }
 }
