@@ -1109,6 +1109,13 @@ impl AppController {
         state.chats.iter().map(|c| c.unread_count).sum()
     }
 
+    pub async fn set_chat_unread(&self, chat_id: &str, unread: u32) {
+        let mut state = self.state.lock().await;
+        if let Some(chat) = state.chats.iter_mut().find(|c| c.id == chat_id) {
+            chat.unread_count = unread;
+        }
+    }
+
     pub async fn is_chat_muted(&self, chat_id: &str) -> bool {
         let state = self.state.lock().await;
         state
@@ -1171,30 +1178,38 @@ impl AppController {
     /// Returns true if the message was added (not a duplicate).
     pub async fn handle_incoming_message(&self, msg: Message) -> bool {
         let mut state = self.state.lock().await;
-        let msgs = state
-            .messages_by_chat
-            .entry(msg.chat_id.clone())
-            .or_default();
+        let full = {
+            let msgs = state
+                .messages_by_chat
+                .entry(msg.chat_id.clone())
+                .or_default();
+            let is_duplicate = msgs.iter().any(|m| {
+                m.id == msg.id
+                    || (m.message_id.is_some() && m.message_id == msg.message_id)
+                    || m.id
+                        .ends_with(&format!("_{}", msg.id.split('_').last().unwrap_or("")))
+            });
+            if is_duplicate {
+                return false;
+            }
+            msgs.push(msg.clone());
+            msgs.sort_by(|a, b| a.created.cmp(&b.created));
+            msgs.clone()
+        };
 
-        // Check for duplicate
-        let is_duplicate = msgs.iter().any(|m| {
-            m.id == msg.id
-                || (m.message_id.is_some() && m.message_id == msg.message_id)
-                || m.id
-                    .ends_with(&format!("_{}", msg.id.split('_').last().unwrap_or("")))
-        });
-
-        if is_duplicate {
-            return false;
+        let viewing = state.selected_chat_id.as_deref() == Some(msg.chat_id.as_str());
+        let own = self
+            .auth
+            .user_id()
+            .is_some_and(|uid| !uid.is_empty() && uid == msg.from_id);
+        if let Some(chat) = state.chats.iter_mut().find(|c| c.id == msg.chat_id) {
+            if !viewing && !own {
+                chat.unread_count = chat.unread_count.saturating_add(1);
+            }
+            chat.last_message = Some(msg.clone());
+            chat.updated = Some(msg.created);
         }
 
-        msgs.push(msg.clone());
-
-        // Keep messages sorted by creation time
-        msgs.sort_by(|a, b| a.created.cmp(&b.created));
-
-        // Save to cache
-        let full = msgs.clone();
         drop(state);
         Self::save_cache_l2(&msg.chat_id, &full);
 

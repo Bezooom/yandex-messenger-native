@@ -3170,3 +3170,45 @@ a:active {
   font-size: 15px;
   padding-left: 8px;
 }
+
+.folder-filters {
+  margin-top: 2px;
+}
+
+.folder-chip {
+  border-radius: 14px;
+  padding: 2px 10px;
+  min-height: 28px;
+  background: transparent;
+  color: @text_secondary;
+  border: none;
+  font-size: 13px;
+}
+
+.folder-chip.active {
+  background: @bg_active;
+  color: @text_primary;
+  font-weight: 600;
+}
+
+.home-hub {
+  padding: 24px;
+}
+
+.home-hub-row {
+  margin-top: 8px;
+}
+
+.home-hub-card {
+  min-width: 160px;
+  min-height: 72px;
+  border-radius: 16px;
+  background: @bg_hover;
+  color: @text_primary;
+  font-weight: 600;
+  padding: 12px 16px;
+}
+
+.home-hub-card:hover {
+  background: @bg_active;
+}

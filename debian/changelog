@@ -1,3 +1,14 @@
+yandex-messenger-native (2.175.0-1) unstable; urgency=medium
+
+  * Chat list: parse members_count, private, pinned_chats and chat_mutings
+    from the bootstrap payload; group headers and participant lists are real
+  * Chat order: previews use create_timestamp/version instead of Utc::now()
+  * Unread: single source of truth in app state; own message echo is ignored
+  * Home: Telemost action hub and Все/Личные/Новые filters with empty states
+  * Privacy: bootstrap dump is opt-in via YM_DUMP_BOOTSTRAP
+
+ -- BeZoom <naumov122@gmail.com>  Sat, 14 Nov 2026 12:00:00 +0300
+
 yandex-messenger-native (2.174.0-1) unstable; urgency=medium
 
   * UI: Fix light theme chat background, panels, and bubble styling

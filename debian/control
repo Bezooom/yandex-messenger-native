@@ -8,7 +8,7 @@ Rules-Requires-Root: no
 
 Package: yandex-messenger-native
 Architecture: amd64
-Depends: ${shlibs:Depends}, ${misc:Depends}, libgtk-4-1, libsqlite3-0, libssl3, libnotify4
+Depends: ${shlibs:Depends}, ${misc:Depends}, libgtk-4-1, libadwaita-1-0, libsqlite3-0, libssl3t64 | libssl3, libnotify4, libwebkitgtk-6.0-4, libsoup-3.0-0, libdbus-1-3
 Description: Native Yandex Messenger for Linux
  A native GTK4 + Rust implementation of Yandex Messenger (Telemost)
  for Linux desktop. Features:

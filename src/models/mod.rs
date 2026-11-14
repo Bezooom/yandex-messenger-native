@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 pub mod account;
+pub mod bootstrap;
 pub mod bot;
 pub mod folder;
 pub mod group;
@@ -18,6 +19,9 @@ pub mod thread;
 pub mod voice_message;
 
 pub use account::Account;
+pub use bootstrap::{
+    chat_status_line, matches_list_filter, parse_bootstrap_chats, window_title, ChatListFilter,
+};
 pub use bot::BotInfo;
 pub use bot::BotReplyMarkup;
 pub use folder::ChatFolder;
@@ -77,6 +81,9 @@ pub struct Chat {
     pub chat_type: ChatType,
     pub avatar_id: Option<String>,
     pub participants: Vec<Participant>,
+    /// Server `members_count`. Empty `participants` must not be shown as zero.
+    #[serde(default, alias = "members_count")]
+    pub member_count: u32,
     pub unread_count: u32,
     pub last_message: Option<Message>,
     pub pinned: bool,
@@ -96,6 +103,10 @@ impl Chat {
 
     pub fn display_name(&self) -> String {
         self.title.clone().unwrap_or_else(|| "Чат".to_string())
+    }
+
+    pub fn status_line(&self) -> String {
+        chat_status_line(self)
     }
 }
 
@@ -670,6 +681,7 @@ mod tests {
             rid: None,
             avatar_id: None,
             participants: vec![],
+            member_count: 0,
             unread_count: 0,
             last_message: None,
             pinned: false,

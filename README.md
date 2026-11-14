@@ -49,7 +49,7 @@
 
 [![CI](https://github.com/Bezooom/yandex-messenger-native/actions/workflows/ci.yml/badge.svg)](https://github.com/Bezooom/yandex-messenger-native/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/Bezooom/yandex-messenger-native)](https://github.com/Bezooom/yandex-messenger-native/releases/latest) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Version 2.174.0** — native Linux desktop client for Yandex Messenger, built with Rust, GTK4, and Libadwaita. Fast, light, with a Telegram Desktop night theme and an nheko-style dense chat list.
+**Version 2.175.0** — native Linux desktop client for Yandex Messenger (Telemost chats), built with Rust, GTK4, and Libadwaita. Fast, light, with a Telegram Desktop night theme and an nheko-style dense chat list.
 
 [Русская версия](README.ru.md)
 
@@ -60,17 +60,27 @@
 > 
 > **Important Disclaimer**: This is an **unofficial, community-driven client** for Yandex Messenger. It is not affiliated with, endorsed by, or associated in any way with Yandex LLC or its affiliates. The developers of this project do not claim any rights to Yandex trademarks, branding, or media assets. Use this software at your own risk.
 
+> ✅ **Verified on this tree (2.175.0):** `cargo check --bin yandex-messenger` clean; `cargo test --bin yandex-messenger` → **62 passed, 1 ignored**; `cargo build --release` → 16 MB binary with every `NEEDED` library resolved. GUI and live network flows are manual.
+
+### What changed in 2.175.0
+
+- **Chat list from real bootstrap**: `members_count`, `private`, `pinned_chats` and `chat_mutings` are parsed; groups no longer say "0 участников", and `chats[].members` fills the participant list with names and avatars.
+- **Stable ordering**: preview timestamps come from `create_timestamp` / `version` instead of `Utc::now()`.
+- **Unread has one source of truth**: incoming messages bump `state.chats[].unread_count`; window title, tray and list agree, and your own echo is ignored.
+- **Telemost home**: action hub (new chat / new call / join by link), Все / Личные / Новые filters with matching empty states, window title "Яндекс Телемост — N новое сообщение".
+- **Privacy**: the full bootstrap dump is opt-in via `YM_DUMP_BOOTSTRAP=/path`.
+
 ## Feature Status Matrix
 
 | Feature | Status | Description |
 |---|---|---|
 | OAuth / Login | Beta | OAuth + **in-app session cookie capture** (no Python script) |
-| Chat List | Beta | nheko-style dense list, 54px avatars, RU previews; mute/pin/archive/mark_read/delete |
+| Chat List | Beta | nheko-style dense list, real member counts and pin/mute from bootstrap, Все / Личные / Новые filters |
 | Text Messaging | Beta | Send + reply/edit + outbox + drafts + history pagination + **delivery/read ticks** |
 | Files & Attachments | Beta | Upload→send; **Download / Open**; **DnD** files; **Ctrl+V** images |
-| Voice Messages | Beta | Opus/OGG recording + waveform (GStreamer), play/pause via playbin, voice-type send (no text placeholder) |
-| Video Playback | Beta | Inline chat player: play/pause, scrub, time (GStreamer) |
-| Calls (Telemost) | Beta | Live window: Goloom signaling + WebRTC (publish/subscribe), roster, in-window video, ringing; meetings REST is best-effort |
+| Voice Messages | Not in default build | Needs `--features gstreamer` and `YM_ENABLE_VOICE`; the default and CI binaries do not compile it |
+| Video Playback | Not in default build | Inline player requires the `gstreamer` feature; absent from the default and CI binaries |
+| Calls (Telemost) | Partial | Goloom signaling + `webrtcbin` in tree; in-call media needs `gstreamer`, `gstreamer1.0-nice` and `YM_ENABLE_TELEMOST_UI`; default binary has no WebRTC |
 | Desktop Notifications | Beta | `notify-rust`, respects mute + settings |
 | System Tray | Beta | StatusNotifierItem (`ksni`), close-to-tray, unread badge |
 | Settings | Beta | Notifications / tray / dark theme / reduce animations |
@@ -90,6 +100,7 @@ When a flag is off, the corresponding stub elements are hidden from the interfac
 
 ### Known Limitations
 
+- **Default build**: voice, video and call media are not compiled at all; they need the `gstreamer` feature
 - **Session cookies**: captured on WebView login; `scripts/login_browser.py` remains as fallback
 - **Voice**: record/play behind `YM_ENABLE_VOICE` (needs a `gstreamer`-feature build; transcription display only, no fetching)
 - **Telemost**: live calls behind `YM_ENABLE_TELEMOST_UI` (needs a `gstreamer`-feature build + `gstreamer1.0-nice`); meetings REST and parts of SDP policy are best-effort, pending live verification

@@ -108,7 +108,7 @@ fn start_main_window(app: &adw::Application, auth: Arc<AuthManager>, access_toke
     // Comfortable default that fits dialogs (~280) + chat without overflow
     let win = adw::ApplicationWindow::builder()
         .application(app)
-        .title("Yandex Messenger")
+        .title("Яндекс Телемост")
         .default_width(1100)
         .default_height(700)
         .build();
@@ -1005,6 +1005,11 @@ fn create_app_layout(
         });
     });
 
+    let cl_for_hub = chat_list.clone();
+    chat_view.connect_new_chat(move || {
+        cl_for_hub.lock().unwrap().request_create_group();
+    });
+
     // ── Wire: Scheduled Messages ──
     let ctrl_sched1 = controller.clone();
     let cv_for_sched1 = chat_view.clone();
@@ -1049,6 +1054,7 @@ fn create_app_layout(
     let ctrl_actions = controller.clone();
     let cl_for_actions = chat_list.clone();
     let tray_for_actions = tray.clone();
+    let win_for_actions = win.clone();
     let cv_for_actions = chat_view.clone();
     chat_list
         .lock()
@@ -1057,6 +1063,7 @@ fn create_app_layout(
             let ctrl = ctrl_actions.clone();
             let cl = cl_for_actions.clone();
             let tray = tray_for_actions.clone();
+            let win_unread = win_for_actions.clone();
             let cv = cv_for_actions.clone();
             glib::spawn_future_local(async move {
                 let result = match action.as_str() {
@@ -1140,7 +1147,9 @@ fn create_app_layout(
                 if let Err(e) = result {
                     log::warn!("Chat action '{}' failed: {}", action, e);
                 }
-                tray.set_unread_count(ctrl.total_unread().await);
+                let unread = ctrl.total_unread().await;
+                tray.set_unread_count(unread);
+                win_unread.set_title(Some(&crate::models::window_title(unread)));
             });
         });
 
@@ -1184,6 +1193,7 @@ fn create_app_layout(
     let cl_for_load = chat_list.clone();
     let auth_for_header = controller.auth().clone();
     let tray_for_load = tray.clone();
+    let win_for_load = win.clone();
     glib::spawn_future_local(async move {
         // Best-effort OAuth profile (often limited scopes — may only have login)
         if let Ok(user) = auth_for_header.get_user_info().await {
@@ -1195,6 +1205,7 @@ fn create_app_layout(
             Ok(chats) => {
                 let total: u32 = chats.iter().map(|c| c.unread_count).sum();
                 tray_for_load.set_unread_count(total);
+                win_for_load.set_title(Some(&crate::models::window_title(total)));
                 cl_for_load.lock().unwrap().set_chats(chats);
                 // Bootstrap updates account name/avatar via auth.update_current_profile;
                 // give it a moment then refresh header with real messenger display_name.
@@ -1240,6 +1251,7 @@ fn create_app_layout(
     let cv_for_ws = chat_view.clone();
     let cl_for_ws = chat_list.clone();
     let tray_ws = tray.clone();
+    let win_for_ws = win.clone();
     glib::spawn_future_local(async move {
         // Subscribe to state changes
         let ws_for_state = ctrl_ws.ws().clone();
@@ -1313,6 +1325,7 @@ fn create_app_layout(
         let cl_for_rx = cl_for_ws.clone();
         let ctrl_for_rx = ctrl_ws.clone();
         let tray_for_rx = tray_ws.clone();
+        let win_for_rx = win_for_ws.clone();
         let ctrl_for_ring = controller.clone();
         let ringing_meetings: Rc<RefCell<HashSet<String>>> = Rc::new(RefCell::new(HashSet::new()));
 
@@ -1322,6 +1335,7 @@ fn create_app_layout(
                 let cl = cl_for_rx.clone();
                 let ctrl = ctrl_for_rx.clone();
                 let tray_ws = tray_for_rx.clone();
+                let win_unread = win_for_rx.clone();
                 let method = ws_msg
                     .message
                     .get("method")
@@ -1378,9 +1392,33 @@ fn create_app_layout(
                         let messages =
                             crate::api::HttpClient::parse_ws_incoming_messages(&ws_msg.message);
                         if !messages.is_empty() {
-                            // Add all messages to app state (for any chat)
+                            let mut rows = Vec::new();
                             for msg in &messages {
                                 ctrl.handle_incoming_message(msg.clone()).await;
+                            }
+                            {
+                                let state_handle = ctrl.state();
+                                let state = state_handle.lock().await;
+                                for msg in &messages {
+                                    if let Some(chat) =
+                                        state.chats.iter().find(|c| c.id == msg.chat_id)
+                                    {
+                                        rows.push((
+                                            chat.id.clone(),
+                                            chat.unread_count,
+                                            chat.last_message.clone(),
+                                        ));
+                                    }
+                                }
+                            }
+                            {
+                                let mut list = cl.lock().unwrap();
+                                for (id, unread, last) in rows {
+                                    if let Some(last) = last {
+                                        list.update_last_message(&id, last);
+                                    }
+                                    list.update_unread(&id, unread);
+                                }
                             }
 
                             for msg in &messages {
@@ -1406,7 +1444,11 @@ fn create_app_layout(
                                 let selected = ctrl.get_selected_chat_id().await;
                                 let window_focused_same_chat =
                                     selected.as_deref() == Some(msg.chat_id.as_str());
-                                if !text.is_empty() && !window_focused_same_chat {
+                                let own = ctrl
+                                    .auth()
+                                    .user_id()
+                                    .is_some_and(|uid| !uid.is_empty() && uid == msg.from_id);
+                                if !text.is_empty() && !window_focused_same_chat && !own {
                                     ui::notifications::send_notification_for_chat(
                                         &sender,
                                         &text,
@@ -1435,6 +1477,7 @@ fn create_app_layout(
                             // Update tray unread badge
                             let total = ctrl.total_unread().await;
                             tray_ws.set_unread_count(total);
+                            win_unread.set_title(Some(&crate::models::window_title(total)));
                         }
                     }
                     "unread_update" => {
@@ -1444,7 +1487,12 @@ fn create_app_layout(
                             if let Some(unread) =
                                 ws_msg.message.get("unread_count").and_then(|u| u.as_u64())
                             {
-                                cl.lock().unwrap().update_unread(chat_id, unread as u32);
+                                let unread = unread as u32;
+                                ctrl.set_chat_unread(chat_id, unread).await;
+                                cl.lock().unwrap().update_unread(chat_id, unread);
+                                let total = ctrl.total_unread().await;
+                                tray_ws.set_unread_count(total);
+                                win_unread.set_title(Some(&crate::models::window_title(total)));
                             }
                         }
                     }
@@ -1604,7 +1652,7 @@ fn create_app_layout(
     header_bar.set_show_start_title_buttons(true);
     header_bar.set_title_widget(Some(
         &gtk::Label::builder()
-            .label("Yandex Messenger")
+            .label("Яндекс Телемост")
             .css_classes(vec!["title".to_string()])
             .build(),
     ));

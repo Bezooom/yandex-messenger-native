@@ -76,3 +76,18 @@ bootstrap_dump.json
 chat_page.html
 js_dumps/
 debug_chat.png
+
+# Release / packaging artifacts — never commit
+*.deb
+*.changes
+*.build
+*.buildinfo
+*.apk
+*.xapk
+
+# Local state / indexing artifacts
+.codegraph/
+codegraph_index.pid
+
+# APK docs are versioned snapshots; ignore new dropped-in copies
+docs/apk-*/

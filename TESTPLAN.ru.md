@@ -2,7 +2,7 @@
 
 [English version](TESTPLAN.md)
 
-## Текущий статус (2.173.0)
+## Текущий статус (2.175.0)
 
 | Фаза | Статус |
 |---|---|
@@ -69,7 +69,7 @@ make run
 - встроенный WebView (feature `in_app_webview`) загружает страницу Telemost;
 - кнопки Mute / Video переключают состояние и визуал;
 - fallback: без `in_app_webview` открывается диалог с кнопкой «Open in browser»;
-- нативный WebRTC в 2.173.0 **не ожидается**.
+- нативный WebRTC есть в дереве под фичей `gstreamer`; default и CI-бинарь собираются без него.
 
 ## 6. Поведение на рабочем столе
 
@@ -83,4 +83,4 @@ make run
 
 - `debuild -us -uc` завершается успешно;
 - workflow `.github/workflows/ci.yml` проходит на чистом runner;
-- `make dist` собирает `yandex-messenger-native_2.173.0-*`.
+- `make dist` собирает `yandex-messenger-native_2.175.0-*`.
