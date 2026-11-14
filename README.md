@@ -60,7 +60,7 @@
 > 
 > **Important Disclaimer**: This is an **unofficial, community-driven client** for Yandex Messenger. It is not affiliated with, endorsed by, or associated in any way with Yandex LLC or its affiliates. The developers of this project do not claim any rights to Yandex trademarks, branding, or media assets. Use this software at your own risk.
 
-> ✅ **Verified on this tree (2.175.0):** `cargo check --bin yandex-messenger` clean; `cargo test --bin yandex-messenger` → **62 passed, 1 ignored**; `cargo build --release` → 16 MB binary with every `NEEDED` library resolved. GUI and live network flows are manual.
+> ✅ **Verified on this tree (2.175.1):** `cargo check --bin yandex-messenger` clean; `cargo test --bin yandex-messenger` → **65 passed, 1 ignored**; `cargo build --release` → 16 MB binary with every `NEEDED` library resolved. GUI and live network flows are manual.
 
 ### What changed in 2.175.0
 
