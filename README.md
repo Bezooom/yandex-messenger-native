@@ -49,7 +49,7 @@
 
 [![CI](https://github.com/Bezooom/yandex-messenger-native/actions/workflows/ci.yml/badge.svg)](https://github.com/Bezooom/yandex-messenger-native/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/Bezooom/yandex-messenger-native)](https://github.com/Bezooom/yandex-messenger-native/releases/latest) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Version 2.175.1** — native Linux desktop client for Yandex Messenger (Telemost chats), built with Rust, GTK4, and Libadwaita. Fast, light, with a Telegram Desktop night theme and an nheko-style dense chat list.
+**Version 2.175.2** — native Linux desktop client for Yandex Messenger (Telemost chats), built with Rust, GTK4, and Libadwaita. Fast, light, with a Telegram Desktop night theme and an nheko-style dense chat list.
 
 [Русская версия](README.ru.md)
 
@@ -60,7 +60,7 @@
 > 
 > **Important Disclaimer**: This is an **unofficial, community-driven client** for Yandex Messenger. It is not affiliated with, endorsed by, or associated in any way with Yandex LLC or its affiliates. The developers of this project do not claim any rights to Yandex trademarks, branding, or media assets. Use this software at your own risk.
 
-> ✅ **Verified on this tree (2.175.1):** `cargo check --bin yandex-messenger` clean; `cargo test --bin yandex-messenger` → **65 passed, 1 ignored**; `cargo build --release` → 16 MB binary with every `NEEDED` library resolved. GUI and live network flows are manual.
+> ✅ **Verified on this tree (2.175.2):** `cargo check --bin yandex-messenger` clean; `cargo test --bin yandex-messenger` → **66 passed, 1 ignored**; `cargo build --release` → 16 MB binary with every `NEEDED` library resolved. GUI and live network flows are manual.
 
 ### What changed in 2.175.0
 
@@ -69,6 +69,12 @@
 - **Unread has one source of truth**: incoming messages bump `state.chats[].unread_count`; window title, tray and list agree, and your own echo is ignored.
 - **Telemost home**: action hub (new chat / new call / join by link), Все / Личные / Новые filters with matching empty states, window title "Яндекс Телемост — N новое сообщение".
 - **Privacy**: the full bootstrap dump is opt-in via `YM_DUMP_BOOTSTRAP=/path`.
+
+### What changed in 2.175.2
+
+- **Own messages stay on the right**: optimistic sends now carry the account GUID, and the bubble compares the sender against both the GUID and the account id. Messages sent from this client no longer fall into the incoming column.
+- **Sticker dock fixed**: pack chips are a horizontal strip above the grid, the 480 px CSS minimum is gone, cells are 64 px, and the grid wraps by dock width instead of forcing the panel wider.
+- **Dock width follows the window** (31%, clamped to 300–460 px) instead of a fixed 360 px.
 
 ### What changed in 2.175.1
 

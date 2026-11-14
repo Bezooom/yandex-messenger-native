@@ -2,7 +2,7 @@
 
 [English version](TESTPLAN.md)
 
-## Текущий статус (2.175.1)
+## Текущий статус (2.175.2)
 
 | Фаза | Статус |
 |---|---|
@@ -83,4 +83,4 @@ make run
 
 - `debuild -us -uc` завершается успешно;
 - workflow `.github/workflows/ci.yml` проходит на чистом runner;
-- `make dist` собирает `yandex-messenger-native_2.175.1-*`.
+- `make dist` собирает `yandex-messenger-native_2.175.2-*`.

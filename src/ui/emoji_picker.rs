@@ -692,7 +692,7 @@ impl EmojiPicker {
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vscrollbar_policy(gtk::PolicyType::Automatic)
             .min_content_height(240)
-            .min_content_width(340)
+            .min_content_width(280)
             .hexpand(true)
             .vexpand(true)
             .build();
@@ -702,7 +702,7 @@ impl EmojiPicker {
         flow.add_css_class("emoji-flow");
         flow.set_valign(gtk::Align::Start);
         flow.set_max_children_per_line(8);
-        flow.set_min_children_per_line(6);
+        flow.set_min_children_per_line(5);
         flow.set_selection_mode(gtk::SelectionMode::None);
         flow.set_homogeneous(true);
         flow.set_column_spacing(2);

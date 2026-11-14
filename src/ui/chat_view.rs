@@ -518,6 +518,19 @@ impl ChatView {
             side_close.connect_clicked(move |_| panel.set_visible(false));
         }
 
+        // Dock width follows the window (31%, clamped) instead of a fixed size.
+        {
+            let panel = side_panel.clone();
+            container.connect_notify_local(Some("width"), move |c, _| {
+                let w = c.width();
+                if w <= 0 {
+                    return;
+                }
+                let target = ((w as f64) * 0.31).round().clamp(300.0, 460.0) as i32;
+                panel.set_size_request(target, -1);
+            });
+        }
+
         // Ctrl+Shift+E toggles the emoji dock. Capture phase so the composer
         // (Ctrl+E is end-of-line there) cannot swallow it.
         {
@@ -2880,10 +2893,18 @@ impl ChatView {
             .map(|b| b.bot_id == msg.from_id)
             .unwrap_or(false);
 
-        let is_sent = if let Some(ref uid) = current_user_id {
-            msg.from_id == *uid
-        } else {
-            false
+        let is_sent = {
+            let account_id = self.auth.account_id_sync();
+            let mut owners: Vec<&str> = Vec::new();
+            if let Some(ref uid) = current_user_id {
+                owners.push(uid.as_str());
+            }
+            if let Some(ref acc) = account_id {
+                owners.push(acc.as_str());
+            }
+            owners
+                .iter()
+                .any(|id| !id.is_empty() && *id == msg.from_id.as_str())
         };
 
         let row = GtkBox::new(Orientation::Horizontal, 0);

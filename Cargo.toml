@@ -1,6 +1,6 @@
 [package]
 name = "yandex-messenger-native"
-version = "2.175.1"
+version = "2.175.2"
 edition = "2021"
 description = "Native Yandex Messenger (Telemost) client for Linux desktop"
 authors = ["BeZoom <naumov122@gmail.com>"]

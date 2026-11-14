@@ -5,7 +5,14 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
-Current release: **2.175.1** (2026-11-14).
+Current release: **2.175.2** (2026-11-14).
+
+## 2.175.2 - 2026-11-14
+
+### Fixed
+* **Own messages rendered as incoming.** Optimistic sends carried the account id while history carries the GUID, so the bubble never matched the current user. Sends now use the GUID, and the bubble accepts both the GUID and the account id.
+* **Sticker dock layout.** Pack chips moved to a horizontal strip above the grid, the 480 px CSS minimum on `.sticker-panel` is gone, cells are 64 px, and the grid wraps by dock width.
+* **Dock width** follows the window (31%, 300–460 px) instead of a fixed 360 px.
 
 ## 2.175.1 - 2026-11-14
 
