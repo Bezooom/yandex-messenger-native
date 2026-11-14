@@ -42,7 +42,7 @@ Ship a usable unofficial Linux desktop client for Yandex Messenger (Rust + GTK4 
 
 ## Verification floor
 
-- `cargo check --bin yandex-messenger` and `cargo test --bin yandex-messenger` pass (62 tests, 1 ignored).
+- `cargo check --bin yandex-messenger` and `cargo test --bin yandex-messenger` pass (65 tests, 1 ignored).
 - This machine has GTK4 runtime but no `gtk4.pc`/headers; the check ran against pkg-config files extracted from Ubuntu `.deb` packages into `/tmp/gtk-prefix` with `-L /tmp/ym-liblinks`. A normal dev box should `apt install libgtk-4-dev libadwaita-1-dev libwebkitgtk-6.0-dev` instead.
 
 ## Next Steps

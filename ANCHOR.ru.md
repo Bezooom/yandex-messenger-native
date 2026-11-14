@@ -42,7 +42,7 @@
 
 ## Уровень проверки
 
-- `cargo check --bin yandex-messenger` и `cargo test --bin yandex-messenger` проходят (62 теста, 1 ignored).
+- `cargo check --bin yandex-messenger` и `cargo test --bin yandex-messenger` проходят (65 тестов, 1 ignored).
 - На этой машине есть GTK4 runtime, но нет `gtk4.pc`/заголовков; проверка шла на pkg-config из распакованных Ubuntu `.deb` в `/tmp/gtk-prefix` и `-L /tmp/ym-liblinks`. На обычной dev-машине нужен `apt install libgtk-4-dev libadwaita-1-dev libwebkitgtk-6.0-dev`.
 
 ## Дальше
