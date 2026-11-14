@@ -1,3 +1,10 @@
+yandex-messenger-native (2.175.2-1) unstable; urgency=medium
+
+  * Fix: own messages were rendered as incoming (guid vs account id)
+  * Fix: sticker dock layout, 480px CSS minimum removed, adaptive width
+
+ -- BeZoom <naumov122@gmail.com>  Sat, 14 Nov 2026 21:10:00 +0300
+
 yandex-messenger-native (2.175.1-1) unstable; urgency=medium
 
   * UI: emoji and sticker pickers docked as a right-hand panel with tabs

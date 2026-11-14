@@ -14,7 +14,7 @@ use crate::models::{Sticker, StickerPack};
 const CSS_STICKER_PANEL: &str = "sticker-panel";
 const CSS_PACK_LIST: &str = "sticker-pack-list";
 const CSS_PACK_ITEM: &str = "sticker-pack-item";
-const CSS_PACK_ITEM_SELECTED: &str = "sticker-pack-item";
+const CSS_PACK_ITEM_SELECTED: &str = "sticker-pack-item-selected";
 const CSS_PACK_TITLE: &str = "sticker-pack-title";
 const CSS_PACK_COUNT: &str = "sticker-pack-count";
 const CSS_STICKER_GRID: &str = "sticker-grid";
@@ -22,15 +22,16 @@ const CSS_STICKER_ITEM: &str = "sticker-item";
 const CSS_SEARCH_ENTRY: &str = "sticker-search-entry";
 const CSS_THUMB: &str = "sticker-thumb";
 
-/// StickerPanel — a popover/overlay that displays sticker packs and their stickers.
+/// StickerPanel — right-dock sticker browser.
 ///
 /// Layout:
-///   +─────────────────────────────────────────────+
-///   |  [Search bar]                                |
-///   +───────────────+────────────────────────────+
-///   | Packs list    |  Sticker grid               |
-///   |  (left)       |  (right)                    |
-///   +───────────────+────────────────────────────+
+///   +─────────────────────────────+
+///   |  [Search bar]               |
+///   +─────────────────────────────+
+///   | [pack][pack][pack]  → strip |
+///   +─────────────────────────────+
+///   |  Sticker grid               |
+///   +─────────────────────────────+
 #[derive(Clone)]
 pub struct StickerPanel {
     /// Root widget for the panel.
@@ -70,37 +71,29 @@ impl StickerPanel {
         search_entry.set_margin_top(8);
         search_entry.set_margin_bottom(8);
 
-        // ── Main content ──
-        let content = GtkBox::new(Orientation::Horizontal, 0);
-        content.set_css_classes(&["sticker-panel-content"]);
-        content.set_margin_start(8);
-        content.set_margin_end(8);
-        content.set_margin_bottom(8);
-
-        // ── Pack list (left) ──
+        // ── Pack strip (horizontal, above the grid) ──
         let pack_list_scroll = ScrolledWindow::builder()
-            .hscrollbar_policy(gtk::PolicyType::Never)
-            .vscrollbar_policy(gtk::PolicyType::Automatic)
+            .hscrollbar_policy(gtk::PolicyType::Automatic)
+            .vscrollbar_policy(gtk::PolicyType::Never)
             .build();
-        pack_list_scroll.set_min_content_width(180);
-        pack_list_scroll.set_css_classes(&["sticker-panel-scroll"]);
+        pack_list_scroll.set_min_content_height(64);
+        pack_list_scroll.set_css_classes(&["sticker-panel-scroll", "sticker-pack-strip"]);
 
-        let pack_list_box = GtkBox::new(Orientation::Vertical, 4);
+        let pack_list_box = GtkBox::new(Orientation::Horizontal, 4);
         pack_list_box.set_css_classes(&[CSS_PACK_LIST]);
-        pack_list_box.set_margin_top(4);
-        pack_list_box.set_margin_start(4);
-        pack_list_box.set_margin_end(4);
-        pack_list_box.set_margin_bottom(4);
+        pack_list_box.set_margin_start(8);
+        pack_list_box.set_margin_end(8);
+        pack_list_box.set_valign(Align::Center);
         pack_list_scroll.set_child(Some(&pack_list_box));
 
-        // ── Sticker grid (right) ──
+        // ── Sticker grid (below the strip) ──
         let sticker_scroll = ScrolledWindow::builder()
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vscrollbar_policy(gtk::PolicyType::Automatic)
             .build();
         sticker_scroll.set_css_classes(&["sticker-panel-scroll"]);
         sticker_scroll.set_hexpand(true);
-        sticker_scroll.set_min_content_width(320);
+        sticker_scroll.set_vexpand(true);
         sticker_scroll.set_min_content_height(280);
 
         let sticker_col = GtkBox::new(Orientation::Vertical, 4);
@@ -117,7 +110,7 @@ impl StickerPanel {
         let sticker_grid = FlowBox::new();
         sticker_grid.set_css_classes(&[CSS_STICKER_GRID]);
         sticker_grid.set_valign(Align::Start);
-        sticker_grid.set_max_children_per_line(5);
+        sticker_grid.set_max_children_per_line(8);
         sticker_grid.set_min_children_per_line(3);
         sticker_grid.set_selection_mode(gtk::SelectionMode::None);
         sticker_grid.set_homogeneous(true);
@@ -131,11 +124,9 @@ impl StickerPanel {
         sticker_col.append(&sticker_grid);
         sticker_scroll.set_child(Some(&sticker_col));
 
-        content.append(&pack_list_scroll);
-        content.append(&sticker_scroll);
-
         container.append(&search_entry);
-        container.append(&content);
+        container.append(&pack_list_scroll);
+        container.append(&sticker_scroll);
         container.set_hexpand(true);
         container.set_vexpand(true);
         container.set_size_request(-1, 360);
@@ -177,25 +168,22 @@ impl StickerPanel {
         self.select_pack(selected);
     }
 
-    /// Create a single pack list item widget.
+    /// Create a single pack chip for the horizontal strip.
     fn create_pack_item(&self, idx: usize, pack: &StickerPack) -> GtkBox {
-        let item = GtkBox::new(Orientation::Horizontal, 8);
+        let item = GtkBox::new(Orientation::Vertical, 2);
         item.set_css_classes(&[CSS_PACK_ITEM]);
-        item.set_hexpand(true);
-        item.set_valign(Align::Start);
-        item.set_margin_start(4);
-        item.set_margin_end(4);
-        item.set_margin_top(4);
-        item.set_margin_bottom(4);
-        item.set_size_request(160, 60);
+        item.set_valign(Align::Center);
+        item.set_margin_start(2);
+        item.set_margin_end(2);
+        item.set_size_request(64, 56);
         item.set_cursor_from_name(Some("pointer"));
 
         // Thumb
         let thumb = gtk::Image::builder().icon_name("image-missing").build();
         thumb.set_css_classes(&[CSS_THUMB]);
-        thumb.set_size_request(50, 50);
-        thumb.set_halign(Align::Start);
-        thumb.set_valign(Align::Start);
+        thumb.set_pixel_size(32);
+        thumb.set_halign(Align::Center);
+        thumb.set_valign(Align::Center);
 
         let thumb_clone = thumb.clone();
         // Prefer pack thumb; fall back to first sticker thumb
@@ -224,26 +212,15 @@ impl StickerPanel {
             .label(&pack.title)
             .lines(1)
             .ellipsize(gtk::pango::EllipsizeMode::End)
-            .width_chars(1)
-            .max_width_chars(14)
+            .max_width_chars(10)
             .build();
         title.set_css_classes(&[CSS_PACK_TITLE]);
-        title.set_halign(Align::Start);
+        title.set_halign(Align::Center);
         title.set_valign(Align::Center);
-        title.set_xalign(0.0);
-        title.set_hexpand(true);
-
-        // Count
-        let count_label = gtk::Label::builder()
-            .label(&format!(" {}", pack.sticker_count))
-            .build();
-        count_label.set_css_classes(&[CSS_PACK_COUNT]);
-        count_label.set_halign(Align::End);
-        count_label.set_valign(Align::Start);
+        title.set_xalign(0.5);
 
         item.append(&thumb);
         item.append(&title);
-        item.append(&count_label);
 
         let _item_rc = Rc::new(item.clone());
         let panel_rc = Rc::new(self.clone());
@@ -311,14 +288,14 @@ impl StickerPanel {
     fn create_sticker_button(&self, sticker: &Sticker) -> Button {
         let btn = Button::builder().build();
         btn.set_css_classes(&[CSS_STICKER_ITEM]);
-        btn.set_size_request(72, 72);
+        btn.set_size_request(64, 64);
         btn.set_halign(Align::Center);
         btn.set_valign(Align::Center);
         btn.set_tooltip_text(Some(&sticker.emoji));
 
         let image = gtk::Image::builder().icon_name("image-missing").build();
         image.set_css_classes(&[CSS_THUMB]);
-        image.set_pixel_size(64);
+        image.set_pixel_size(52);
         image.set_halign(Align::Center);
         image.set_valign(Align::Center);
         btn.set_child(Some(&image));
@@ -609,4 +586,49 @@ fn load_texture_via_pixbuf(bytes: &[u8]) -> Result<gtk::gdk::Texture, String> {
         pixbuf
     };
     Ok(gtk::gdk::Texture::for_pixbuf(&scaled))
+}
+
+#[cfg(test)]
+mod dock_tests {
+    use super::*;
+
+    fn pack(id: &str, title: &str) -> StickerPack {
+        StickerPack {
+            pack_id: id.to_string(),
+            title: title.to_string(),
+            stickers: vec![],
+            is_installed: true,
+            is_featured: false,
+            category: String::new(),
+            thumb_url: String::new(),
+            sticker_count: 0,
+        }
+    }
+
+    #[test]
+    fn panel_fits_a_narrow_dock() {
+        crate::ui::run_gtk_test(|| {
+            let panel = StickerPanel::new(vec![
+                pack("a", "Миша"),
+                pack("b", "Ворона Клара"),
+                pack("c", "Мышь"),
+            ]);
+            let min = panel.container.measure(Orientation::Horizontal, -1).0;
+            let mut parts = Vec::new();
+            let mut child = panel.container.first_child();
+            while let Some(w) = child {
+                parts.push(format!(
+                    "{}={}",
+                    w.type_().name(),
+                    w.measure(Orientation::Horizontal, -1).0
+                ));
+                child = w.next_sibling();
+            }
+            assert!(
+                min <= 360,
+                "sticker panel demands {min} px: {}",
+                parts.join(", ")
+            );
+        });
+    }
 }

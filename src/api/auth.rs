@@ -122,6 +122,14 @@ impl AuthManager {
         }
     }
 
+    /// Account id without awaiting: used by UI to recognise own messages.
+    pub fn account_id_sync(&self) -> Option<String> {
+        self.current_account_id_sync
+            .lock()
+            .ok()
+            .and_then(|guard| guard.clone())
+    }
+
     fn effective_client_id(&self) -> String {
         if let Ok(v) = std::env::var("YANDEX_CLIENT_ID") {
             let trimmed = v.trim();

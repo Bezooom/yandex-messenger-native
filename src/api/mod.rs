@@ -1213,7 +1213,11 @@ impl WebSocketClient {
         Ok(models::Message {
             id: payload_id.clone(),
             chat_id: chat_id.to_string(),
-            from_id: self.auth.get_current_account_id().await.unwrap_or_default(),
+            from_id: self
+                .auth
+                .user_id()
+                .or(self.auth.get_current_account_id().await)
+                .unwrap_or_default(),
             message_id: Some(payload_id.clone()),
             rmid: None,
             type_: models::MessageType::Text,
@@ -1360,7 +1364,11 @@ impl WebSocketClient {
         Ok(models::Message {
             id: payload_id.to_string(),
             chat_id: chat_id.to_string(),
-            from_id: self.auth.get_current_account_id().await.unwrap_or_default(),
+            from_id: self
+                .auth
+                .user_id()
+                .or(self.auth.get_current_account_id().await)
+                .unwrap_or_default(),
             message_id: Some(payload_id.to_string()),
             rmid: None,
             type_: if is_image {
