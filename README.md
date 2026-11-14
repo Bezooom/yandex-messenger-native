@@ -62,14 +62,6 @@
 
 > ✅ **Verified on this tree (2.175.2):** `cargo check --bin yandex-messenger` clean; `cargo test --bin yandex-messenger` → **66 passed, 1 ignored**; `cargo build --release` → 16 MB binary with every `NEEDED` library resolved. GUI and live network flows are manual.
 
-### What changed in 2.175.0
-
-- **Chat list from real bootstrap**: `members_count`, `private`, `pinned_chats` and `chat_mutings` are parsed; groups no longer say "0 участников", and `chats[].members` fills the participant list with names and avatars.
-- **Stable ordering**: preview timestamps come from `create_timestamp` / `version` instead of `Utc::now()`.
-- **Unread has one source of truth**: incoming messages bump `state.chats[].unread_count`; window title, tray and list agree, and your own echo is ignored.
-- **Telemost home**: action hub (new chat / new call / join by link), Все / Личные / Новые filters with matching empty states, window title "Яндекс Телемост — N новое сообщение".
-- **Privacy**: the full bootstrap dump is opt-in via `YM_DUMP_BOOTSTRAP=/path`.
-
 ### What changed in 2.175.2
 
 - **Own messages stay on the right**: optimistic sends now carry the account GUID, and the bubble compares the sender against both the GUID and the account id. Messages sent from this client no longer fall into the incoming column.
@@ -81,6 +73,14 @@
 - **Emoji and stickers are a right-hand dock** with «Эмодзи / Стикеры» tabs, search and category grid, Telegram-style, instead of a popover above the composer. `Ctrl+Shift+E` toggles it.
 - **Image viewer fixed**: `gtk::Picture` with `ContentFit::Contain` fills the window instead of showing a thumbnail; zoom buttons now scale the picture.
 - **Default window** is 1180×780 so the list, chat and dock fit together.
+
+### What changed in 2.175.0
+
+- **Chat list from real bootstrap**: `members_count`, `private`, `pinned_chats` and `chat_mutings` are parsed; groups no longer say "0 участников", and `chats[].members` fills the participant list with names and avatars.
+- **Stable ordering**: preview timestamps come from `create_timestamp` / `version` instead of `Utc::now()`.
+- **Unread has one source of truth**: incoming messages bump `state.chats[].unread_count`; window title, tray and list agree, and your own echo is ignored.
+- **Telemost home**: action hub (new chat / new call / join by link), Все / Личные / Новые filters with matching empty states, window title "Яндекс Телемост — N новое сообщение".
+- **Privacy**: the full bootstrap dump is opt-in via `YM_DUMP_BOOTSTRAP=/path`.
 
 ## Feature Status Matrix
 
