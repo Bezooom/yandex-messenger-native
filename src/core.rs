@@ -832,7 +832,11 @@ impl AppController {
             return Ok(Message {
                 id: mid.to_string(),
                 chat_id: chat_id.to_string(),
-                from_id: self.auth.get_current_account_id().await.unwrap_or_default(),
+                from_id: self
+                    .auth
+                    .user_id()
+                    .or(self.auth.get_current_account_id().await)
+                    .unwrap_or_default(),
                 message_id: Some(mid.to_string()),
                 rmid: None,
                 type_: crate::models::MessageType::Text,
@@ -893,7 +897,11 @@ impl AppController {
                 let pending = Message {
                     id: item.id.clone(),
                     chat_id: chat_id.to_string(),
-                    from_id: self.auth.get_current_account_id().await.unwrap_or_default(),
+                    from_id: self
+                        .auth
+                        .user_id()
+                        .or(self.auth.get_current_account_id().await)
+                        .unwrap_or_default(),
                     message_id: Some(item.id.clone()),
                     rmid: None,
                     type_: crate::models::MessageType::Text,

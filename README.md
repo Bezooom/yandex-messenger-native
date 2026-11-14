@@ -49,7 +49,7 @@
 
 [![CI](https://github.com/Bezooom/yandex-messenger-native/actions/workflows/ci.yml/badge.svg)](https://github.com/Bezooom/yandex-messenger-native/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/Bezooom/yandex-messenger-native)](https://github.com/Bezooom/yandex-messenger-native/releases/latest) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Version 2.175.2** — native Linux desktop client for Yandex Messenger (Telemost chats), built with Rust, GTK4, and Libadwaita. Fast, light, with a Telegram Desktop night theme and an nheko-style dense chat list.
+**Version 2.175.3** — native Linux desktop client for Yandex Messenger (Telemost chats), built with Rust, GTK4, and Libadwaita. Fast, light, with a Telegram Desktop night theme and an nheko-style dense chat list.
 
 [Русская версия](README.ru.md)
 
@@ -60,7 +60,13 @@
 > 
 > **Important Disclaimer**: This is an **unofficial, community-driven client** for Yandex Messenger. It is not affiliated with, endorsed by, or associated in any way with Yandex LLC or its affiliates. The developers of this project do not claim any rights to Yandex trademarks, branding, or media assets. Use this software at your own risk.
 
-> ✅ **Verified on this tree (2.175.2):** `cargo check --bin yandex-messenger` clean; `cargo test --bin yandex-messenger` → **66 passed, 1 ignored**; `cargo build --release` → 16 MB binary with every `NEEDED` library resolved. GUI and live network flows are manual.
+> ✅ **Verified on this tree (2.175.3):** `cargo check --bin yandex-messenger` clean; `cargo test --bin yandex-messenger` → **68 passed, 1 ignored**; `cargo build --release` → 16 MB binary with every `NEEDED` library resolved. GUI and live network flows are manual.
+
+### What changed in 2.175.3
+
+- **Sticker thumbnails keep their size**: the async loader no longer overrides chip (32 px) and grid (52 px) sizes, so the pack strip stops clipping.
+- **Dock actually shrinks**: emoji category tabs scroll horizontally and `.emoji-picker` minimum is 280 px, so the 300–460 px range works instead of snapping to 360.
+- **Own-message detection is tested**: `models::is_own_sender` matches the GUID or the legacy numeric account id; optimistic edits and outbox messages now carry the GUID too.
 
 ### What changed in 2.175.2
 

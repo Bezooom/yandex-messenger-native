@@ -3,7 +3,7 @@
 [English version](TELEMOST_IMPLEMENTATION_PLAN.en.md)
 
 > Основано на реинжиниринге APK `ru.yandex.telemost` v3.12.0.138  
-> Актуально для релиза **2.175.0**: сигналинг Goloom и `webrtcbin` есть в дереве, но медиа требуют фичи `gstreamer` и пакета `gstreamer1.0-nice`; default-бинарь собирается без них.
+> Актуально для релиза **2.175.3**: сигналинг Goloom и `webrtcbin` есть в дереве, но медиа требуют фичи `gstreamer` и пакета `gstreamer1.0-nice`; default-бинарь собирается без них.
 
 ## Текущее состояние
 

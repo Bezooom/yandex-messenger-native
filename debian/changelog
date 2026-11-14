@@ -1,3 +1,12 @@
+yandex-messenger-native (2.175.3-1) unstable; urgency=medium
+
+  * Fix: sticker thumbnails no longer forced to 50px; chips and grid keep size
+  * Fix: emoji category strip scrolls; dock can shrink to 300px
+  * Fix: optimistic edits and outbox messages use the account GUID
+  * Test: is_own_sender helper, emoji panel width
+
+ -- BeZoom <naumov122@gmail.com>  Sat, 14 Nov 2026 22:40:00 +0300
+
 yandex-messenger-native (2.175.2-1) unstable; urgency=medium
 
   * Fix: own messages were rendered as incoming (guid vs account id)

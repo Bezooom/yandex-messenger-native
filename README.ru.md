@@ -49,7 +49,7 @@
 
 [![CI](https://github.com/Bezooom/yandex-messenger-native/actions/workflows/ci.yml/badge.svg)](https://github.com/Bezooom/yandex-messenger-native/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/Bezooom/yandex-messenger-native)](https://github.com/Bezooom/yandex-messenger-native/releases/latest) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Версия 2.175.2** — нативный Linux-клиент Яндекс Мессенджера (чаты Телемоста) на Rust, GTK4 и Libadwaita. Быстрый, лёгкий, с night-темой Telegram Desktop и плотным списком чатов в стиле nheko.
+**Версия 2.175.3** — нативный Linux-клиент Яндекс Мессенджера (чаты Телемоста) на Rust, GTK4 и Libadwaita. Быстрый, лёгкий, с night-темой Telegram Desktop и плотным списком чатов в стиле nheko.
 
 [English version](README.md)
 
@@ -60,7 +60,13 @@
 > 
 > **Важный дисклеймер**: Данный проект является **неофициальным клиентом**, созданным сообществом для Яндекс Мессенджера. Он никак не связан, не поддерживается и не ассоциирован с ООО «Яндекс» или его дочерними компаниями. Разработчики проекта не заявляют никаких прав на товарные знаки, брендинг или медиа-ресурсы Яндекса. Используйте это программное обеспечение на свой страх и риск.
 
-> ✅ **Проверено на этом дереве (2.175.2):** `cargo check --bin yandex-messenger` чистый; `cargo test --bin yandex-messenger` → **66 passed, 1 ignored**; `cargo build --release` → бинарь 16 МБ, все `NEEDED`-библиотеки находятся. GUI и живые сетевые сценарии проверяются руками.
+> ✅ **Проверено на этом дереве (2.175.3):** `cargo check --bin yandex-messenger` чистый; `cargo test --bin yandex-messenger` → **68 passed, 1 ignored**; `cargo build --release` → бинарь 16 МБ, все `NEEDED`-библиотеки находятся. GUI и живые сетевые сценарии проверяются руками.
+
+### Что изменилось в 2.175.3
+
+- **Миниатюры стикеров держат размер**: асинхронный загрузчик больше не перебивает размеры чипов (32 px) и сетки (52 px), полоса паков перестала обрезаться.
+- **Док реально ужимается**: вкладки категорий эмодзи прокручиваются по горизонтали, минимум `.emoji-picker` – 280 px, поэтому диапазон 300–460 px работает, а не откатывается к 360.
+- **Определение своих сообщений под тестом**: `models::is_own_sender` принимает GUID или legacy numeric account id; оптимистичные правки и outbox тоже несут GUID.
 
 ### Что изменилось в 2.175.2
 

@@ -682,11 +682,17 @@ impl EmojiPicker {
         // Category tabs
         let category_bar = GtkBox::new(Orientation::Horizontal, 2);
         category_bar.add_css_class("emoji-category-bar");
-        category_bar.set_margin_start(8);
-        category_bar.set_margin_end(8);
-        category_bar.set_margin_bottom(6);
         category_bar.set_halign(gtk::Align::Fill);
-        category_bar.set_homogeneous(true);
+        category_bar.set_homogeneous(false);
+
+        let category_scroll = ScrolledWindow::builder()
+            .hscrollbar_policy(gtk::PolicyType::Automatic)
+            .vscrollbar_policy(gtk::PolicyType::Never)
+            .margin_start(8)
+            .margin_end(8)
+            .margin_bottom(6)
+            .build();
+        category_scroll.set_child(Some(&category_bar));
 
         let scrolled = ScrolledWindow::builder()
             .hscrollbar_policy(gtk::PolicyType::Never)
@@ -713,7 +719,7 @@ impl EmojiPicker {
         scrolled.set_child(Some(&flow));
 
         container.append(&title_label);
-        container.append(&category_bar);
+        container.append(&category_scroll);
         container.append(&scrolled);
 
         let on_emoji_selected: Rc<RefCell<Option<Box<dyn Fn(String)>>>> =
@@ -822,5 +828,19 @@ impl EmojiPicker {
 
     pub fn on_select(&self, callback: impl Fn(String) + 'static) {
         *self.on_emoji_selected.borrow_mut() = Some(Box::new(callback));
+    }
+}
+
+#[cfg(test)]
+mod dock_tests {
+    use super::*;
+
+    #[test]
+    fn panel_fits_a_narrow_dock() {
+        crate::ui::run_gtk_test(|| {
+            let panel = EmojiPicker::new();
+            let min = panel.container.measure(gtk::Orientation::Horizontal, -1).0;
+            assert!(min <= 320, "emoji panel demands {min} px");
+        });
     }
 }

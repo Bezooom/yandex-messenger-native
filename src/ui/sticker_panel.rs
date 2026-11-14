@@ -550,7 +550,6 @@ async fn load_sticker_image(img: &gtk::Image, url: &str) -> Result<(), String> {
     let bytes_glib = glib::Bytes::from(&bytes.to_vec());
     if let Ok(texture) = gtk::gdk::Texture::from_bytes(&bytes_glib) {
         img.set_from_paintable(Some(&texture));
-        img.set_pixel_size(50);
         return Ok(());
     }
 
@@ -558,7 +557,6 @@ async fn load_sticker_image(img: &gtk::Image, url: &str) -> Result<(), String> {
     match load_texture_via_pixbuf(&bytes) {
         Ok(texture) => {
             img.set_from_paintable(Some(&texture));
-            img.set_pixel_size(50);
             Ok(())
         }
         Err(e) => {

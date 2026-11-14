@@ -2,7 +2,7 @@
 
 [Русская версия](ARCHITECTURE.ru.md)
 
-Current release: **2.175.0**.
+Current release: **2.175.3**.
 
 ## Overview
 
