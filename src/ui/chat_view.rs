@@ -65,6 +65,7 @@ pub struct ChatView {
     on_send: Arc<Mutex<Option<StdBox<dyn Fn(String, String, Option<String>, Option<String>)>>>>,
     on_attach: Arc<Mutex<Option<StdBox<dyn Fn(String, Vec<u8>, String)>>>>,
     on_call: Arc<Mutex<Option<StdBox<dyn Fn(String)>>>>,
+    on_new_chat: Arc<Mutex<Option<StdBox<dyn Fn()>>>>,
     on_thread_open: Arc<Mutex<Option<StdBox<dyn Fn(String, String)>>>>,
     on_voice_send: Arc<Mutex<Option<StdBox<dyn Fn(String, Vec<u8>, f64, Vec<f32>)>>>>,
     on_translate: Arc<Mutex<Option<StdBox<dyn Fn(String, String)>>>>,
@@ -207,30 +208,51 @@ impl ChatView {
 
         scrolled.set_child(Some(&message_list_view));
 
-        // Welcome (no chat selected)
-        let welcome_box = GtkBox::new(Orientation::Vertical, 12);
+        // Home hub when no chat is selected. Layout follows the official
+        // Telemost desktop empty state: title plus action cards, not a logo splash.
+        let on_new_chat: Arc<Mutex<Option<StdBox<dyn Fn()>>>> = Arc::new(Mutex::new(None));
+        let welcome_box = GtkBox::new(Orientation::Vertical, 16);
         welcome_box.add_css_class("empty-chat");
         welcome_box.add_css_class("welcome-state");
+        welcome_box.add_css_class("home-hub");
         welcome_box.set_vexpand(true);
         welcome_box.set_hexpand(true);
         welcome_box.set_valign(Align::Center);
         welcome_box.set_halign(Align::Center);
-        let welcome_logo = Label::builder()
-            .label("Я")
-            .css_classes(vec!["empty-chat-logo".to_string(), "pop-in".to_string()])
-            .build();
+        welcome_box.set_margin_start(24);
+        welcome_box.set_margin_end(24);
         let welcome_title = Label::builder()
-            .label("Yandex Messenger")
+            .label("Яндекс Телемост — чаты и видеозвонки")
+            .wrap(true)
+            .justify(gtk::Justification::Center)
             .css_classes(vec!["empty-chat-title".to_string()])
             .build();
+        welcome_box.append(&welcome_title);
+
+        let cards = GtkBox::new(Orientation::Horizontal, 12);
+        cards.set_halign(Align::Center);
+        cards.add_css_class("home-hub-row");
+        cards.append(&hub_card(
+            "Новый чат",
+            on_new_chat.clone(),
+            HubAction::NewChat,
+        ));
+        cards.append(&hub_card(
+            "Новый звонок",
+            on_new_chat.clone(),
+            HubAction::NewCall,
+        ));
+        cards.append(&hub_card(
+            "Подключиться к звонку",
+            on_new_chat.clone(),
+            HubAction::JoinCall,
+        ));
+        welcome_box.append(&cards);
+
         let welcome_sub = Label::builder()
-            .label("Выберите чат слева, чтобы начать переписку")
-            .justify(gtk::Justification::Center)
-            .wrap(true)
+            .label("Или выберите чат слева")
             .css_classes(vec!["empty-chat-subtitle".to_string()])
             .build();
-        welcome_box.append(&welcome_logo);
-        welcome_box.append(&welcome_title);
         welcome_box.append(&welcome_sub);
 
         // Empty conversation
@@ -469,6 +491,7 @@ impl ChatView {
             on_send: Arc::new(Mutex::new(None)),
             on_attach: Arc::new(Mutex::new(None)),
             on_call: Arc::new(Mutex::new(None)),
+            on_new_chat,
             on_thread_open: Arc::new(Mutex::new(None)),
             on_voice_send: Arc::new(Mutex::new(None)),
             on_translate: Arc::new(Mutex::new(None)),
@@ -1729,6 +1752,10 @@ impl ChatView {
         *self.on_voice_send.lock().unwrap() = Some(StdBox::new(callback));
     }
 
+    pub fn connect_new_chat<F: Fn() + 'static>(&self, callback: F) {
+        *self.on_new_chat.lock().unwrap() = Some(StdBox::new(callback));
+    }
+
     pub fn set_chat(&self, chat: Chat) {
         let previous_chat_id = self.current_chat_id();
         let is_new_chat = previous_chat_id.as_deref() != Some(chat.id.as_str());
@@ -1748,19 +1775,8 @@ impl ChatView {
             *self.stick_to_bottom.lock().unwrap() = true;
         }
 
-        // Update status based on chat type
-        let status_text = match chat.chat_type {
-            crate::models::ChatType::Group => {
-                format!("Группа • {} участников", chat.participants.len())
-            }
-            crate::models::ChatType::Channel => {
-                format!("Канал • {} подписчиков", chat.participants.len())
-            }
-            crate::models::ChatType::Bot => "Бот".to_string(),
-            crate::models::ChatType::Private => "В сети".to_string(),
-            crate::models::ChatType::Unknown => "".to_string(),
-        };
-        self.status_label.set_label(&status_text);
+        self.status_label.set_use_markup(false);
+        self.status_label.set_label(&chat.status_line());
 
         // Show the call button when a chat is selected (except for channels)
         self.call_btn.set_visible(
@@ -1812,7 +1828,7 @@ impl ChatView {
     /// Hide chat view and show welcome empty state
     pub fn set_empty(&self) {
         *self.chat.lock().unwrap() = None;
-        self.title_label.set_label("Messenger");
+        self.title_label.set_label("Телемост");
         self.status_label.set_label("");
         // Hide composer bar
         self.input_area.set_visible(false);
@@ -4424,4 +4440,72 @@ fn format_date_separator(dt: &chrono::DateTime<chrono::Utc>) -> String {
     } else {
         format!("{} {} {}", local_dt.day(), month_name, local_dt.year())
     }
+}
+
+#[derive(Clone, Copy)]
+enum HubAction {
+    NewChat,
+    NewCall,
+    JoinCall,
+}
+
+fn hub_card(
+    label: &str,
+    on_new_chat: Arc<Mutex<Option<StdBox<dyn Fn()>>>>,
+    action: HubAction,
+) -> Button {
+    let button = Button::builder()
+        .label(label)
+        .css_classes(vec!["home-hub-card".to_string()])
+        .build();
+    match action {
+        HubAction::NewChat => {
+            button.connect_clicked(move |_| {
+                if let Some(cb) = on_new_chat.lock().unwrap().as_ref() {
+                    cb();
+                }
+            });
+        }
+        HubAction::NewCall => {
+            button.connect_clicked(|_| {
+                let _ = std::process::Command::new("xdg-open")
+                    .arg("https://telemost.yandex.ru/")
+                    .spawn();
+            });
+        }
+        HubAction::JoinCall => {
+            let popover = Popover::new();
+            popover.set_parent(&button);
+            let box_ = GtkBox::new(Orientation::Vertical, 8);
+            box_.set_margin_top(8);
+            box_.set_margin_bottom(8);
+            box_.set_margin_start(8);
+            box_.set_margin_end(8);
+            let entry = Entry::builder()
+                .placeholder_text("https://telemost.yandex.ru/j/…")
+                .width_request(280)
+                .build();
+            let open = Button::with_label("Открыть");
+            open.add_css_class("suggested-action");
+            let entry_open = entry.clone();
+            let pop = popover.clone();
+            open.connect_clicked(move |_| {
+                let url = entry_open.text().trim().to_string();
+                if url.starts_with("https://telemost.yandex.ru/")
+                    || url.starts_with("https://telemost.yandex-team.ru/")
+                {
+                    let _ = std::process::Command::new("xdg-open").arg(&url).spawn();
+                    pop.popdown();
+                }
+            });
+            box_.append(&entry);
+            box_.append(&open);
+            popover.set_child(Some(&box_));
+            let pop = popover.clone();
+            button.connect_clicked(move |_| {
+                pop.popup();
+            });
+        }
+    }
+    button
 }

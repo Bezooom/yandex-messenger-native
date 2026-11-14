@@ -1,6 +1,6 @@
 # Функциональный аудит (проверка «что реально работает»)
 
-> ⚠️ **Исторический снимок от 2026-08-08 (дерево ~2.165).** Актуальный статус функций — в [README.ru.md](README.ru.md) и [CHANGELOG.ru.md](CHANGELOG.ru.md) для **2.173.0**. English: [FUNCTIONAL_AUDIT.en.md](FUNCTIONAL_AUDIT.en.md).
+> ⚠️ **Исторический снимок от 2026-08-08 (дерево ~2.165).** Актуальный статус функций — в [README.ru.md](README.ru.md) и [CHANGELOG.ru.md](CHANGELOG.ru.md) для **2.175.0**. English: [FUNCTIONAL_AUDIT.en.md](FUNCTIONAL_AUDIT.en.md).
 
 **Дата снимка:** 2026-08-08  
 **Версия дерева на момент аудита:** 2.165.0 + uncommitted changes  

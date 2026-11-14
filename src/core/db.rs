@@ -270,6 +270,7 @@ mod tests {
             rid: None,
             avatar_id: None,
             participants: vec![],
+            member_count: 0,
             unread_count: 1,
             last_message: None,
             pinned: false,

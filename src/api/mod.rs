@@ -2194,17 +2194,14 @@ impl HttpClient {
             )
             .await?;
 
-        if let Ok(json_str) = serde_json::to_string_pretty(&data) {
-            let _ = std::fs::write(
-                "/home/bezoom/storage/Projects/Messenger/bootstrap_debug.json",
-                json_str,
-            );
+        if let Ok(path) = std::env::var("YM_DUMP_BOOTSTRAP") {
+            if !path.is_empty() {
+                if let Ok(json_str) = serde_json::to_string_pretty(&data) {
+                    let _ = std::fs::write(path, json_str);
+                }
+            }
         }
 
-        let mut out_chats = Vec::new();
-
-        let mut user_names = std::collections::HashMap::new();
-        let mut user_avatars = std::collections::HashMap::new();
         let current_user_id = data
             .get("user")
             .and_then(|u| u.get("guid"))
@@ -2228,9 +2225,9 @@ impl HttpClient {
         }
 
         if let Some(user) = data.get("user") {
-            if let Some(guid) = user.get("guid").and_then(|v| v.as_str()) {
+            if let Some(_guid) = user.get("guid").and_then(|v| v.as_str()) {
                 if let Some(name) = extract_display_name(user) {
-                    user_names.insert(guid.to_string(), name.clone());
+                    let _ = _guid;
                     // Keep account header in sync with real messenger profile
                     let avatar = user
                         .get("avatar_id")
@@ -2249,203 +2246,10 @@ impl HttpClient {
                         }
                     });
                 }
-                if let Some(avatar) = user.get("avatar_id").and_then(|v| v.as_str()) {
-                    user_avatars.insert(guid.to_string(), avatar.to_string());
-                }
             }
         }
 
-        // Parse users for display names
-        if let Some(users_val) = data.get("users").and_then(|v| v.as_array()) {
-            for u in users_val {
-                let guid = u.get("guid").and_then(|v| v.as_str()).unwrap_or("");
-                if guid.is_empty() {
-                    continue;
-                }
-                if let Some(name) = extract_display_name(u) {
-                    user_names.entry(guid.to_string()).or_insert(name);
-                }
-                if let Some(avatar) = u.get("avatar_id").and_then(|v| v.as_str()) {
-                    user_avatars
-                        .entry(guid.to_string())
-                        .or_insert(avatar.to_string());
-                }
-            }
-        }
-
-        if let Some(contacts_val) = data.get("contacts").and_then(|v| v.as_array()) {
-            for contact in contacts_val {
-                let guid = contact.get("guid").and_then(|v| v.as_str()).unwrap_or("");
-                if guid.is_empty() {
-                    continue;
-                }
-                // Contact book names override generic account display names
-                if let Some(name) = extract_display_name(contact) {
-                    user_names.insert(guid.to_string(), name);
-                }
-                if let Some(avatar) = contact.get("avatar_id").and_then(|v| v.as_str()) {
-                    user_avatars
-                        .entry(guid.to_string())
-                        .or_insert(avatar.to_string());
-                }
-            }
-        }
-
-        // Parse recent messages for last_message preview
-        let mut recent_messages = std::collections::HashMap::new();
-        if let Some(messages_val) = data.get("messages").and_then(|v| v.as_array()) {
-            for m in messages_val {
-                let mut chat_id = "";
-                if let Some(info) = m.get("server_message_info") {
-                    // Sometimes it's snake_case
-                    chat_id = info.get("chat_id").and_then(|v| v.as_str()).unwrap_or("");
-                } else if let Some(info) = m.get("ServerMessageInfo") {
-                    chat_id = info.get("ChatId").and_then(|v| v.as_str()).unwrap_or("");
-                }
-
-                let mut text = None;
-                if let Some(client_msg) = m.get("message") {
-                    text = client_msg
-                        .get("text")
-                        .and_then(|t| t.as_str())
-                        .map(|s| s.to_string());
-                } else if let Some(client_msg) = m.get("ClientMessage") {
-                    if let Some(plain) = client_msg.get("Plain") {
-                        text = plain
-                            .get("Text")
-                            .and_then(|t| t.get("MessageText"))
-                            .and_then(|t| t.as_str())
-                            .map(|s| s.to_string());
-                    }
-                }
-
-                if let Some(txt) = text {
-                    recent_messages.insert(chat_id.to_string(), txt);
-                }
-            }
-        }
-
-        // Parse chats
-        if let Some(chats_val) = data.get("chats").and_then(|v| v.as_array()) {
-            for c in chats_val {
-                let id = c
-                    .get("chat_id")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let mut title = c
-                    .get("name")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-                let mut avatar_id = c
-                    .get("avatar_id")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-                let mut chat_type = models::ChatType::Group;
-
-                // Handle private chats
-                if id.contains('_') && title.is_none() {
-                    chat_type = models::ChatType::Private;
-                    // id is usually formatted like "0/0/guid1_guid2"
-                    let clean_id = id.rsplit('/').next().unwrap_or(&id);
-                    let parts: Vec<&str> = clean_id.split('_').collect();
-                    if parts.len() == 2 {
-                        if parts[0] == parts[1] {
-                            title = Some("Избранное".to_string());
-                            if let Some(avatar) = user_avatars.get(current_user_id) {
-                                avatar_id = Some(avatar.clone());
-                            }
-                        } else {
-                            let other_id = if parts[0] == current_user_id {
-                                parts[1]
-                            } else {
-                                parts[0]
-                            };
-                            if let Some(name) = user_names.get(other_id) {
-                                title = Some(name.clone());
-                            }
-                            if let Some(avatar) = user_avatars.get(other_id) {
-                                avatar_id = Some(avatar.clone());
-                            }
-                        }
-                    }
-                }
-                let mut last_message = None;
-                let mut text = None;
-                if let Some(lm) = c.get("last_message") {
-                    if let Some(txt) = lm.get("text").and_then(|v| v.as_str()) {
-                        text = Some(txt.to_string());
-                    } else if let Some(txt) = lm.get("message").and_then(|v| v.as_str()) {
-                        text = Some(txt.to_string());
-                    } else if let Some(client_msg) = lm.get("ClientMessage") {
-                        if let Some(plain) = client_msg.get("Plain") {
-                            text = plain
-                                .get("Text")
-                                .and_then(|t| t.get("MessageText"))
-                                .and_then(|t| t.as_str())
-                                .map(|s| s.to_string());
-                        }
-                    }
-                }
-
-                if text.is_none() {
-                    if let Some(recent_text) = recent_messages.get(&id) {
-                        text = Some(recent_text.clone());
-                    } else {
-                        // Avoid rendering a blank message if we don't have text.
-                        // Chat list will check if text is None and display "Нет сообщений".
-                    }
-                }
-
-                if let Some(final_text) = text {
-                    last_message = Some(models::Message {
-                        id: "".to_string(),
-                        chat_id: id.clone(),
-                        from_id: "".to_string(),
-                        message_id: None,
-                        rmid: None,
-                        type_: models::MessageType::Text,
-                        text: Some(final_text),
-                        created: chrono::Utc::now(),
-                        updated: None,
-                        entities: vec![],
-                        reply_to: None,
-                        forward: None,
-                        media: vec![],
-                        reactions: vec![],
-                        thread_id: None,
-                        has_thread: false,
-                        pinned: false,
-                        edited: false,
-                        edited_at: None,
-                        sent: true,
-                        delivered: true,
-                        read: true,
-                        poll: None,
-                    });
-                }
-
-                out_chats.push(models::Chat {
-                    id,
-                    title,
-                    rid: None,
-                    chat_type,
-                    avatar_id,
-                    participants: vec![],
-                    unread_count: 0,
-                    last_message,
-                    pinned: c.get("pinned").and_then(|v| v.as_bool()).unwrap_or(false)
-                        || c.get("is_pinned")
-                            .and_then(|v| v.as_bool())
-                            .unwrap_or(false)
-                        || c.get("pin").and_then(|v| v.as_bool()).unwrap_or(false),
-                    archived: false,
-                    muted: false,
-                    created: None,
-                    updated: None,
-                });
-            }
-        }
+        let mut out_chats = crate::models::parse_bootstrap_chats(&data);
 
         // Fetch last messages in parallel for the first 20 chats to avoid rate limits
         let mut fetch_futs = Vec::new();

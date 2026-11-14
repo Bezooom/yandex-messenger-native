@@ -2,7 +2,7 @@
 
 [Русская версия](DEVELOPMENT.ru.md)
 
-Current release: **2.173.0**.
+Current release: **2.175.0**.
 
 ## 1. Goal
 

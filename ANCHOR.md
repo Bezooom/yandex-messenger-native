@@ -1,6 +1,6 @@
 # Anchored Summary — yandex-messenger-native
 
-> Last updated: 2026-08-15 — release **2.173.0**.  
+> Last updated: 2026-11-14 — release **2.175.0**.  
 > [Русская версия](ANCHOR.ru.md)
 
 ## Goal
@@ -13,10 +13,15 @@ Ship a usable unofficial Linux desktop client for Yandex Messenger (Rust + GTK4 
 - Feature flags hide stubs: `YM_ENABLE_VOICE`, `YM_ENABLE_TELEMOST_UI` (default off).
 - Verify with `cargo build` and `cargo test --all-targets`.
 
-## Progress (as of 2.173.0)
+## Progress (as of 2.175.0)
 
 ### Done
 
+- Bootstrap chat list: `members_count`, `private`, pin/mute buckets, `members` → `Participant` with names.
+- Real chat timestamps from `create_timestamp` / `version`; previews no longer collapse to "now".
+- Unread lives in app state (window title, tray and list agree); own echo is ignored.
+- Telemost home hub (new chat / new call / join by link) + Все / Личные / Новые filters with matching empty states.
+- Window title follows the official «Яндекс Телемост — N новое сообщение» shape.
 - Session-in-login (WebView → `session.json` + CSRF), no Python required for the happy path.
 - Outbox (`outbox.json`) + drafts (`drafts.json`).
 - History pagination, SQLite cache (`cache.db`) with cold-start hydrate.
@@ -29,10 +34,15 @@ Ship a usable unofficial Linux desktop client for Yandex Messenger (Rust + GTK4 
 
 ### Still stubs / open
 
-- Voice messages and video player.
-- Telemost WebRTC (UI shell + WebView only).
+- Voice, video and Telemost media need the `gstreamer` feature; the default and CI binary do not compile it.
+- Telemost meetings HTTP paths are best-effort against a live server.
 - Chat-action RPC names are best-effort.
 - Full group/channel parity, a11y, i18n beyond RU previews.
+
+## Verification floor
+
+- `cargo check --bin yandex-messenger` and `cargo test --bin yandex-messenger` pass (62 tests, 1 ignored).
+- This machine has GTK4 runtime but no `gtk4.pc`/headers; the check ran against pkg-config files extracted from Ubuntu `.deb` packages into `/tmp/gtk-prefix` with `-L /tmp/ym-liblinks`. A normal dev box should `apt install libgtk-4-dev libadwaita-1-dev libwebkitgtk-6.0-dev` instead.
 
 ## Next Steps
 
@@ -41,7 +51,7 @@ Ship a usable unofficial Linux desktop client for Yandex Messenger (Rust + GTK4 
 
 ## Relevant Files
 
-- `README.md` / `README.ru.md` — feature matrix
-- `CHANGELOG.md` / `CHANGELOG.ru.md` — 2.165–2.173
+- `README.md` / `README.ru.md` — landing pages (Best-README-Template style)
+- `CHANGELOG.md` / `CHANGELOG.ru.md` — 2.165–2.175
 - `src/api/session_store.rs`, `src/core/outbox.rs`, `src/core/drafts.rs`, `src/core/db.rs`
 - `src/ui/theme.css`, `src/ui/chat_view.rs`, `src/ui/chat_list.rs`

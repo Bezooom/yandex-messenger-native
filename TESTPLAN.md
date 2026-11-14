@@ -2,7 +2,7 @@
 
 [Русская версия](TESTPLAN.ru.md)
 
-## Current Status (2.173.0)
+## Current Status (2.175.0)
 
 | Phase | Status |
 |---|---|
@@ -68,7 +68,7 @@ Check:
 - Built-in WebView (`in_app_webview`) loads the Telemost page.
 - Mute / Video toggle state and visuals.
 - Fallback: without `in_app_webview`, a dialog with “Open in browser” appears.
-- Native WebRTC is **not** expected in 2.173.0.
+- Native WebRTC exists in-tree behind the `gstreamer` feature; the default and CI binaries ship without it.
 
 ## 6. Desktop behavior
 
@@ -82,4 +82,4 @@ Check:
 
 - `debuild -us -uc` succeeds.
 - `.github/workflows/ci.yml` passes on a clean runner.
-- `make dist` produces `yandex-messenger-native_2.173.0-*`.
+- `make dist` produces `yandex-messenger-native_2.175.0-*`.

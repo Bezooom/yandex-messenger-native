@@ -48,6 +48,8 @@ struct ChatListModel {
     visible: Arc<Mutex<Vec<usize>>>,
     selected: Arc<Mutex<Option<usize>>>,
     chat_ids_list: Arc<gtk::StringList>,
+    query: Arc<Mutex<String>>,
+    list_filter: Arc<Mutex<crate::models::ChatListFilter>>,
 }
 
 impl ChatListModel {
@@ -61,6 +63,8 @@ impl ChatListModel {
             visible,
             selected: Arc::new(Mutex::new(None)),
             chat_ids_list,
+            query: Arc::new(Mutex::new(String::new())),
+            list_filter: Arc::new(Mutex::new(crate::models::ChatListFilter::All)),
         }
     }
 
@@ -84,10 +88,24 @@ impl ChatListModel {
     }
 
     fn filter(&self, query: &str) {
+        *self.query.lock().unwrap() = query.to_string();
+        self.apply_filter();
+    }
+
+    fn set_list_filter(&self, filter: crate::models::ChatListFilter) {
+        *self.list_filter.lock().unwrap() = filter;
+        self.apply_filter();
+    }
+
+    fn apply_filter(&self) {
         let chats = self.chats.lock().unwrap();
-        let q_lower = query.to_lowercase();
+        let q_lower = self.query.lock().unwrap().to_lowercase();
+        let list_filter = *self.list_filter.lock().unwrap();
         let mut visible: Vec<usize> = Vec::new();
         for (i, chat) in chats.iter().enumerate() {
+            if !crate::models::matches_list_filter(chat, list_filter) {
+                continue;
+            }
             let title = chat.display_name().to_lowercase();
             let last_msg = chat
                 .last_message
@@ -157,6 +175,39 @@ pub struct ChatListPanel {
     empty_title: Label,
     empty_subtitle: Label,
     list_stack: gtk::Stack,
+}
+fn sync_list_empty(
+    model: &ChatListModel,
+    query: &str,
+    stack: &gtk::Stack,
+    title: &Label,
+    subtitle: &Label,
+) {
+    if model.n_items() == 0 {
+        let filter = *model.list_filter.lock().unwrap();
+        if !query.trim().is_empty() {
+            title.set_label("Ничего не найдено");
+            subtitle.set_label(&format!("Нет чатов по запросу «{}»", query.trim()));
+        } else {
+            match filter {
+                crate::models::ChatListFilter::Unread => {
+                    title.set_label("Нет новых сообщений");
+                    subtitle.set_label("Непрочитанные появятся здесь");
+                }
+                crate::models::ChatListFilter::Private => {
+                    title.set_label("Нет личных чатов");
+                    subtitle.set_label("Личные переписки будут здесь");
+                }
+                crate::models::ChatListFilter::All => {
+                    title.set_label("Нет чатов");
+                    subtitle.set_label("Когда появятся переписки,\nони будут здесь");
+                }
+            }
+        }
+        stack.set_visible_child_name("empty");
+    } else {
+        stack.set_visible_child_name("list");
+    }
 }
 
 impl ChatListPanel {
@@ -273,11 +324,10 @@ impl ChatListPanel {
                     let dest = dest_idx_usize.min(chats.len().saturating_sub(1));
                     let chat = chats.remove(src_idx_usize);
                     chats.insert(dest, chat);
-
-                    let count = chats.len();
-                    let all_indices: Vec<usize> = (0..count).collect();
-                    *model_clone.visible.lock().unwrap() = all_indices;
-                    model_clone.set_selection(None);
+                    std::mem::drop(chats);
+                    model_clone.apply_filter();
+                    model_clone.update_chat_ids_model();
+                    return true;
                 }
                 return true;
             }
@@ -339,6 +389,13 @@ impl ChatListPanel {
 
         chat_container.append(&header);
         chat_container.append(&search_entry);
+        chat_container.append(&Self::create_filter_row(
+            &model,
+            &list_stack,
+            &empty_title,
+            &empty_subtitle,
+            &search_entry,
+        ));
         chat_container.append(&Separator::new(Orientation::Horizontal));
         chat_container.append(&list_stack);
 
@@ -462,22 +519,13 @@ impl ChatListPanel {
     }
 
     pub fn show_list_or_empty(&self) {
-        let n = self.model.n_items();
-        if n == 0 {
-            let q = self.search_entry.text().to_string();
-            if q.trim().is_empty() {
-                self.empty_title.set_label("Нет чатов");
-                self.empty_subtitle
-                    .set_label("Когда появятся переписки,\nони будут здесь");
-            } else {
-                self.empty_title.set_label("Ничего не найдено");
-                self.empty_subtitle
-                    .set_label(&format!("Нет чатов по запросу «{}»", q.trim()));
-            }
-            self.list_stack.set_visible_child_name("empty");
-        } else {
-            self.list_stack.set_visible_child_name("list");
-        }
+        sync_list_empty(
+            &self.model,
+            self.search_entry.text().as_str(),
+            &self.list_stack,
+            &self.empty_title,
+            &self.empty_subtitle,
+        );
     }
 
     /// Connect logout callback
@@ -502,6 +550,11 @@ impl ChatListPanel {
         *self.create_group_callback.lock().unwrap() = Some(Box::new(callback));
     }
 
+    pub fn request_create_group(&self) {
+        if let Some(cb) = self.create_group_callback.lock().unwrap().as_ref() {
+            cb();
+        }
+    }
     /// Connect chat context-menu actions: (chat_id, action_name).
     pub fn connect_chat_action<F: Fn(String, String) + 'static>(&self, callback: F) {
         *self.chat_action_callback.lock().unwrap() = Some(Box::new(callback));
@@ -644,6 +697,65 @@ impl ChatListPanel {
         entry
     }
 
+    fn create_filter_row(
+        model: &ChatListModel,
+        stack: &gtk::Stack,
+        empty_title: &Label,
+        empty_subtitle: &Label,
+        search_entry: &Entry,
+    ) -> GtkBox {
+        let row = GtkBox::new(Orientation::Horizontal, 6);
+        row.add_css_class("folder-filters");
+        row.set_margin_start(12);
+        row.set_margin_end(12);
+        row.set_margin_bottom(8);
+
+        let specs = [
+            ("Все", crate::models::ChatListFilter::All),
+            ("Личные", crate::models::ChatListFilter::Private),
+            ("Новые", crate::models::ChatListFilter::Unread),
+        ];
+        let mut buttons = Vec::new();
+        for (label, filter) in specs {
+            let btn = Button::with_label(label);
+            btn.add_css_class("folder-chip");
+            if filter == crate::models::ChatListFilter::All {
+                btn.add_css_class("active");
+            }
+            buttons.push((btn, filter));
+        }
+        for (btn, filter) in &buttons {
+            let model = model.clone();
+            let peers: Vec<Button> = buttons.iter().map(|(b, _)| b.clone()).collect();
+            let mine = btn.clone();
+            let filter = *filter;
+            let stack = stack.clone();
+            let empty_title = empty_title.clone();
+            let empty_subtitle = empty_subtitle.clone();
+            let search_entry = search_entry.clone();
+            btn.connect_clicked(move |_| {
+                for peer in &peers {
+                    if peer == &mine {
+                        peer.add_css_class("active");
+                    } else {
+                        peer.remove_css_class("active");
+                    }
+                }
+                model.set_list_filter(filter);
+                model.update_chat_ids_model();
+                sync_list_empty(
+                    &model,
+                    search_entry.text().as_str(),
+                    &stack,
+                    &empty_title,
+                    &empty_subtitle,
+                );
+            });
+            row.append(btn);
+        }
+        row
+    }
+
     // ── Header ──
 
     fn create_header(
@@ -679,7 +791,7 @@ impl ChatListPanel {
         user_avatar.append(&avatar_label);
 
         let user_name = Label::builder()
-            .label("Messenger")
+            .label("Телемост")
             .xalign(0.0)
             .valign(gtk::Align::Center)
             .build();
@@ -1279,23 +1391,19 @@ impl ChatListPanel {
                 b_time.cmp(&a_time)
             });
         }
-        let count = chats.len();
         drop(chats);
-        if pinned.is_some() {
-            let all_indices: Vec<usize> = (0..count).collect();
-            *self.model.visible.lock().unwrap() = all_indices;
-        }
+        self.model.apply_filter();
         self.model.update_chat_ids_model();
+        self.show_list_or_empty();
     }
 
     pub fn remove_chat(&mut self, chat_id: &str) {
         let mut chats = self.model.chats.lock().unwrap();
         chats.retain(|c| c.id != chat_id);
-        let count = chats.len();
         drop(chats);
-        let all_indices: Vec<usize> = (0..count).collect();
-        *self.model.visible.lock().unwrap() = all_indices;
+        self.model.apply_filter();
         self.model.update_chat_ids_model();
+        self.show_list_or_empty();
     }
 
     pub fn total_unread(&self) -> u32 {
@@ -1353,10 +1461,8 @@ impl ChatListPanel {
             b_time.cmp(&a_time)
         });
 
-        let count = chats.len();
         *self.model.chats.lock().unwrap() = chats;
-        let all_indices: Vec<usize> = (0..count).collect();
-        *self.model.visible.lock().unwrap() = all_indices;
+        self.model.apply_filter();
         self.model.set_selection(None);
 
         // Update the GtkGioListStore model so the ListView knows about the items.
@@ -1393,11 +1499,10 @@ impl ChatListPanel {
                 .unwrap_or_else(|| chrono::DateTime::<chrono::Utc>::MIN_UTC);
             b_time.cmp(&a_time)
         });
-        let count = chats.len();
         drop(chats);
-        let all_indices: Vec<usize> = (0..count).collect();
-        *self.model.visible.lock().unwrap() = all_indices;
+        self.model.apply_filter();
         self.model.update_chat_ids_model();
+        self.show_list_or_empty();
     }
 
     pub fn update_unread(&mut self, chat_id: &str, unread_count: u32) {
@@ -1431,12 +1536,11 @@ impl ChatListPanel {
             b_time.cmp(&a_time)
         });
 
-        let count = chats.len();
         drop(chats);
-        let all_indices: Vec<usize> = (0..count).collect();
-        *self.model.visible.lock().unwrap() = all_indices;
+        self.model.apply_filter();
         self.model.set_selection(None);
         self.model.update_chat_ids_model();
+        self.show_list_or_empty();
     }
 
     pub fn select_chat(&self, chat_id: &str) {

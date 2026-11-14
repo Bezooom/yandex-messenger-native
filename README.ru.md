@@ -49,7 +49,7 @@
 
 [![CI](https://github.com/Bezooom/yandex-messenger-native/actions/workflows/ci.yml/badge.svg)](https://github.com/Bezooom/yandex-messenger-native/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/Bezooom/yandex-messenger-native)](https://github.com/Bezooom/yandex-messenger-native/releases/latest) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Версия 2.174.0** — нативный Linux-клиент Яндекс Мессенджера на Rust, GTK4 и Libadwaita. Быстрый, лёгкий, с night-темой Telegram Desktop и плотным списком чатов в стиле nheko.
+**Версия 2.175.0** — нативный Linux-клиент Яндекс Мессенджера (чаты Телемоста) на Rust, GTK4 и Libadwaita. Быстрый, лёгкий, с night-темой Telegram Desktop и плотным списком чатов в стиле nheko.
 
 [English version](README.md)
 
@@ -60,17 +60,27 @@
 > 
 > **Важный дисклеймер**: Данный проект является **неофициальным клиентом**, созданным сообществом для Яндекс Мессенджера. Он никак не связан, не поддерживается и не ассоциирован с ООО «Яндекс» или его дочерними компаниями. Разработчики проекта не заявляют никаких прав на товарные знаки, брендинг или медиа-ресурсы Яндекса. Используйте это программное обеспечение на свой страх и риск.
 
+> ✅ **Проверено на этом дереве (2.175.0):** `cargo check --bin yandex-messenger` чистый; `cargo test --bin yandex-messenger` → **62 passed, 1 ignored**; `cargo build --release` → бинарь 16 МБ, все `NEEDED`-библиотеки находятся. GUI и живые сетевые сценарии проверяются руками.
+
+### Что изменилось в 2.175.0
+
+- **Список чатов из реального bootstrap**: читаются `members_count`, `private`, `pinned_chats` и `chat_mutings`; группы больше не пишут «0 участников», а `chats[].members` наполняет список участников именами и аватарами.
+- **Стабильный порядок**: метки превью берутся из `create_timestamp` / `version`, а не из `Utc::now()`.
+- **Один источник непрочитанных**: входящее сообщение увеличивает `state.chats[].unread_count`; заголовок окна, трей и список согласованы, эхо своих отправок игнорируется.
+- **Домашний экран Телемоста**: карточки «Новый чат / звонок / подключиться по ссылке», фильтры Все / Личные / Новые с пустыми состояниями, заголовок окна «Яндекс Телемост — N новое сообщение».
+- **Приватность**: полный дамп bootstrap включается только через `YM_DUMP_BOOTSTRAP=/path`.
+
 ## Матрица статуса функций
 
 | Функция | Статус | Описание |
 |---|---|---|
 | OAuth / Вход | Beta | OAuth + **автозахват session cookies** в WebView (без `login_browser.py`) |
-| Список чатов | Beta | Плотный список в стиле nheko, аватары 54px, превью (RU); mute/pin/archive/mark_read/delete |
+| Список чатов | Beta | Плотный список в стиле nheko, реальные счётчики участников и pin/mute из bootstrap, фильтры Все / Личные / Новые |
 | Текстовые сообщения | Beta | Отправка + reply/edit + outbox + черновики + пагинация + **delivery/read ticks** |
 | Файлы и вложения | Beta | Upload→send; **Скачать / Открыть**; **DnD** файлов; **Ctrl+V** картинок |
-| Голосовые сообщения | Beta | Запись Opus/OGG + waveform (GStreamer), play/pause через playbin, отправка voice-типом (без текста-заглушки) |
-| Воспроизведение видео | Beta | Инлайн-плеер в чате: play/pause, скраб, время (GStreamer) |
-| Звонки (Телемост) | Beta | Живое окно: Goloom-сигналинг + WebRTC (publish/subscribe), ростер, видео в окне, ringing; REST встреч — best-effort |
+| Голосовые сообщения | Нет в default-сборке | Нужны `--features gstreamer` и `YM_ENABLE_VOICE`; default и CI-бинарь её не компилируют |
+| Воспроизведение видео | Нет в default-сборке | Инлайн-плеер требует фичу `gstreamer`; в default и CI-бинаре её нет |
+| Звонки (Телемост) | Частично | Сигналинг Goloom + `webrtcbin` в дереве; медиа в звонке требует `gstreamer`, `gstreamer1.0-nice` и `YM_ENABLE_TELEMOST_UI`; в default-бинаре WebRTC нет |
 | Системные уведомления | Beta | `notify-rust`, mute + настройки |
 | Системный трей | Beta | StatusNotifierItem (`ksni`), close→tray, badge unread |
 | Настройки | Beta | Уведомления / трей / тёмная тема / уменьшить анимации |
@@ -90,6 +100,7 @@
 
 ### Известные ограничения
 
+- **Default-сборка**: голос, видео и медиа звонков вообще не компилируются; нужна фича `gstreamer`
 - **Session cookies**: сохраняются при входе через WebView; fallback-скрипт `scripts/login_browser.py` всё ещё работает
 - **Голосовые**: запись/плеер за `YM_ENABLE_VOICE` (нужна сборка с фичей `gstreamer`; транскрипция — только отображение, без запроса)
 - **Телемост**: живой звонок за `YM_ENABLE_TELEMOST_UI` (нужна сборка с фичей `gstreamer` + пакет `gstreamer1.0-nice`); REST встреч и часть SDP-политик — best-effort, требуют live-проверки

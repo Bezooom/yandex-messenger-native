@@ -5,9 +5,23 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
-Current release: **2.173.0** (2026-08-15).
+Current release: **2.175.0** (2026-11-14).
 
-## Unreleased
+## 2.175.0 - 2026-11-14
+
+### Added
+
+* **Bootstrap chat list**: parse `members_count`, `private`, pin and mute buckets from the real `bootstrap` payload. Group headers no longer say «0 участников». Personal chats are not typed as groups.
+* **Unread badge**: incoming messages increment chat unread in app state (not only the list widget), so the window title and tray see the same count. `unread_update` writes that state too.
+* **Bootstrap dump**: full payload with contacts is no longer written on every list load. Set `YM_DUMP_BOOTSTRAP=/path` to opt in.
+* **Telemost home**: empty state is an action hub (new chat, new call, join by link); sidebar filters Все / Личные / Новые; window title follows the official «Яндекс Телемост — N новое сообщение» shape.
+* **Member lists**: `chats[].members` become `Participant` entries with names and avatars, so the group panel is not empty while the header shows a real count.
+
+### Fixed
+* Own message echo no longer increments unread or raises a notification.
+* Folder filters survive new messages, unread updates, flag changes and drag reorder; the empty pane follows the active filter.
+
+## 2.174.0 - 2026-09-21
 
 ### Added
 * **Live Telemost calls**: Goloom signaling (`wss://goloom.strm.yandex.net/join`, prost types from the APK schemas) + WebRTC via `webrtcbin` (two PCs: publish/subscribe, ICE trickle, server-provided STUN/TURN).
