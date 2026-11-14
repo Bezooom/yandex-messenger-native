@@ -91,7 +91,11 @@ pub struct ChatView {
     poll_renderers: Mutex<Vec<(String, Arc<PollRenderer>)>>,
     // Emoji picker state
     emoji_btn: Button,
-    emoji_popover: Mutex<Option<Popover>>,
+    /// Right-hand dock: emoji and sticker tabs, Telegram-style.
+    side_panel: GtkBox,
+    side_stack: gtk::Stack,
+    side_emoji_tab: Button,
+    side_sticker_tab: Button,
     // Sticker panel state
     sticker_btn: Button,
     sticker_panel: Mutex<Option<StickerPanel>>,
@@ -451,14 +455,112 @@ impl ChatView {
         pagination_bar.append(&pag_spinner);
         pagination_bar.append(&pag_label);
 
-        container.append(&header);
-        container.append(&search_entry);
-        container.append(&pinned_box);
-        container.append(&pagination_bar);
-        container.append(&content_stack);
-        container.append(&reply_preview_box);
-        container.append(&undo_bar);
-        container.append(&input);
+        // ── Right dock: emoji / stickers (Telegram layout) ──
+        let side_stack = gtk::Stack::builder()
+            .transition_type(gtk::StackTransitionType::Crossfade)
+            .transition_duration(120)
+            .vexpand(true)
+            .hexpand(true)
+            .build();
+        let side_emoji_tab = Button::with_label("Эмодзи");
+        let side_sticker_tab = Button::with_label("Стикеры");
+        side_emoji_tab.add_css_class("side-tab");
+        side_sticker_tab.add_css_class("side-tab");
+        side_emoji_tab.add_css_class("active");
+
+        let side_header = GtkBox::new(Orientation::Horizontal, 4);
+        side_header.add_css_class("side-panel-header");
+        side_header.set_margin_start(8);
+        side_header.set_margin_end(4);
+        side_header.set_margin_top(6);
+        side_header.set_margin_bottom(4);
+        let side_spacer = GtkBox::new(Orientation::Horizontal, 0);
+        side_spacer.set_hexpand(true);
+        let side_close = Button::builder()
+            .icon_name("window-close-symbolic")
+            .css_classes(["icon-btn"])
+            .build();
+        side_close.set_tooltip_text(Some("Закрыть панель"));
+        side_header.append(&side_emoji_tab);
+        side_header.append(&side_sticker_tab);
+        side_header.append(&side_spacer);
+        side_header.append(&side_close);
+
+        let side_panel = GtkBox::new(Orientation::Vertical, 0);
+        side_panel.add_css_class("side-panel");
+        side_panel.set_size_request(360, -1);
+        side_panel.set_hexpand(false);
+        side_panel.set_vexpand(true);
+        side_panel.set_visible(false);
+        side_panel.append(&side_header);
+        side_panel.append(&side_stack);
+
+        {
+            let panel = side_panel.clone();
+            let stack = side_stack.clone();
+            let emoji_tab = side_emoji_tab.clone();
+            let sticker_tab = side_sticker_tab.clone();
+            side_emoji_tab.connect_clicked(move |_| {
+                side_switch(&stack, &panel, &emoji_tab, &sticker_tab, "emoji");
+            });
+        }
+        {
+            let panel = side_panel.clone();
+            let stack = side_stack.clone();
+            let emoji_tab = side_emoji_tab.clone();
+            let sticker_tab = side_sticker_tab.clone();
+            side_sticker_tab.connect_clicked(move |_| {
+                side_switch(&stack, &panel, &emoji_tab, &sticker_tab, "stickers");
+            });
+        }
+        {
+            let panel = side_panel.clone();
+            side_close.connect_clicked(move |_| panel.set_visible(false));
+        }
+
+        // Ctrl+Shift+E toggles the emoji dock. Capture phase so the composer
+        // (Ctrl+E is end-of-line there) cannot swallow it.
+        {
+            let panel = side_panel.clone();
+            let stack = side_stack.clone();
+            let emoji_tab = side_emoji_tab.clone();
+            let sticker_tab = side_sticker_tab.clone();
+            let keys = gtk::EventControllerKey::new();
+            keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+            keys.connect_key_pressed(move |_, keyval, _, state| {
+                let ctrl_shift =
+                    gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK;
+                if keyval == gtk::gdk::Key::E && state.contains(ctrl_shift) {
+                    if panel.is_visible() {
+                        panel.set_visible(false);
+                    } else {
+                        side_switch(&stack, &panel, &emoji_tab, &sticker_tab, "emoji");
+                    }
+                    return glib::Propagation::Stop;
+                }
+                glib::Propagation::Proceed
+            });
+            container.add_controller(keys);
+        }
+
+        let chat_col = GtkBox::new(Orientation::Vertical, 0);
+        chat_col.set_hexpand(true);
+        chat_col.set_vexpand(true);
+        chat_col.append(&header);
+        chat_col.append(&search_entry);
+        chat_col.append(&pinned_box);
+        chat_col.append(&pagination_bar);
+        chat_col.append(&content_stack);
+        chat_col.append(&reply_preview_box);
+        chat_col.append(&undo_bar);
+        chat_col.append(&input);
+
+        let body = GtkBox::new(Orientation::Horizontal, 0);
+        body.set_hexpand(true);
+        body.set_vexpand(true);
+        body.append(&chat_col);
+        body.append(&side_panel);
+        container.append(&body);
 
         // Hide composer on welcome
         input.set_visible(false);
@@ -512,7 +614,10 @@ impl ChatView {
             poll_popover: Mutex::new(None),
             poll_renderers: Mutex::new(Vec::new()),
             emoji_btn,
-            emoji_popover: Mutex::new(None),
+            side_panel,
+            side_stack,
+            side_emoji_tab,
+            side_sticker_tab,
             sticker_btn,
             sticker_panel: Mutex::new(None),
             sticker_packs: Mutex::new(Vec::new()),
@@ -1484,21 +1589,17 @@ impl ChatView {
         &self.container
     }
 
-    /// Инициализирует emoji picker popover
+    /// Инициализирует панель эмодзи в правом доке
     pub fn init_emoji_picker(self: &Arc<Self>) {
-        if self.emoji_popover.lock().unwrap().is_some() {
+        if self.side_stack.child_by_name("emoji").is_some() {
             return;
         }
 
         let emoji_picker = EmojiPicker::new();
-        let popover = Popover::builder().has_arrow(false).autohide(true).build();
-        popover.add_css_class("emoji-picker-popover");
-        popover.set_child(Some(emoji_picker.container()));
-        popover.set_parent(&self.emoji_btn);
-        popover.set_position(gtk::PositionType::Top);
+        self.side_stack
+            .add_named(emoji_picker.container(), Some("emoji"));
 
         let input_entry_clone = self.input_entry.clone();
-        // Keep popover open while picking multiple emojis (YM-style)
         emoji_picker.on_select(move |emoji| {
             let buffer = input_entry_clone.buffer();
             let (start, end) = buffer.bounds();
@@ -1509,19 +1610,19 @@ impl ChatView {
             buffer.place_cursor(&end_iter);
         });
 
-        *self.emoji_popover.lock().unwrap() = Some(popover.clone());
-
-        let emoji_btn = self.emoji_btn.clone();
-        let cv_emoji = self.clone();
-        emoji_btn.connect_clicked(move |_| {
-            // Close sibling popovers so shells don't stack
-            cv_emoji.close_composer_popovers(ComposerPopover::Emoji);
-            if let Some(pop) = cv_emoji.emoji_popover.lock().unwrap().as_ref() {
-                if pop.is_visible() {
-                    pop.popdown();
-                } else {
-                    pop.popup();
-                }
+        let panel = self.side_panel.clone();
+        let stack = self.side_stack.clone();
+        let emoji_tab = self.side_emoji_tab.clone();
+        let sticker_tab = self.side_sticker_tab.clone();
+        let cv = self.clone();
+        self.emoji_btn.connect_clicked(move |_| {
+            cv.close_composer_popovers(ComposerPopover::Emoji);
+            let already =
+                panel.is_visible() && stack.visible_child_name().as_deref() == Some("emoji");
+            if already {
+                panel.set_visible(false);
+            } else {
+                side_switch(&stack, &panel, &emoji_tab, &sticker_tab, "emoji");
             }
         });
     }
@@ -1542,29 +1643,25 @@ impl ChatView {
         });
     }
 
-    /// Инициализирует sticker panel popover (вызывать после создания ChatView)
+    /// Инициализирует панель стикеров в правом доке
     pub fn init_sticker_panel(self: &Arc<Self>) {
         if self.sticker_panel.lock().unwrap().is_some() {
             return;
         }
 
         let sticker_panel = StickerPanel::new(vec![]);
-        let popover = Popover::builder().has_arrow(false).autohide(true).build();
-        popover.add_css_class("sticker-panel-popover");
-        popover.set_child(Some(sticker_panel.container()));
-        // Anchor on visible emoji btn (sticker icon is hidden to free composer width)
-        popover.set_parent(&self.emoji_btn);
-        popover.set_position(gtk::PositionType::Top);
+        self.side_stack
+            .add_named(sticker_panel.container(), Some("stickers"));
 
         let cv_select = self.clone();
-        let popover_clone = popover.clone();
+        let panel = self.side_panel.clone();
         sticker_panel.on_select(move |sticker_id, pack_id| {
             let chat_id_opt = {
                 let chat = cv_select.chat.lock().unwrap();
                 chat.as_ref().map(|c| c.id.clone())
             };
             if let Some(chat_id) = &chat_id_opt {
-                if let Some(ref cb) = cv_select.on_send.lock().unwrap().as_ref() {
+                if let Some(cb) = cv_select.on_send.lock().unwrap().as_ref() {
                     let sticker = serde_json::json!({
                         "sticker_id": sticker_id,
                         "pack_id": pack_id,
@@ -1574,41 +1671,32 @@ impl ChatView {
                     }
                 }
             }
-            popover_clone.popdown();
+            panel.set_visible(false);
         });
 
-        *sticker_panel.popover.borrow_mut() = Some(popover.clone());
         *self.sticker_panel.lock().unwrap() = Some(sticker_panel);
 
-        let sticker_btn = self.sticker_btn.clone();
-        let cv_sticker = self.clone();
-        sticker_btn.connect_clicked(move |_| {
-            cv_sticker.close_composer_popovers(ComposerPopover::Sticker);
-            if let Some(panel) = cv_sticker.sticker_panel.lock().unwrap().as_ref() {
-                if let Some(pop) = panel.popover.borrow().as_ref() {
-                    if pop.is_visible() {
-                        pop.popdown();
-                    } else {
-                        pop.popup();
-                    }
-                }
+        let panel = self.side_panel.clone();
+        let stack = self.side_stack.clone();
+        let emoji_tab = self.side_emoji_tab.clone();
+        let sticker_tab = self.side_sticker_tab.clone();
+        let cv = self.clone();
+        self.sticker_btn.connect_clicked(move |_| {
+            cv.close_composer_popovers(ComposerPopover::Sticker);
+            let already =
+                panel.is_visible() && stack.visible_child_name().as_deref() == Some("stickers");
+            if already {
+                panel.set_visible(false);
+            } else {
+                side_switch(&stack, &panel, &emoji_tab, &sticker_tab, "stickers");
             }
         });
     }
 
     /// Close other composer popovers so only one shell is visible.
     fn close_composer_popovers(&self, keep: ComposerPopover) {
-        if !matches!(keep, ComposerPopover::Emoji) {
-            if let Some(pop) = self.emoji_popover.lock().unwrap().as_ref() {
-                pop.popdown();
-            }
-        }
-        if !matches!(keep, ComposerPopover::Sticker) {
-            if let Some(panel) = self.sticker_panel.lock().unwrap().as_ref() {
-                if let Some(pop) = panel.popover.borrow().as_ref() {
-                    pop.popdown();
-                }
-            }
+        if !matches!(keep, ComposerPopover::Emoji | ComposerPopover::Sticker) {
+            self.side_panel.set_visible(false);
         }
         if !matches!(keep, ComposerPopover::Attach) {
             if let Some(pop) = self.attach_menu_popover.lock().unwrap().as_ref() {
@@ -1634,17 +1722,6 @@ impl ChatView {
         if let Some(panel) = self.sticker_panel.lock().unwrap().as_ref() {
             panel.update_packs(packs);
         }
-    }
-
-    /// Регистрирует callback при выборе стикера
-    pub fn on_sticker_select(&self, callback: impl Fn(String, String) + 'static) {
-        // Примечание: on_select уже обрабатывается внутри init_sticker_panel.
-        // Если нужно добавить дополнительное действие, используйте этот метод для
-        // подписки на события после инициализации.
-        let sticker_btn = self.sticker_btn.clone();
-        sticker_btn.connect_clicked(move |_| {
-            callback("".to_string(), "".to_string());
-        });
     }
 
     /// Регистрирует callback для перевода сообщения
@@ -1828,6 +1905,7 @@ impl ChatView {
     /// Hide chat view and show welcome empty state
     pub fn set_empty(&self) {
         *self.chat.lock().unwrap() = None;
+        self.side_panel.set_visible(false);
         self.title_label.set_label("Телемост");
         self.status_label.set_label("");
         // Hide composer bar
@@ -4442,6 +4520,28 @@ fn format_date_separator(dt: &chrono::DateTime<chrono::Utc>) -> String {
     }
 }
 
+/// Show the right dock on the requested tab and mark that tab active.
+fn side_switch(
+    stack: &gtk::Stack,
+    panel: &GtkBox,
+    emoji_tab: &Button,
+    sticker_tab: &Button,
+    tab: &str,
+) {
+    if stack.child_by_name(tab).is_none() {
+        return;
+    }
+    stack.set_visible_child_name(tab);
+    panel.set_visible(true);
+    for (button, name) in [(emoji_tab, "emoji"), (sticker_tab, "stickers")] {
+        if name == tab {
+            button.add_css_class("active");
+        } else {
+            button.remove_css_class("active");
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 enum HubAction {
     NewChat,
@@ -4508,4 +4608,70 @@ fn hub_card(
         }
     }
     button
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn emoji_dock_toggles_from_composer_button() {
+        crate::ui::run_gtk_test(|| {
+            let auth = Arc::new(AuthManager::new().expect("auth manager"));
+            let cv = ChatView::new(auth);
+            cv.clone().init_emoji_picker();
+            cv.clone().init_sticker_panel();
+
+            assert!(!cv.side_panel.is_visible(), "dock starts hidden");
+
+            cv.emoji_btn.emit_clicked();
+            assert!(cv.side_panel.is_visible(), "emoji click opens dock");
+            assert_eq!(cv.side_stack.visible_child_name().as_deref(), Some("emoji"));
+
+            cv.sticker_btn.emit_clicked();
+            assert_eq!(
+                cv.side_stack.visible_child_name().as_deref(),
+                Some("stickers")
+            );
+            assert!(cv.side_panel.is_visible());
+
+            cv.emoji_btn.emit_clicked();
+            assert_eq!(cv.side_stack.visible_child_name().as_deref(), Some("emoji"));
+
+            cv.emoji_btn.emit_clicked();
+            assert!(!cv.side_panel.is_visible(), "second click hides dock");
+        });
+    }
+}
+
+#[cfg(test)]
+mod layout_tests {
+    use super::*;
+
+    #[test]
+    fn dock_demands_its_width_next_to_the_chat() {
+        crate::ui::run_gtk_test(|| {
+            let auth = Arc::new(AuthManager::new().expect("auth manager"));
+            let cv = ChatView::new(auth);
+            cv.clone().init_emoji_picker();
+            cv.clone().init_sticker_panel();
+
+            let closed_min = cv.container().measure(Orientation::Horizontal, -1).0;
+            cv.emoji_btn.emit_clicked();
+            assert!(cv.side_panel.is_visible(), "dock visible");
+
+            let dock_min = cv.side_panel.measure(Orientation::Horizontal, -1).0;
+            let open_min = cv.container().measure(Orientation::Horizontal, -1).0;
+
+            assert!(dock_min >= 360, "dock demands {dock_min} px");
+            assert!(
+                open_min >= closed_min + dock_min,
+                "chat column keeps its width: closed={closed_min} open={open_min} dock={dock_min}"
+            );
+            assert!(
+                cv.content_stack.measure(Orientation::Horizontal, -1).0 > 300,
+                "chat column still demands its own width"
+            );
+        });
+    }
 }

@@ -665,7 +665,9 @@ impl EmojiPicker {
     pub fn new() -> Self {
         let container = GtkBox::new(Orientation::Vertical, 0);
         container.add_css_class("emoji-picker");
-        container.set_size_request(360, 320);
+        container.set_hexpand(true);
+        container.set_vexpand(true);
+        container.set_size_request(-1, 320);
 
         let title_label = Label::builder()
             .label(CATEGORIES[0].title)

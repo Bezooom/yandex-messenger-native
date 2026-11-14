@@ -109,8 +109,8 @@ fn start_main_window(app: &adw::Application, auth: Arc<AuthManager>, access_toke
     let win = adw::ApplicationWindow::builder()
         .application(app)
         .title("Яндекс Телемост")
-        .default_width(1100)
-        .default_height(700)
+        .default_width(1180)
+        .default_height(780)
         .build();
     win.set_icon_name(Some("yandex-messenger"));
 

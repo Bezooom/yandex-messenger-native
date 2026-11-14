@@ -1,6 +1,6 @@
 # Anchored Summary — yandex-messenger-native
 
-> Last updated: 2026-11-14 — release **2.175.0**.  
+> Last updated: 2026-11-14 — release **2.175.1**.  
 > [Русская версия](ANCHOR.ru.md)
 
 ## Goal
@@ -13,7 +13,7 @@ Ship a usable unofficial Linux desktop client for Yandex Messenger (Rust + GTK4 
 - Feature flags hide stubs: `YM_ENABLE_VOICE`, `YM_ENABLE_TELEMOST_UI` (default off).
 - Verify with `cargo build` and `cargo test --all-targets`.
 
-## Progress (as of 2.175.0)
+## Progress (as of 2.175.1)
 
 ### Done
 
@@ -22,6 +22,7 @@ Ship a usable unofficial Linux desktop client for Yandex Messenger (Rust + GTK4 
 - Unread lives in app state (window title, tray and list agree); own echo is ignored.
 - Telemost home hub (new chat / new call / join by link) + Все / Личные / Новые filters with matching empty states.
 - Window title follows the official «Яндекс Телемост — N новое сообщение» shape.
+- Emoji and stickers live in a right-hand dock with tabs; the image viewer fits photos to the window and zooms for real.
 - Session-in-login (WebView → `session.json` + CSRF), no Python required for the happy path.
 - Outbox (`outbox.json`) + drafts (`drafts.json`).
 - History pagination, SQLite cache (`cache.db`) with cold-start hydrate.

@@ -5,7 +5,15 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
-Current release: **2.175.0** (2026-11-14).
+Current release: **2.175.1** (2026-11-14).
+
+## 2.175.1 - 2026-11-14
+
+### Changed
+* **Emoji and stickers live in a right-hand dock**, Telegram-style: one panel with «Эмодзи / Стикеры» tabs, search and category grid, instead of a popover glued to the composer button. `Ctrl+Shift+E` toggles it; picking several emojis keeps the panel open and the sticker panel closes after sending.
+
+### Fixed
+* **Image viewer opened photos at thumbnail size.** It now uses `gtk::Picture` with `ContentFit::Contain`, so the photo fills the window and shrinks to fit; zoom buttons finally scale the picture instead of only changing a counter.
 
 ## 2.175.0 - 2026-11-14
 
