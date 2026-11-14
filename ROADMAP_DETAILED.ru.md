@@ -95,7 +95,7 @@
 
 | ID | Задача | Effort | Файлы | DoD |
 |----|--------|--------|-------|-----|
-| S0-01 | Матрица статусов shipped/beta/stub в README | S | `README.ru.md`, `README.md` | Таблица из GAP_AUDIT §3, статусы правдивые |
+| S0-01 | Матрица статусов shipped/beta/stub в README | S | `README.md` | Таблица из GAP_AUDIT §3, статусы правдивые |
 | S0-02 | Пометить stub-UI (`// STUB:`) в notifications, tray, telemost, voice play, chat actions | S | `src/ui/*` | grep `STUB` находит все ложные кнопки |
 | S0-03 | Скрыть из UI действия без backend (или disabled + tooltip «скоро») | S | `chat_list.rs`, `telemost.rs` | Нет кликабельного «фейка» без предупреждения |
 | S0-04 | Обновить TESTPLAN под реальность + smoke checklist | S | `TESTPLAN.md` | Checklist = то, что можно прогнать руками |

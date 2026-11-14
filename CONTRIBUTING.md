@@ -4,7 +4,7 @@
 
 We are excited that you want to contribute to Yandex Messenger Native! This project is written in Rust using GTK4 and Libadwaita. Below are the basic guidelines and recommendations for developers.
 
-When you change user-facing behavior, update **both** English and Russian docs (`README.md` / `README.ru.md`, `CHANGELOG.md` / `CHANGELOG.ru.md`, and any other pair you touch).
+When you change user-facing behavior, update the docs in both languages (`README.md` carries the Russian landing page plus an English summary, `CHANGELOG.md` / `CHANGELOG.ru.md`, and any other pair you touch).
 
 ## Environment Requirements
 
