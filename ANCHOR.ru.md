@@ -52,7 +52,7 @@
 
 ## Ключевые файлы
 
-- `README.md` / `README.ru.md` — лендинги (шаблон Best-README-Template)
+- `README.md` — лендинг (RU) + English summary
 - `CHANGELOG.md` / `CHANGELOG.ru.md` — 2.165–2.175
 - `src/api/session_store.rs`, `src/core/outbox.rs`, `src/core/drafts.rs`, `src/core/db.rs`
 - `src/ui/theme.css`, `src/ui/chat_view.rs`, `src/ui/chat_list.rs`

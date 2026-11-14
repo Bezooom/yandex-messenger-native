@@ -8,10 +8,10 @@
 <h1 align="center">Yandex Messenger Native</h1>
 
 <p align="center">
-  Unofficial lightweight native Linux desktop client for Yandex Messenger — Rust, GTK4, Libadwaita.
+  Неофициальный лёгкий нативный клиент Яндекс Мессенджера для Linux — Rust, GTK4, Libadwaita.
   <br />
   <br />
-  <a href="https://github.com/Bezooom/yandex-messenger-native/tree/HEAD/docs"><strong>Docs »</strong></a> · <a href="https://github.com/Bezooom/yandex-messenger-native/issues/new?labels=bug">Report Bug</a> · <a href="https://github.com/Bezooom/yandex-messenger-native/issues/new?labels=enhancement">Request Feature</a> · <a href="README.ru.md">Русская версия</a>
+  <a href="https://github.com/Bezooom/yandex-messenger-native/tree/HEAD/docs"><strong>Документация »</strong></a> · <a href="https://github.com/Bezooom/yandex-messenger-native/issues/new?labels=bug">Сообщить об ошибке</a> · <a href="https://github.com/Bezooom/yandex-messenger-native/issues/new?labels=enhancement">Предложить улучшение</a> · <a href="#-english-summary">English</a>
 </p>
 
 <p align="center">
@@ -26,140 +26,141 @@
 </div>
 
 <details open>
-<summary><b>📑 Table of Contents</b></summary>
+<summary><b>📑 Содержание</b></summary>
 
-- [📖 About The Project](#-about-the-project)
-- [Feature Status Matrix](#feature-status-matrix)
-- [Features](#features)
-- [System Requirements](#system-requirements)
-- [🧱 Built With](#-built-with)
-- [Building and Installation](#building-and-installation)
-- [Environment Variables](#environment-variables)
-- [Development & Documentation](#development--documentation)
-- [🗺️ Roadmap](#-roadmap)
-- [🤝 Contributing](#-contributing)
-- [License](#license)
-- [📬 Contact](#-contact)
-- [🙏 Acknowledgments](#-acknowledgments)
+- [📖 О проекте](#-о-проекте)
+- [Матрица статуса функций](#матрица-статуса-функций)
+- [Возможности](#возможности)
+- [Требования к системе](#требования-к-системе)
+- [Сборка и установка](#сборка-и-установка)
+- [Переменные окружения](#переменные-окружения)
+- [Разработка и документация](#разработка-и-документация)
+- [🗺️ Дорожная карта](#-дорожная-карта)
+- [🤝 Участие в разработке](#-участие-в-разработке)
+- [Лицензия](#лицензия)
+- [🧱 Технологии (Built With)](#-технологии-built-with)
+- [📬 Контакты](#-контакты)
+- [🙏 Благодарности](#-благодарности)
+- [🌍 English summary](#-english-summary)
 
 </details>
 
-## 📖 About The Project
+## 📖 О проекте
 
 
 [![CI](https://github.com/Bezooom/yandex-messenger-native/actions/workflows/ci.yml/badge.svg)](https://github.com/Bezooom/yandex-messenger-native/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/Bezooom/yandex-messenger-native)](https://github.com/Bezooom/yandex-messenger-native/releases/latest) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Version 2.175.3** — native Linux desktop client for Yandex Messenger (Telemost chats), built with Rust, GTK4, and Libadwaita. Fast, light, with a Telegram Desktop night theme and an nheko-style dense chat list.
+**Версия 2.175.3** — нативный Linux-клиент Яндекс Мессенджера (чаты Телемоста) на Rust, GTK4 и Libadwaita. Быстрый, лёгкий, с night-темой Telegram Desktop и плотным списком чатов в стиле nheko.
 
-[Русская версия](README.ru.md)
+[English summary](#-english-summary)
 
-> ⚠️ **Project Status: Active Development / Unfinished**
-> This is an open-source project that is currently unfinished and under active development. While the core backend API integrations and messaging components are functional, the user interface (UI) requires significant polishing, refinement, and bug fixing. 
+> ⚠️ **Статус проекта: В процессе разработки / Незавершенный**
+> Это открытый (open-source) проект, который на данный момент не завершен и находится в стадии активной разработки. В то время как основная логика работы с API и отправки сообщений полностью функционирует, пользовательский интерфейс (UI) требует значительной полировки, доработки и устранения визуальных багов.
 > 
-> We would be absolutely thrilled to have your help! If you are interested in Rust, GTK4, Libadwaita, or reverse-engineering APIs, we warmly welcome any contributions, bug reports, and pull requests. Check out our [Contributing Guidelines](CONTRIBUTING.md) to get started!
+> Мы будем очень рады вашей помощи! Если вы интересуетесь Rust, GTK4, Libadwaita или реверс-инжинирингом API, мы с радостью примем любые вклады, сообщения об ошибках и пулл-реквесты. Ознакомьтесь с нашим [Руководством по контрибьютингу](CONTRIBUTING.ru.md) для быстрого старта!
 > 
-> **Important Disclaimer**: This is an **unofficial, community-driven client** for Yandex Messenger. It is not affiliated with, endorsed by, or associated in any way with Yandex LLC or its affiliates. The developers of this project do not claim any rights to Yandex trademarks, branding, or media assets. Use this software at your own risk.
+> **Важный дисклеймер**: Данный проект является **неофициальным клиентом**, созданным сообществом для Яндекс Мессенджера. Он никак не связан, не поддерживается и не ассоциирован с ООО «Яндекс» или его дочерними компаниями. Разработчики проекта не заявляют никаких прав на товарные знаки, брендинг или медиа-ресурсы Яндекса. Используйте это программное обеспечение на свой страх и риск.
 
-> ✅ **Verified on this tree (2.175.3):** `cargo check --bin yandex-messenger` clean; `cargo test --bin yandex-messenger` → **68 passed, 1 ignored**; `cargo build --release` → 16 MB binary with every `NEEDED` library resolved. GUI and live network flows are manual.
+> ✅ **Проверено на этом дереве (2.175.3):** `cargo check --bin yandex-messenger` чистый; `cargo test --bin yandex-messenger` → **68 passed, 1 ignored**; `cargo build --release` → бинарь 16 МБ, все `NEEDED`-библиотеки находятся. GUI и живые сетевые сценарии проверяются руками.
 
-### What changed in 2.175.3
+### Что изменилось в 2.175.3
 
-- **Sticker thumbnails keep their size**: the async loader no longer overrides chip (32 px) and grid (52 px) sizes, so the pack strip stops clipping.
-- **Dock actually shrinks**: emoji category tabs scroll horizontally and `.emoji-picker` minimum is 280 px, so the 300–460 px range works instead of snapping to 360.
-- **Own-message detection is tested**: `models::is_own_sender` matches the GUID or the legacy numeric account id; optimistic edits and outbox messages now carry the GUID too.
+- **Миниатюры стикеров держат размер**: асинхронный загрузчик больше не перебивает размеры чипов (32 px) и сетки (52 px), полоса паков перестала обрезаться.
+- **Док реально ужимается**: вкладки категорий эмодзи прокручиваются по горизонтали, минимум `.emoji-picker` – 280 px, поэтому диапазон 300–460 px работает, а не откатывается к 360.
+- **Определение своих сообщений под тестом**: `models::is_own_sender` принимает GUID или legacy numeric account id; оптимистичные правки и outbox тоже несут GUID.
 
-### What changed in 2.175.2
+### Что изменилось в 2.175.2
 
-- **Own messages stay on the right**: optimistic sends now carry the account GUID, and the bubble compares the sender against both the GUID and the account id. Messages sent from this client no longer fall into the incoming column.
-- **Sticker dock fixed**: pack chips are a horizontal strip above the grid, the 480 px CSS minimum is gone, cells are 64 px, and the grid wraps by dock width instead of forcing the panel wider.
-- **Dock width follows the window** (31%, clamped to 300–460 px) instead of a fixed 360 px.
+- **Свои сообщения остаются справа**: оптимистичная отправка теперь несёт GUID аккаунта, а пузырь сравнивает отправителя и с GUID, и с account id. Сообщения из этого клиента больше не падают в колонку входящих.
+- **Док стикеров исправлен**: паки — горизонтальная полоса над сеткой, CSS-минимум 480 px убран, ячейки 64 px, сетка переносится по ширине дока, а не растягивает панель.
+- **Ширина дока следует за окном** (31%, 300–460 px) вместо фиксированных 360 px.
 
-### What changed in 2.175.1
+### Что изменилось в 2.175.1
 
-- **Emoji and stickers are a right-hand dock** with «Эмодзи / Стикеры» tabs, search and category grid, Telegram-style, instead of a popover above the composer. `Ctrl+Shift+E` toggles it.
-- **Image viewer fixed**: `gtk::Picture` with `ContentFit::Contain` fills the window instead of showing a thumbnail; zoom buttons now scale the picture.
-- **Default window** is 1180×780 so the list, chat and dock fit together.
+- **Эмодзи и стикеры — правый док** с вкладками «Эмодзи / Стикеры», поиском и сеткой категорий, как в Telegram, вместо поповера над композером. Открывается по `Ctrl+Shift+E`.
+- **Просмотрщик картинок исправлен**: `gtk::Picture` с `ContentFit::Contain` заполняет окно вместо миниатюры; кнопки зума реально масштабируют фото.
+- **Окно по умолчанию** 1180×780, чтобы список, чат и док помещались вместе.
 
-### What changed in 2.175.0
+### Что изменилось в 2.175.0
 
-- **Chat list from real bootstrap**: `members_count`, `private`, `pinned_chats` and `chat_mutings` are parsed; groups no longer say "0 участников", and `chats[].members` fills the participant list with names and avatars.
-- **Stable ordering**: preview timestamps come from `create_timestamp` / `version` instead of `Utc::now()`.
-- **Unread has one source of truth**: incoming messages bump `state.chats[].unread_count`; window title, tray and list agree, and your own echo is ignored.
-- **Telemost home**: action hub (new chat / new call / join by link), Все / Личные / Новые filters with matching empty states, window title "Яндекс Телемост — N новое сообщение".
-- **Privacy**: the full bootstrap dump is opt-in via `YM_DUMP_BOOTSTRAP=/path`.
+- **Список чатов из реального bootstrap**: читаются `members_count`, `private`, `pinned_chats` и `chat_mutings`; группы больше не пишут «0 участников», а `chats[].members` наполняет список участников именами и аватарами.
+- **Стабильный порядок**: метки превью берутся из `create_timestamp` / `version`, а не из `Utc::now()`.
+- **Один источник непрочитанных**: входящее сообщение увеличивает `state.chats[].unread_count`; заголовок окна, трей и список согласованы, эхо своих отправок игнорируется.
+- **Домашний экран Телемоста**: карточки «Новый чат / звонок / подключиться по ссылке», фильтры Все / Личные / Новые с пустыми состояниями, заголовок окна «Яндекс Телемост — N новое сообщение».
+- **Приватность**: полный дамп bootstrap включается только через `YM_DUMP_BOOTSTRAP=/path`.
 
-## Feature Status Matrix
+## Матрица статуса функций
 
-| Feature | Status | Description |
+| Функция | Статус | Описание |
 |---|---|---|
-| OAuth / Login | Beta | OAuth + **in-app session cookie capture** (no Python script) |
-| Chat List | Beta | nheko-style dense list, real member counts and pin/mute from bootstrap, Все / Личные / Новые filters |
-| Text Messaging | Beta | Send + reply/edit + outbox + drafts + history pagination + **delivery/read ticks** |
-| Files & Attachments | Beta | Upload→send; **Download / Open**; **DnD** files; **Ctrl+V** images |
-| Voice Messages | Not in default build | Needs `--features gstreamer` and `YM_ENABLE_VOICE`; the default and CI binaries do not compile it |
-| Video Playback | Not in default build | Inline player requires the `gstreamer` feature; absent from the default and CI binaries |
-| Calls (Telemost) | Partial | Goloom signaling + `webrtcbin` in tree; in-call media needs `gstreamer`, `gstreamer1.0-nice` and `YM_ENABLE_TELEMOST_UI`; default binary has no WebRTC |
-| Desktop Notifications | Beta | `notify-rust`, respects mute + settings |
-| System Tray | Beta | StatusNotifierItem (`ksni`), close-to-tray, unread badge |
-| Settings | Beta | Notifications / tray / dark theme / reduce animations |
-| Offline Cache | Beta | SQLite (`cache.db`) upsert + JSON L2; cold-start hydrate |
-| Theme | Beta | Light Yandex theme by default + dark night, switch in settings |
+| OAuth / Вход | Beta | OAuth + **автозахват session cookies** в WebView (без `login_browser.py`) |
+| Список чатов | Beta | Плотный список в стиле nheko, реальные счётчики участников и pin/mute из bootstrap, фильтры Все / Личные / Новые |
+| Текстовые сообщения | Beta | Отправка + reply/edit + outbox + черновики + пагинация + **delivery/read ticks** |
+| Файлы и вложения | Beta | Upload→send; **Скачать / Открыть**; **DnD** файлов; **Ctrl+V** картинок |
+| Голосовые сообщения | Нет в default-сборке | Нужны `--features gstreamer` и `YM_ENABLE_VOICE`; default и CI-бинарь её не компилируют |
+| Воспроизведение видео | Нет в default-сборке | Инлайн-плеер требует фичу `gstreamer`; в default и CI-бинаре её нет |
+| Звонки (Телемост) | Частично | Сигналинг Goloom + `webrtcbin` в дереве; медиа в звонке требует `gstreamer`, `gstreamer1.0-nice` и `YM_ENABLE_TELEMOST_UI`; в default-бинаре WebRTC нет |
+| Системные уведомления | Beta | `notify-rust`, mute + настройки |
+| Системный трей | Beta | StatusNotifierItem (`ksni`), close→tray, badge unread |
+| Настройки | Beta | Уведомления / трей / тёмная тема / уменьшить анимации |
+| Оффлайн-кэш | Beta | SQLite (`cache.db`) upsert + JSON L2; cold start из SQLite |
+| Тема | Beta | Светлая Яндекс-тема по умолчанию + тёмная night, переключатель в настройках |
 
-### Feature Flags
+### Флаги фич (Feature Flags)
 
-Two new environment variables control whether stub UI elements are visible:
+Две новые переменные окружения управляют видимостью элементов интерфейса:
 
-| Flag | Default | Description |
+| Флаг | По умолчанию | Описание |
 |---|---|---|
-| `YM_ENABLE_VOICE` | `false` | Show voice messages UI (waveform, play/record buttons) |
-| `YM_ENABLE_TELEMOST_UI` | `false` | Show Telemost (video calls) UI elements in chat header |
+| `YM_ENABLE_VOICE` | `false` | Показать интерфейс голосовых сообщений (волна, кнопки воспроизведения/записи) |
+| `YM_ENABLE_TELEMOST_UI` | `false` | Показать элементы интерфейса Телемоста (видеозвонки) в заголовке чата |
 
-When a flag is off, the corresponding stub elements are hidden from the interface so users see a cleaner UI until the feature is fully implemented.
+Когда флаг выключен, соответствующие элементы-заглушки скрываются из интерфейса, чтобы пользователь видел чистый интерфейс до полной реализации функции.
 
-### Known Limitations
+### Известные ограничения
 
-- **Default build**: voice, video and call media are not compiled at all; they need the `gstreamer` feature
-- **Session cookies**: captured on WebView login; `scripts/login_browser.py` remains as fallback
-- **Voice**: record/play behind `YM_ENABLE_VOICE` (needs a `gstreamer`-feature build; transcription display only, no fetching)
-- **Telemost**: live calls behind `YM_ENABLE_TELEMOST_UI` (needs a `gstreamer`-feature build + `gstreamer1.0-nice`); meetings REST and parts of SDP policy are best-effort, pending live verification
-- **Video player**: inline in chat (play/pause/scrub); needs `gstreamer`
-- **Chat actions API**: best-effort reverse-engineered RPC names
-- **WS status events**: depend on server payload; history flags best-effort
+- **Default-сборка**: голос, видео и медиа звонков вообще не компилируются; нужна фича `gstreamer`
+- **Session cookies**: сохраняются при входе через WebView; fallback-скрипт `scripts/login_browser.py` всё ещё работает
+- **Голосовые**: запись/плеер за `YM_ENABLE_VOICE` (нужна сборка с фичей `gstreamer`; транскрипция — только отображение, без запроса)
+- **Телемост**: живой звонок за `YM_ENABLE_TELEMOST_UI` (нужна сборка с фичей `gstreamer` + пакет `gstreamer1.0-nice`); REST встреч и часть SDP-политик — best-effort, требуют live-проверки
+- **Видеоплеер**: инлайн в чате (play/pause/скраб); нужен `gstreamer`
+- **Chat actions API**: best-effort reverse RPC — имена методов могут отличаться на стороне сервера
+- **WS status events**: зависят от payload сервера; history flags парсятся best-effort
 
-## Features
+## Возможности
 
-### Authorization & Security
-* **OAuth2 Protocol**: Supports Authorization Code and Implicit Grant flows with a local loopback callback server.
-* **Non-blocking UI**: Interactive login dialog featuring a loading spinner (`Spinner`) and a 180-second timeout.
-* **Secure Storage**: Tokens are stored at `~/.config/yandex-messenger-native/token.json` with `0600` file permissions.
-* **Auto-refresh**: Automatic access token refresh (via refresh token) triggered 5 minutes before expiration.
-* **Manual Entry**: Option to manually enter an Access Token if needed.
-* **Network & Proxy**: Encryption handled via `rustls` (no external OpenSSL dependency) and support for enterprise auth proxy mode via the `YANDEX_AUTH_PROXY_URL` environment variable.
+### Авторизация и безопасность
+* **OAuth2 протокол**: Поддержка Authorization Code и Implicit Grant flows с локальным callback-сервером.
+* **Неблокирующий UI**: Интерактивный диалог входа с анимацией ожидания (`Spinner`) и таймаутом в 180 секунд.
+* **Безопасное хранение**: Токены сохраняются по пути `~/.config/yandex-messenger-native/token.json` с правами доступа `0600`.
+* **Автопродление**: Автоматическое обновление токенов доступа (refresh token) за 5 минут до истечения срока действия.
+* **Ввод токена**: Возможность ручного ввода Access Token при необходимости.
+* **Сеть и прокси**: Поддержка шифрования через `rustls` (без внешнего OpenSSL) и поддержка корпоративного режима авторизации через `YANDEX_AUTH_PROXY_URL`.
 
-### User Interface (UI)
-* **Adaptive Layout**: Uses `gtk::Paned` as a separator supporting a compact sidebar mode (collapses text when width is < 180px).
-* **Chat Lists**: Sorted chat entries (pinned chats remain at the top, others are sorted by the latest message time), pin indicators 📌, and avatars rendered using `adw::Avatar`.
-* **Performance**: Asynchronous caching of avatar textures in RAM (`AVATAR_CACHE`) to prevent flickering/re-downloads, instant L2 JSON cache-based history loading (`load_cache_l2_async`) upon selecting a chat, and background network updates.
-* **Night Theme**: Telegram Desktop night tokens (`dialogsBg`, `msgIn` / `msgOut`), nheko-style dense sidebar, solid selection, custom thin scrollbars.
+### Интерфейс пользователя (UI)
+* **Адаптивный макет**: Использование `gtk::Paned` в качестве разделителя с поддержкой компактного режима сайдбара (ширина < 180px).
+* **Списки чатов**: Сортировка (закрепленные чаты всегда вверху, остальные — по времени последнего сообщения), индикатор закрепления 📌 и отображение аватаров с помощью `adw::Avatar`.
+* **Быстродействие**: Асинхронное кэширование аватаров в памяти (`AVATAR_CACHE`), мгновенный рендеринг сообщений из локального L2-кэша (`load_cache_l2_async`) при выборе чата, и фоновое обновление истории с сервера.
+* **Night-тема**: токены Telegram Desktop night (`dialogsBg`, `msgIn` / `msgOut`), плотный сайдбар в стиле nheko, сплошное выделение, тонкие скроллбары.
 
-### Messaging & Interactivity
-* **Input Editor**: Multi-line input field (`TextView`) with automatic height adjustment (up to 120px). Messages are sent by pressing `Enter`, while a new line is inserted with `Shift+Enter`.
-* **Quick Edit**: Pressing the `Up` arrow key when the input is empty instantly opens edit mode for the last sent message.
-* **Date Separators**: Logical chat message grouping by days ("Today", "Yesterday", and formatted dates).
-* **Special Formats**: Rendering of sticker images (128x128px) and "emoji-only" mode (large 40px emoji size without a chat bubble when sending 1 to 3 emojis).
-* **Context Menu**: Actions available on right-click (reply, copy, delete, edit).
-* **Attachments**: File picker, drag-and-drop into the chat, Ctrl+V for clipboard images, Download / Open via `xdg-open`.
-* **Drafts & Outbox**: Per-chat drafts survive chat switches; unsent messages retry after reconnect.
-* **Media Viewer**: Full-screen image gallery with swipe gesture navigation and downloads to the `Downloads` directory.
-* **Voice Messages**: Audio recording and waveform visualization using an optional GStreamer pipeline.
-* **Global Search**: Quick search overlay triggered with `Ctrl+K` for global message and contact filtering.
-* **Advanced Entities**: Support for bots (inline buttons, custom keyboards), scheduled messages, "Saved Messages" section (favorites), group chats, and channels.
+### Сообщения и интерактивность
+* **Редактор ввода**: Многострочное поле ввода (`TextView`) с автоматической высотой (до 120px). Отправка по нажатию `Enter`, новая строка по `Shift+Enter`.
+* **Быстрое редактирование**: Нажатие стрелки `Up` при пустом поле ввода мгновенно открывает режим редактирования последнего отправленного сообщения.
+* **Разделители дат**: Логические разделители сообщений по дням («Сегодня», «Вчера», даты).
+* **Специальные форматы**: Отображение стикеров (128x128px) и режим "только эмодзи" (увеличенный размер без баббла при отправке 1-3 эмодзи).
+* **Контекстное меню**: По клику правой кнопкой мыши доступны действия (ответ, копирование, удаление, редактирование).
+* **Вложения**: выбор файла, drag-and-drop в чат, Ctrl+V для картинки из буфера, «Скачать» / «Открыть» через `xdg-open`.
+* **Черновики и outbox**: текст черновика живёт при смене чата; неотправленные сообщения повторяются после reconnect.
+* **Просмотр медиа**: Галерея картинок с поддержкой свайпов и скачивания в папку `Downloads`.
+* **Голосовые сообщения**: Запись аудио и отрисовка waveform с использованием опционального пайплайна GStreamer.
+* **Глобальный поиск**: Быстрый вызов по `Ctrl+K` с фильтрацией результатов.
+* **Расширенные сущности**: Поддержка ботов (инлайн-кнопки, клавиатуры), отложенных сообщений (Message Scheduling), раздела «Избранное» (Saved Messages), групповых чатов и каналов.
 
 ---
 
-## System Requirements
+## Требования к системе
 
-To build and run the application on Linux (Ubuntu/Debian), you need the following system development libraries:
+Для сборки и запуска в Linux (Ubuntu/Debian) требуются следующие системные библиотеки:
 
 ```bash
 sudo apt update
@@ -169,11 +170,95 @@ sudo apt install -y \
   libssl-dev libnotify-dev libdbus-1-dev libwebkitgtk-6.0-dev
 ```
 
-*Note: For voice recording support, it is recommended to install GStreamer packages (`libgstreamer1.0-dev`, `libgstreamer-plugins-base1.0-dev`). Calls (the `gstreamer` feature: `webrtcbin`) additionally require the ICE plugin `gstreamer1.0-nice` — without it webrtcbin creates no transports and `! webrtc.` linking fails.*
+*Примечание: для поддержки записи голосовых сообщений рекомендуется установить пакеты GStreamer (`libgstreamer1.0-dev`, `libgstreamer-plugins-base1.0-dev`). Для звонков (фича `gstreamer`: `webrtcbin`) обязателен ICE-плагин `gstreamer1.0-nice` — без него webrtcbin не создаёт транспорты и линковка `! webrtc.` падает.*
 
 ---
 
-## 🧱 Built With
+## Сборка и установка
+
+### 1. Компиляция
+Сборка проекта в режиме оптимизации (релизе):
+
+```bash
+cargo build --release
+```
+
+Бинарный файл будет расположен по пути `target/release/yandex-messenger`.
+
+### 2. Сборка через Makefile (упрощенная)
+Собрать и запустить проект в один шаг:
+
+```bash
+make build
+make run
+```
+
+### 3. Установка в систему
+Чтобы установить исполняемый файл, иконки и desktop-файл в системные директории:
+
+```bash
+sudo make install
+```
+
+Сборка локального `.deb` пакета для дистрибутивов Debian/Ubuntu:
+
+```bash
+make dist
+sudo apt install -y ./dist/yandex-messenger-native_*_amd64.deb
+```
+
+---
+
+## Переменные окружения
+
+Клиент можно конфигурировать через переменные окружения:
+
+| Переменная | Описание | По умолчанию |
+|---|---|---|
+| `YANDEX_CLIENT_ID` | OAuth client ID приложения | `<YOUR_YANDEX_CLIENT_ID>` |
+| `YANDEX_CLIENT_SECRET` | OAuth client secret приложения | — |
+| `YANDEX_REDIRECT_URI` | Redirect URI для callback-сервера | Автоопределение (локальный порт) |
+| `YANDEX_AUTH_PROXY_URL` | URL внешнего auth-proxy | — |
+| `YANDEX_OAUTH_AUTHORIZE_URL` | URL страницы авторизации | `https://oauth.yandex.com/authorize` |
+| `YANDEX_OAUTH_TOKEN_URL` | URL обмена авторизационного кода | `https://oauth.yandex.com/token` |
+| `RUST_LOG` | Уровень логирования приложения | `info` |
+
+---
+
+## Разработка и документация
+
+* **Архитектура**: [ARCHITECTURE.ru.md](ARCHITECTURE.ru.md) · [ARCHITECTURE.md](ARCHITECTURE.md)
+* **Разработка**: [DEVELOPMENT.ru.md](DEVELOPMENT.ru.md) · [DEVELOPMENT.md](DEVELOPMENT.md)
+* **Безопасность**: [SECURITY.ru.md](SECURITY.ru.md) · [SECURITY.md](SECURITY.md)
+* **API**: [API.ru.md](API.ru.md) · [API.md](API.md)
+* **Установка**: [INSTALL.ru.md](INSTALL.ru.md) · [INSTALL.md](INSTALL.md)
+* **План тестов**: [TESTPLAN.ru.md](TESTPLAN.ru.md) · [TESTPLAN.md](TESTPLAN.md)
+* **История изменений**: [CHANGELOG.ru.md](CHANGELOG.ru.md) · [CHANGELOG.md](CHANGELOG.md)
+* **Дорожная карта**: [ROADMAP.ru.md](ROADMAP.ru.md) · [ROADMAP.md](ROADMAP.md)
+* **Детальная дорожная карта**: [ROADMAP_DETAILED.ru.md](ROADMAP_DETAILED.ru.md) · [ROADMAP_DETAILED.md](ROADMAP_DETAILED.md)
+* **Контрибьютинг**: [CONTRIBUTING.ru.md](CONTRIBUTING.ru.md) · [CONTRIBUTING.md](CONTRIBUTING.md)
+
+## 🗺️ Дорожная карта
+
+Подробный план: [ROADMAP.ru.md](ROADMAP.ru.md). Полный список задач и идей — в [issues](https://github.com/Bezooom/yandex-messenger-native/issues).
+
+## 🤝 Участие в разработке
+
+Вклад в проект приветствуется. Если есть идея, как сделать лучше, откройте issue или pull request:
+
+1. Сделайте форк репозитория
+2. Создайте ветку (`git checkout -b feature/my-idea`)
+3. Сделайте коммит (`git commit -m 'feat: my idea'`)
+4. Отправьте ветку (`git push origin feature/my-idea`)
+5. Откройте pull request
+
+Подробные правила: [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Лицензия
+
+Проект распространяется под лицензией MIT. Подробнее см. [LICENSE](LICENSE).
+
+## 🧱 Технологии (Built With)
 
 <p>
 <img src="https://img.shields.io/badge/Rust-stable-000000?style=for-the-badge&logo=rust&logoColor=white" alt="Rust" />
@@ -183,102 +268,38 @@ sudo apt install -y \
 <img src="https://img.shields.io/badge/SQLite-cache-003B57?style=for-the-badge&logo=sqlite&logoColor=white" alt="SQLite" />
 </p>
 
-## Building and Installation
+## 📬 Контакты
 
-### 1. Compilation
-Build the project in release mode:
+**Павел Наумов** (Bezooom) — [naumovai.ru](https://naumovai.ru) · [X @Bezooooom](https://x.com/Bezooooom) · naumov122@gmail.com
 
-```bash
-cargo build --release
-```
+Проект: [https://github.com/Bezooom/yandex-messenger-native](https://github.com/Bezooom/yandex-messenger-native)
 
-The compiled binary will be placed at `target/release/yandex-messenger`.
+## 🙏 Благодарности
 
-### 2. Makefile Actions
-Build and run the project in a single step:
-
-```bash
-make build
-make run
-```
-
-### 3. System Installation
-To install the binary, icons, and desktop entries into system directories:
-
-```bash
-sudo make install
-```
-
-To build a local `.deb` package for Debian/Ubuntu distributions:
-
-```bash
-make dist
-sudo apt install -y ./dist/yandex-messenger-native_*_amd64.deb
-```
-
----
-
-## Environment Variables
-
-The client can be configured using the following environment variables:
-
-| Variable | Description | Default Value |
-|---|---|---|
-| `YANDEX_CLIENT_ID` | Application OAuth client ID | `<YOUR_YANDEX_CLIENT_ID>` |
-| `YANDEX_CLIENT_SECRET` | Application OAuth client secret | — |
-| `YANDEX_REDIRECT_URI` | Redirect URI for the callback server | Auto-detected (local port) |
-| `YANDEX_AUTH_PROXY_URL` | URL of the external authorization proxy | — |
-| `YANDEX_OAUTH_AUTHORIZE_URL`| Yandex OAuth authorization endpoint | `https://oauth.yandex.com/authorize` |
-| `YANDEX_OAUTH_TOKEN_URL` | Yandex OAuth token exchange endpoint | `https://oauth.yandex.com/token` |
-| `RUST_LOG` | Logging level for the application | `info` |
-
----
-
-## Development & Documentation
-
-* **Architecture**: [ARCHITECTURE.md](ARCHITECTURE.md) · [ARCHITECTURE.ru.md](ARCHITECTURE.ru.md)
-* **Development**: [DEVELOPMENT.md](DEVELOPMENT.md) · [DEVELOPMENT.ru.md](DEVELOPMENT.ru.md)
-* **Security**: [SECURITY.md](SECURITY.md) · [SECURITY.ru.md](SECURITY.ru.md)
-* **API**: [API.md](API.md) · [API.ru.md](API.ru.md)
-* **Install**: [INSTALL.md](INSTALL.md) · [INSTALL.ru.md](INSTALL.ru.md)
-* **Test plan**: [TESTPLAN.md](TESTPLAN.md) · [TESTPLAN.ru.md](TESTPLAN.ru.md)
-* **Changelog**: [CHANGELOG.md](CHANGELOG.md) · [CHANGELOG.ru.md](CHANGELOG.ru.md)
-* **Roadmap**: [ROADMAP.md](ROADMAP.md) · [ROADMAP.ru.md](ROADMAP.ru.md)
-* **Detailed roadmap**: [ROADMAP_DETAILED.md](ROADMAP_DETAILED.md) · [ROADMAP_DETAILED.ru.md](ROADMAP_DETAILED.ru.md)
-* **Contributing**: [CONTRIBUTING.md](CONTRIBUTING.md) · [CONTRIBUTING.ru.md](CONTRIBUTING.ru.md)
-
-## 🗺️ Roadmap
-
-Detailed plan: [ROADMAP.md](ROADMAP.md). See the [open issues](https://github.com/Bezooom/yandex-messenger-native/issues) for the full list of ideas and known problems.
-
-## 🤝 Contributing
-
-Contributions are welcome. If you have an idea that would make this better, open an issue or a pull request:
-
-1. Fork the repository
-2. Create a branch (`git checkout -b feature/my-idea`)
-3. Commit (`git commit -m 'feat: my idea'`)
-4. Push (`git push origin feature/my-idea`)
-5. Open a pull request
-
-Detailed guidelines: [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## License
-
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
-
-## 📬 Contact
-
-**Pavel Naumov** (Bezooom) — [naumovai.ru](https://naumovai.ru) · [X @Bezooooom](https://x.com/Bezooooom) · naumov122@gmail.com
-
-Project: [https://github.com/Bezooom/yandex-messenger-native](https://github.com/Bezooom/yandex-messenger-native)
-
-## 🙏 Acknowledgments
-
-- [gtk-rs](https://gtk-rs.org) — Rust bindings for GTK4
+- [gtk-rs](https://gtk-rs.org) — Rust-привязки к GTK4
 - [Libadwaita](https://gnome.pages.gitlab.gnome.org/libadwaita/)
-- [nheko](https://github.com/Nheko-Reborn/nheko) and Telegram Desktop — UI inspiration
+- [nheko](https://github.com/Nheko-Reborn/nheko) и Telegram Desktop — вдохновение для интерфейса
 - [Best-README-Template](https://github.com/othneildrew/Best-README-Template)
 - [Shields.io](https://shields.io)
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+## 🌍 English summary
+
+An unofficial native Linux desktop client for Yandex Messenger (now Telemost chats), written in Rust with GTK4 and Libadwaita. No Electron, no embedded browser for the main UI.
+
+**Release 2.175.3** focuses on correctness rather than feature count:
+
+- chat list parsed from the real `bootstrap` payload (`members_count`, `private`, pin/mute buckets, member names) — group headers no longer claim "0 participants";
+- stable ordering: preview timestamps come from `create_timestamp` / `version`, not `Utc::now()`;
+- unread state has one source of truth; window title, tray and list agree, and own messages (including optimistic edits and outbox) are recognised by GUID or legacy account id via `models::is_own_sender`;
+- Telemost home hub with Все / Личные / Новые filters, matching empty states and the official window title;
+- emoji and stickers live in a right-hand dock (360 px by default, 300–460 px by window width) with «Эмодзи / Стикеры» tabs, search and category grid; `Ctrl+Shift+E` toggles it;
+- image viewer uses `gtk::Picture` with `ContentFit::Contain`, so photos fill the window and zoom really scales them;
+- the full bootstrap dump is opt-in via `YM_DUMP_BOOTSTRAP`.
+
+**Verified on this tree:** `cargo check` clean, `cargo test --bin yandex-messenger` → 68 passed / 1 ignored, release binary 16 MB with every `NEEDED` library resolved. GUI and live network flows are manual; the dock and viewer are covered by widget and measure tests, not by a synthetic click in a live window.
+
+**Limitations:** voice, video and call media require `--features gstreamer` and are absent from the default and CI binary; Telemost meeting HTTP paths remain best-effort; there is no Telegram-style left folder rail yet.
+
+**License:** MIT. Not affiliated with Yandex; brand and media assets are not distributed.
+
+<p align="right">(<a href="#readme-top">наверх</a>)</p>

@@ -1,6 +1,6 @@
 # Аудит: чего не хватает до уровня Яндекс Мессенджера
 
-> ⚠️ **Исторический снимок от 2026-08-08 (~2.165.x).** Часть P0/P1 из этого аудита закрыта в **2.173.0** (notify, tray, session, outbox, SQLite, DnD, ticks, night-тема). Актуальный статус: [README.ru.md](README.ru.md). English: [GAP_AUDIT.en.md](GAP_AUDIT.en.md).
+> ⚠️ **Исторический снимок от 2026-08-08 (~2.165.x).** Часть P0/P1 из этого аудита закрыта в **2.173.0** (notify, tray, session, outbox, SQLite, DnD, ticks, night-тема). Актуальный статус: [README.md](README.md). English: [GAP_AUDIT.en.md](GAP_AUDIT.en.md).
 
 **Дата снимка:** 2026-08-08  
 **Проект:** Yandex Messenger Native (неофициальный Linux-клиент, Rust + GTK4/Libadwaita)  

@@ -75,4 +75,4 @@ sudo apt install -y ./dist/yandex-messenger-native_2.175.3-*_amd64.deb
 
 ## Окружение
 
-Таблица переменных — в [README.ru.md](README.ru.md). Флаги: `YM_ENABLE_VOICE`, `YM_ENABLE_TELEMOST_UI` (оба выключены по умолчанию).
+Таблица переменных — в [README.md](README.md). Флаги: `YM_ENABLE_VOICE`, `YM_ENABLE_TELEMOST_UI` (оба выключены по умолчанию).
