@@ -49,13 +49,15 @@ Ship a usable unofficial Linux desktop client for Yandex Messenger (Rust + GTK4 
 
 GTK/WebKit/GStreamer headers on this box come from `-dev` debs unpacked to `/tmp/gtk-prefix`
 (`apt-get download` + `dpkg -x`), resolve missing `.pc` deps in a loop; `.so` link stubs are symlinked
-from system runtime libs into `/tmp/ym-liblinks`. Build:
-`PKG_CONFIG_PATH=/tmp/gtk-prefix/usr/lib/x86_64-linux-gnu/pkgconfig RUSTFLAGS="-L /tmp/ym-liblinks" cargo check --features gstreamer`.
+from system runtime libs into `/tmp/ym-liblinks`. The stubs must point at runtime `.so` files, never
+static `.a` archives (static libdbus drags undefined `sd_listen_fds`/`sd_is_socket` into the final link).
+Build:
+`PKG_CONFIG_PATH=/tmp/gtk-prefix/usr/lib/x86_64-linux-gnu/pkgconfig RUSTFLAGS="-L /tmp/ym-liblinks" cargo build --features gstreamer`.
 The prefix lives in /tmp — rebuild it after a reboot.
 
 ## Verification floor
 
-- `cargo check --bin yandex-messenger` and `cargo test --bin yandex-messenger` pass (71 tests, 1 ignored).
+- `cargo check --bin yandex-messenger` and `cargo test --bin yandex-messenger` pass (72 tests, 1 ignored).
 - This machine has GTK4 runtime but no `gtk4.pc`/headers; the check ran against pkg-config files extracted from Ubuntu `.deb` packages into `/tmp/gtk-prefix` with `-L /tmp/ym-liblinks`. A normal dev box should `apt install libgtk-4-dev libadwaita-1-dev libwebkitgtk-6.0-dev` instead.
 
 ## Next Steps
