@@ -1,3 +1,6 @@
+// Nested Rc<RefCell<…>>/callback signatures are pervasive UI plumbing.
+#![allow(clippy::type_complexity)]
+
 use gtk::prelude::*;
 use gtk::{
     Box as GtkBox, Button, FlowBox, FlowBoxChild, Label, Orientation, ScrolledWindow, Widget,

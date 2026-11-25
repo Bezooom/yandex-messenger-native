@@ -1,4 +1,6 @@
 #![allow(dead_code)]
+// API surface wraps nested JSON/callback types; aliasing every one adds noise.
+#![allow(clippy::type_complexity)]
 
 pub mod auth;
 pub mod bot;
@@ -510,7 +512,7 @@ impl WebSocketClient {
                         }
                     }
                     _ = interval.tick() => {
-                        if write.send(Message::Ping(vec![].into())).await.is_err() {
+                        if write.send(Message::Ping(vec![])).await.is_err() {
                             break;
                         }
                     }
@@ -641,9 +643,10 @@ impl WebSocketClient {
                                             .unwrap_or("")
                                             .to_string();
                                         if !chat_id.is_empty() {
-                                            let wrapper = serde_json::json!({ "data": parsed_json });
+                                            let wrapper =
+                                                serde_json::json!({ "data": parsed_json });
                                             if let Some(msg) =
-                                            HttpClient::parse_search_message(&wrapper, &chat_id)
+                                                HttpClient::parse_search_message(&wrapper, &chat_id)
                                             {
                                                 let has_text = msg
                                                     .text
@@ -1205,6 +1208,7 @@ impl WebSocketClient {
     /// Send an already-uploaded file as ClientMessage (Image or MiscFile).
     /// `file_id` comes from `HttpClient::upload_file_for_message` and must have been
     /// uploaded with the same `payload_id` as `messageId` path segment.
+    #[allow(clippy::too_many_arguments)]
     pub async fn send_file_message(
         &self,
         chat_id: &str,
@@ -1384,7 +1388,7 @@ impl WebSocketClient {
         text: &str,
         original_mcs: i64,
     ) -> Result<u64, String> {
-        let payload_id = message_ref.split('_').last().unwrap_or(message_ref);
+        let payload_id = message_ref.split('_').next_back().unwrap_or(message_ref);
         if payload_id.is_empty() {
             return Err("Empty message id".to_string());
         }
@@ -1846,15 +1850,16 @@ impl HttpClient {
         method: &str,
         params: serde_json::Value,
     ) -> Result<serde_json::Value, String> {
-        let cookies_guard = self.session_cookies.lock().unwrap();
-        let cookies = cookies_guard
-            .as_ref()
-            .ok_or_else(|| {
-                "No session cookies. Re-login in the app (session is captured automatically)."
-                    .to_string()
-            })?
-            .clone();
-        drop(cookies_guard);
+        let cookies = {
+            let cookies_guard = self.session_cookies.lock().unwrap();
+            cookies_guard
+                .as_ref()
+                .ok_or_else(|| {
+                    "No session cookies. Re-login in the app (session is captured automatically)."
+                        .to_string()
+                })?
+                .clone()
+        };
 
         let body = serde_json::json!({
             "method": method,
@@ -2980,7 +2985,6 @@ impl HttpClient {
         Option<String>,
     ) {
         let mut media = Vec::new();
-        let mut kind = models::MessageType::Text;
 
         // Voice (with server transcription + waveform when recognized).
         if let Some(voice) = plain.get("Voice") {
@@ -3006,9 +3010,8 @@ impl HttpClient {
                 .map(|s| s.to_string());
             att.mime_type = Some("audio/ogg".to_string());
             if !att.id.is_empty() || att.transcription.is_some() {
-                kind = models::MessageType::Voice;
                 media.push(att);
-                return (kind, media, None);
+                return (models::MessageType::Voice, media, None);
             }
         }
 
@@ -3020,16 +3023,14 @@ impl HttpClient {
                 video,
             );
             if !att.id.is_empty() {
-                kind = models::MessageType::Video;
                 media.push(att);
-                return (kind, media, None);
+                return (models::MessageType::Video, media, None);
             }
         }
 
         // Gallery (multi-image + caption) and single images.
-        let mut caption: Option<String> = None;
         if let Some(gallery) = plain.get("Gallery") {
-            caption = gallery
+            let caption = gallery
                 .get("Text")
                 .and_then(|v| v.as_str())
                 .filter(|t| !t.trim().is_empty())
@@ -3049,8 +3050,7 @@ impl HttpClient {
                 }
             }
             if !media.is_empty() {
-                kind = models::MessageType::Image;
-                return (kind, media, caption);
+                return (models::MessageType::Image, media, caption);
             }
         }
         if let Some(image) = plain.get("Image") {
@@ -3442,7 +3442,7 @@ impl HttpClient {
     pub fn guess_mime_type(filename: &str) -> &'static str {
         let ext = filename
             .split('.')
-            .last()
+            .next_back()
             .map(|s| s.to_ascii_lowercase())
             .unwrap_or_default();
         match ext.as_str() {
@@ -3627,11 +3627,7 @@ impl HttpClient {
             from_id: String::new(),
             message_id: Some(payload_id),
             rmid: None,
-            type_: if Self::is_image_mime(mime) {
-                models::MessageType::Text
-            } else {
-                models::MessageType::Text
-            },
+            type_: models::MessageType::Text,
             text: Some(format!("[Файл: {}]", filename)),
             entities: vec![],
             reply_to: None,
@@ -5194,7 +5190,8 @@ mod tests {
         // main.rs feeds the serialized message back through this parser —
         // media must survive the round trip, not flatten to empty.
         let v = serde_json::to_value(&msg).expect("serialize");
-        let parsed = HttpClient::parse_ws_incoming_messages(&serde_json::json!({ "messages": [v] }));
+        let parsed =
+            HttpClient::parse_ws_incoming_messages(&serde_json::json!({ "messages": [v] }));
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].media.len(), 1, "media survives round trip");
         assert_eq!(parsed[0].media[0].id, "disk/aa11bb22");

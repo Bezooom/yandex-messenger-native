@@ -150,7 +150,7 @@ docker build -t yandex-messenger -f Dockerfile .
 - [x] Basic file preview hooks
 
 ### Phase 5 — Video Calls (Telemost)
-- [x] Call window (`src/ui/telemost.rs`)
+- [x] Call window (`src/ui/telemost_window.rs`)
 - [x] Video/audio controls (mute, camera toggle, disconnect)
 - [x] Launching calls from the chat view
 

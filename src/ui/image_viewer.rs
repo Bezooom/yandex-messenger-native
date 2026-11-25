@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+#![allow(clippy::type_complexity)]
 
 use gtk::prelude::*;
 use gtk::{Box as GtkBox, Button, Orientation, Popover, ScrolledWindow};

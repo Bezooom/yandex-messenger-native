@@ -25,7 +25,7 @@ pub struct ClientConfig {
     pub properties: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum ConferenceState {
     #[serde(rename = "CREATED")]
     Created,
@@ -34,13 +34,8 @@ pub enum ConferenceState {
     #[serde(rename = "FINISHED")]
     Finished,
     #[serde(rename = "UNKNOWN")]
+    #[default]
     Unknown,
-}
-
-impl Default for ConferenceState {
-    fn default() -> Self {
-        ConferenceState::Unknown
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

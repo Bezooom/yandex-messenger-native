@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+#![allow(clippy::type_complexity)]
 
 use gtk::prelude::*;
 use gtk::{Align, Box as GtkBox, Button, Entry, Label, Orientation, Separator, ToggleButton};
@@ -144,7 +145,7 @@ impl PollCreator {
 
         let remove_btn = Button::builder()
             .label("✕")
-            .css_classes(vec!["flat", "circular"].to_vec())
+            .css_classes(["flat", "circular"].to_vec())
             .build();
 
         let remove_clone = remove_btn.clone();

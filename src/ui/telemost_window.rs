@@ -12,6 +12,9 @@
 //!   Without the `gstreamer` feature the window still joins signaling-only
 //!   (roster works) and says so.
 
+// Nested Rc<RefCell<…>>/callback signatures are pervasive UI plumbing.
+#![allow(clippy::type_complexity)]
+
 use gtk::prelude::*;
 use gtk::{
     gdk, Application, ApplicationWindow, Box, Button, Image, Label, Orientation, Overlay, Picture,

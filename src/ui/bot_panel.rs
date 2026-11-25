@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+#![allow(clippy::type_complexity)]
 
 use gtk::prelude::*;
 use gtk::{Box as GtkBox, Button, FlowBox, Label, Orientation, ScrolledWindow};
@@ -93,7 +94,7 @@ impl BotPanel {
         self.render_commands(&bot.commands);
 
         // Inline buttons
-        self.render_inline_buttons(&vec![]);
+        self.render_inline_buttons(&[]);
 
         // Reply keyboard
         self.render_reply_keyboard(&ReplyKeyboard::default());
@@ -122,7 +123,7 @@ impl BotPanel {
             row.set_margin_bottom(4);
 
             let cmd_label = Label::builder()
-                .label(&format!("/{}", cmd.command))
+                .label(format!("/{}", cmd.command))
                 .css_classes(vec!["dim-label".to_string()])
                 .xalign(0.0)
                 .build();

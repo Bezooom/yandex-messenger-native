@@ -13,14 +13,6 @@ pub fn notifications_enabled() -> bool {
     NOTIFICATIONS_ENABLED.load(Ordering::Relaxed)
 }
 
-/// Show a desktop notification.
-///
-/// - Respects global enable flag
-/// - `chat_id` is stored as the notification ID for replacement/grouping
-pub fn send_notification(summary: &str, body: &str) {
-    send_notification_for_chat(summary, body, None, false);
-}
-
 /// Full variant with mute / chat context.
 pub fn send_notification_for_chat(
     summary: &str,

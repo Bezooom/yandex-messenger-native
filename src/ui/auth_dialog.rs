@@ -224,10 +224,7 @@ impl AuthDialog {
 
         dialog.present();
         main_loop.run();
-        let response = response_cell
-            .borrow()
-            .clone()
-            .unwrap_or(ResponseType::Cancel);
+        let response = (*response_cell.borrow()).unwrap_or(ResponseType::Cancel);
         let value = entry.text().to_string();
         dialog.close();
 
@@ -379,7 +376,7 @@ impl AuthDialog {
                                 .duration_since(std::time::UNIX_EPOCH)
                                 .unwrap()
                                 .as_secs(),
-                        ) as u64,
+                        ),
                         token_type: "Bearer".to_string(),
                         user_id: selected_account.display_name.clone(),
                         received_at: std::time::SystemTime::now()
@@ -560,15 +557,14 @@ impl AuthDialog {
                 eprintln!("[AUTH] WebView loaded URI: {}", uri_str);
 
                 // Surface OAuth "unknown client" clearly
-                if uri_str.contains("oauth.yandex") {
-                    if uri_str.contains("error") {
+                if uri_str.contains("oauth.yandex")
+                    && uri_str.contains("error") {
                         status_c.set_label(
                             "Ошибка OAuth (неверный client_id). Задайте YANDEX_CLIENT_ID \
                              (32 hex) или вставьте Access Token вручную.",
                         );
                         token_entry_c.set_visible(true);
                     }
-                }
 
                 match phase_c.get() {
                     0 => {

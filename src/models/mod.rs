@@ -27,28 +27,22 @@ pub use bot::BotReplyMarkup;
 pub use folder::ChatFolder;
 pub use poll::{Poll, PollAnswer};
 pub use reaction::ExtendedReactionsConfig;
-pub use saved_message::{SavedFilter, SavedMessage};
 pub use scheduled_message::ScheduledMessage;
 pub use sticker::{Sticker, StickerPack, StickerPackList};
-pub use telemost::*;
 pub use thread::Thread;
 pub use voice_message::VoiceMessage;
 
 /// Chat type enumeration
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum ChatType {
     Private,
     Group,
     Channel,
     Bot,
+    #[default]
     Unknown,
-}
-
-impl Default for ChatType {
-    fn default() -> Self {
-        ChatType::Unknown
-    }
 }
 
 /// Chat participant
@@ -150,6 +144,7 @@ pub fn messages_equivalent(a: &[Message], b: &[Message]) -> bool {
 /// Message types
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum MessageType {
     Text,
     Image,
@@ -174,13 +169,8 @@ pub enum MessageType {
     AnimatedEmoji,
     ScreenShare,
     #[serde(other)]
+    #[default]
     Unknown,
-}
-
-impl Default for MessageType {
-    fn default() -> Self {
-        MessageType::Unknown
-    }
 }
 
 /// Message object
@@ -351,6 +341,7 @@ pub struct MediaAttachment {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum MediaType {
     Image,
     Video,
@@ -361,13 +352,8 @@ pub enum MediaType {
     AnimatedEmoji,
     Thumbnail,
     #[serde(other)]
+    #[default]
     Unknown,
-}
-
-impl Default for MediaType {
-    fn default() -> Self {
-        MediaType::Unknown
-    }
 }
 
 /// Forward info
@@ -482,12 +468,13 @@ pub struct ContactCandidate {
 impl ContactCandidate {
     /// Primary label for UI: contact book name → display name → public name.
     pub fn primary_name(&self) -> String {
-        for name in [&self.contact_name, &self.display_name, &self.public_name] {
-            if let Some(n) = name {
-                let t = n.trim();
-                if !t.is_empty() {
-                    return t.to_string();
-                }
+        for n in [&self.contact_name, &self.display_name, &self.public_name]
+            .into_iter()
+            .flatten()
+        {
+            let t = n.trim();
+            if !t.is_empty() {
+                return t.to_string();
             }
         }
         // Never show raw GUID as the main label
@@ -497,12 +484,13 @@ impl ContactCandidate {
     /// Secondary line when contact_name and display_name differ.
     pub fn secondary_name(&self) -> Option<String> {
         let primary = self.primary_name();
-        for name in [&self.display_name, &self.public_name, &self.contact_name] {
-            if let Some(n) = name {
-                let t = n.trim();
-                if !t.is_empty() && t != primary {
-                    return Some(t.to_string());
-                }
+        for n in [&self.display_name, &self.public_name, &self.contact_name]
+            .into_iter()
+            .flatten()
+        {
+            let t = n.trim();
+            if !t.is_empty() && t != primary {
+                return Some(t.to_string());
             }
         }
         None

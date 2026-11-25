@@ -382,7 +382,7 @@ TESTPLAN и SECURITY/ROADMAP ссылаются на `notify-rust` — **рас�
 |------|-----------|
 | `src/ui/notifications.rs` | stub notifications |
 | `src/ui/tray.rs` | empty tray |
-| `src/ui/telemost.rs` | non-call UI |
+| `src/ui/telemost_window.rs` | non-call UI |
 | `src/ui/voice_message_player.rs` | stub playback |
 | `src/ui/chat_view.rs` | video TODO; attachment fallback text |
 | `src/ui/chat_list.rs` | context menu log-only |

@@ -16,7 +16,7 @@
 
 | Компонент | Статус | Путь |
 |-----------|--------|------|
-| `TelemostWindow` | Stub (WebView/browser) | `src/ui/telemost.rs` |
+| `TelemostWindow` | Нативное GTK4-окно | `src/ui/telemost_window.rs` |
 | `start_call` / `end_call` / `get_call_status` | REST stub | `src/api/mod.rs:2786+` |
 | `subscribe_call_updates` / `send_call_event_ws` | WebSocket stub | `src/api/mod.rs:1084+` |
 | `TelemostCall`, `CallStatus`, `CallParticipant` | Модели есть | `src/models/mod.rs` |

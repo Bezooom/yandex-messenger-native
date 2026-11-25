@@ -43,7 +43,7 @@ impl SavedMessageStore {
     ) -> Vec<SavedMessage> {
         let store = self.messages.lock().await;
         let mut msgs = store.clone();
-        msgs.sort_by(|a, b| b.saved_at.cmp(&a.saved_at));
+        msgs.sort_by_key(|m| std::cmp::Reverse(m.saved_at));
 
         let total = msgs.len();
         let start = offset.min(total);
@@ -103,7 +103,7 @@ impl SavedMessageStore {
             })
             .cloned()
             .collect();
-        results.sort_by(|a, b| b.saved_at.cmp(&a.saved_at));
+        results.sort_by_key(|m| std::cmp::Reverse(m.saved_at));
         let total = results.len();
         let end = limit.min(total);
         results.truncate(end);

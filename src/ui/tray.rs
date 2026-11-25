@@ -2,7 +2,7 @@
 //!
 //! Provides: show window, quit. Unread count updates the tooltip.
 
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
 use std::thread;
@@ -18,7 +18,6 @@ pub enum TrayCommand {
 pub struct TrayHandle {
     cmd_rx: Option<Receiver<TrayCommand>>,
     unread: Arc<AtomicU32>,
-    running: Arc<AtomicBool>,
 }
 
 struct MessengerTray {
@@ -96,10 +95,8 @@ impl TrayHandle {
     pub fn init() -> Self {
         let (tx, rx) = mpsc::channel();
         let unread = Arc::new(AtomicU32::new(0));
-        let running = Arc::new(AtomicBool::new(true));
 
         let unread_t = unread.clone();
-        let running_t = running.clone();
 
         thread::Builder::new()
             .name("ym-tray".into())
@@ -108,10 +105,8 @@ impl TrayHandle {
                     tx,
                     unread: unread_t,
                 });
-                if running_t.load(Ordering::Relaxed) {
-                    if let Err(e) = service.run() {
-                        log::warn!("System tray failed (continue without tray): {}", e);
-                    }
+                if let Err(e) = service.run() {
+                    log::warn!("System tray failed (continue without tray): {}", e);
                 }
             })
             .ok();
@@ -119,16 +114,6 @@ impl TrayHandle {
         Self {
             cmd_rx: Some(rx),
             unread,
-            running,
-        }
-    }
-
-    /// No-op placeholder when tray is disabled.
-    pub fn disabled() -> Self {
-        Self {
-            cmd_rx: None,
-            unread: Arc::new(AtomicU32::new(0)),
-            running: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -139,9 +124,5 @@ impl TrayHandle {
     /// Non-blocking poll of tray menu actions.
     pub fn try_recv(&self) -> Option<TrayCommand> {
         self.cmd_rx.as_ref()?.try_recv().ok()
-    }
-
-    pub fn shutdown(&self) {
-        self.running.store(false, Ordering::Relaxed);
     }
 }

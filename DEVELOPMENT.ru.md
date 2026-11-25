@@ -150,7 +150,7 @@ docker build -t yandex-messenger -f Dockerfile .
 - [x] Базовые file preview hooks
 
 ### Фаза 5 — Telemost
-- [x] Окно звонка (`src/ui/telemost.rs`)
+- [x] Окно звонка (`src/ui/telemost_window.rs`)
 - [x] Базовые call controls (mute/video/end)
 - [x] Интеграция запуска звонка из чата
 

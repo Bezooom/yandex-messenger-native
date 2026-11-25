@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-/// Configuration module - API endpoints reverse-engineered from Yandex Messenger Electron app
+// Configuration module - API endpoints reverse-engineered from Yandex Messenger Electron app
 
 // Default OAuth application id (32-char hex). Package name `ru.yandex.yamb` is NOT valid.
 // Override with env YANDEX_CLIENT_ID if you registered your own app at https://oauth.yandex.ru/.

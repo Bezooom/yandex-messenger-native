@@ -246,7 +246,7 @@ impl CreateGroupDialog {
             avatar.set_halign(Align::Center);
             avatar.set_valign(Align::Center);
             let avatar_label = Label::builder()
-                .label(&contact.initials())
+                .label(contact.initials())
                 .css_classes(["avatar-label"])
                 .halign(Align::Center)
                 .valign(Align::Center)

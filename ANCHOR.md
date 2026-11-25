@@ -58,6 +58,7 @@ The prefix lives in /tmp — rebuild it after a reboot.
 ## Verification floor
 
 - `cargo check --bin yandex-messenger` and `cargo test --bin yandex-messenger` pass (73 tests, 1 ignored).
+- `make check` (clippy `-D warnings` + `cargo fmt --check`) passes as of 2026-11-25 (was chronically red; fixed mechanically: clippy --fix, dead-code removal, file-level `#![allow]` for GTK `type_complexity`/`arc_with_non_send_sync` idioms).
 - This machine has GTK4 runtime but no `gtk4.pc`/headers; the check ran against pkg-config files extracted from Ubuntu `.deb` packages into `/tmp/gtk-prefix` with `-L /tmp/ym-liblinks`. A normal dev box should `apt install libgtk-4-dev libadwaita-1-dev libwebkitgtk-6.0-dev` instead.
 
 ## Next Steps

@@ -380,7 +380,7 @@ impl AuthManager {
         let device_name = "Yandex Messenger Native";
         let client_id = self.effective_client_id();
         let mut params = vec![
-            format!("response_type=token"),
+            "response_type=token".to_string(),
             format!("client_id={}", urlencoding::encode(&client_id)),
             format!("state={}", urlencoding::encode(&state)),
             format!("device_id={}", urlencoding::encode(&device_id)),
@@ -485,7 +485,7 @@ impl AuthManager {
         let token_json = serde_json::to_string_pretty(token)
             .map_err(|e| format!("Token serialize failed: {}", e))?;
 
-        fs::write(&self.token_file(), token_json)
+        fs::write(self.token_file(), token_json)
             .map_err(|e| format!("Token write failed: {}", e))?;
 
         info!("Token saved to {}", self.token_file().display());
@@ -1244,7 +1244,7 @@ impl AuthManager {
     pub async fn get_current_account(&self) -> Option<Account> {
         let id = self.get_current_account_id().await?;
         let accounts = self.accounts.lock().await;
-        accounts.iter().cloned().find(|a| a.id == id)
+        accounts.iter().find(|&a| a.id == id).cloned()
     }
 
     /// List all known accounts

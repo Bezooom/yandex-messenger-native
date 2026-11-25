@@ -1,3 +1,7 @@
+// UI objects (panels, viewers) are GTK types: !Send/!Sync by design, used on the
+// main loop thread only; Arc here is a handle-share idiom, not cross-thread sync.
+#![allow(clippy::arc_with_non_send_sync)]
+
 use std::sync::{Arc, Mutex};
 use std::{cell::RefCell, collections::HashSet, rc::Rc};
 
@@ -156,18 +160,6 @@ fn start_main_window(app: &adw::Application, auth: Arc<AuthManager>, access_toke
     );
     win.set_content(Some(&root));
     win.present();
-}
-
-fn load_theme_css() {
-    // Kept for reference; theming now goes through settings::apply_theme,
-    // which layers the token palette over theme.css in one provider.
-    ui::settings::apply_theme(
-        ui::settings::SettingsStore::new()
-            .ok()
-            .map(|s| s.load())
-            .unwrap_or_default()
-            .dark_theme,
-    );
 }
 
 /// Build media engines for a call: real WebRTC or signaling-only fallback.
@@ -885,7 +877,7 @@ fn create_app_layout(
             if !accounts.is_empty() {
                 // Switch to another stored account without opening auth UI
                 let first_acc = accounts[0].id.clone();
-                if let Ok(_) = auth.switch_account(&first_acc).await {
+                if auth.switch_account(&first_acc).await.is_ok() {
                     if let Ok(token) = auth.get_token().await {
                         ctrl.set_token(&token.access_token);
                         ctrl.reload_session();

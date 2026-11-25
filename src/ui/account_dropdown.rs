@@ -1,3 +1,6 @@
+// Nested Rc<RefCell<…>>/callback signatures are pervasive UI plumbing.
+#![allow(clippy::type_complexity)]
+
 use gtk::prelude::*;
 use gtk::{Box as GtkBox, Button, Label, Orientation, Popover, Separator};
 use std::cell::RefCell;
@@ -107,7 +110,7 @@ impl AccountDropdown {
 
                 // Display Label
                 let name_label = Label::builder()
-                    .label(&account.display_label())
+                    .label(account.display_label())
                     .css_classes(vec!["chat-title".to_string()])
                     .xalign(0.0)
                     .hexpand(true)

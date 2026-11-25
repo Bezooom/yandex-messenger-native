@@ -42,7 +42,7 @@ impl VoiceMessage {
     pub fn has_transcription(&self) -> bool {
         self.transcribed_text
             .as_ref()
-            .map_or(false, |t| !t.is_empty())
+            .is_some_and(|t| !t.is_empty())
     }
 
     /// Статус транскрипции для отображения в UI

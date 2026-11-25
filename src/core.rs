@@ -26,6 +26,8 @@ use crate::models::{
 };
 
 #[derive(Debug, Clone)]
+// Event payloads embed the full models; boxing would ripple through every match arm.
+#[allow(clippy::large_enum_variant)]
 pub enum AppEvent {
     ChatsUpdated(Vec<Chat>),
     ChatSelected(String),
@@ -162,7 +164,7 @@ impl AppController {
         // Prefer raw message_id if our id is composite like "seq_mid"
         let fallback = before_message_id
             .split('_')
-            .last()
+            .next_back()
             .unwrap_or(before_message_id)
             .to_string();
         let effective = fallback;
@@ -238,12 +240,12 @@ impl AppController {
             .into_iter()
             .filter(|m| !existing_ids.contains(&m.id))
             .collect();
-        new_ones.sort_by(|a, b| a.created.cmp(&b.created));
+        new_ones.sort_by_key(|a| a.created);
 
         if !new_ones.is_empty() {
             let mut merged = new_ones.clone();
             merged.extend(existing.iter().cloned());
-            merged.sort_by(|a, b| a.created.cmp(&b.created));
+            merged.sort_by_key(|a| a.created);
             // dedup by id
             let mut seen = std::collections::HashSet::new();
             merged.retain(|m| seen.insert(m.id.clone()));
@@ -254,6 +256,8 @@ impl AppController {
             let db = self.db.clone();
             let cid = chat_id.to_string();
             let full2 = full;
+            // Detached write-behind: JoinHandle intentionally dropped.
+            #[allow(clippy::let_underscore_future)]
             let _ = tokio::task::spawn_blocking(move || {
                 if let Err(e) = db.upsert_messages(&cid, &full2) {
                     log::warn!("SQLite upsert older msgs: {}", e);
@@ -1150,7 +1154,7 @@ impl AppController {
             if let Some(msgs) = state.messages_by_chat.get_mut(&cid) {
                 for msg in msgs.iter_mut() {
                     let chat_wide = update.message_id.is_none();
-                    let match_id = update.message_id.as_ref().map_or(false, |mid| {
+                    let match_id = update.message_id.as_ref().is_some_and(|mid| {
                         msg.id == *mid
                             || msg.message_id.as_deref() == Some(mid.as_str())
                             || msg.id.ends_with(&format!("_{}", mid))
@@ -1195,13 +1199,13 @@ impl AppController {
                 m.id == msg.id
                     || (m.message_id.is_some() && m.message_id == msg.message_id)
                     || m.id
-                        .ends_with(&format!("_{}", msg.id.split('_').last().unwrap_or("")))
+                        .ends_with(&format!("_{}", msg.id.split('_').next_back().unwrap_or("")))
             });
             if is_duplicate {
                 return false;
             }
             msgs.push(msg.clone());
-            msgs.sort_by(|a, b| a.created.cmp(&b.created));
+            msgs.sort_by_key(|a| a.created);
             msgs.clone()
         };
 
@@ -1368,7 +1372,7 @@ impl AppController {
         let state = self.state.lock().await;
         let mut msgs = state.saved_messages.clone();
         // Sort by saved_at descending
-        msgs.sort_by(|a, b| b.saved_at.cmp(&a.saved_at));
+        msgs.sort_by_key(|m| std::cmp::Reverse(m.saved_at));
         let total = msgs.len();
         let start = offset.min(total);
         let end = (start + limit).min(total);

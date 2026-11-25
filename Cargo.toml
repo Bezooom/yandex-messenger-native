@@ -6,7 +6,6 @@ description = "Native Yandex Messenger (Telemost) client for Linux desktop"
 authors = ["BeZoom <naumov122@gmail.com>"]
 license = "MIT"
 repository = "https://github.com/Bezooom/yandex-messenger-native"
-homepage = "https://github.com/Bezooom/yandex-messenger-native"
 readme = "README.md"
 keywords = ["yandex-messenger", "yandex", "gtk4", "libadwaita", "messenger"]
 categories = ["gui", "network-programming"]
@@ -39,9 +38,6 @@ serde_urlencoded = "0.7"
 # Protobuf (Goloom signaling port from APK schemas)
 prost = "0.14"
 
-# Pin indexmap to avoid hashbrown 0.17.0 (edition2024)
-indexmap = ">=1, <2.5"
-
 # Auth
 url = "2"
 urlencoding = "2"
@@ -62,10 +58,8 @@ tiny_http = "0.12"
 # GStreamer (voice recording/playback) — опционально
 gstreamer = { version = "0.22", optional = true }
 gstreamer-app = { version = "0.22", optional = true }
-gstreamer-audio = { version = "0.22", optional = true }
 gstreamer-base = { version = "0.22", optional = true }
 gstreamer-video = { version = "0.22", optional = true }
-gstreamer-pbutils = { version = "0.22", optional = true }
 gstreamer-webrtc = { version = "0.22", optional = true, features = ["v1_24"] }
 gstreamer-sdp = { version = "0.22", optional = true }
 
@@ -88,7 +82,7 @@ strip = true
 [features]
 default = ["in_app_webview"]
 in_app_webview = ["dep:webkit6", "dep:soup3"]
-gstreamer = ["dep:gstreamer", "dep:gstreamer-app", "dep:gstreamer-audio", "dep:gstreamer-base", "dep:gstreamer-video", "dep:gstreamer-pbutils", "dep:gstreamer-webrtc", "dep:gstreamer-sdp"]
+gstreamer = ["dep:gstreamer", "dep:gstreamer-app", "dep:gstreamer-base", "dep:gstreamer-video", "dep:gstreamer-webrtc", "dep:gstreamer-sdp"]
 portal = ["dep:ashpd"]
 
 [package.metadata.deb]

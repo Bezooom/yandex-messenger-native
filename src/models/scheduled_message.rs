@@ -4,8 +4,10 @@ use serde::{Deserialize, Serialize};
 /// Статус запланированного сообщения
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum ScheduledStatus {
     /// Ожидает отправки
+    #[default]
     Pending,
     /// Отправляется
     Sending,
@@ -13,12 +15,6 @@ pub enum ScheduledStatus {
     Sent,
     /// Ошибка отправки
     Failed,
-}
-
-impl Default for ScheduledStatus {
-    fn default() -> Self {
-        ScheduledStatus::Pending
-    }
 }
 
 /// Запланированное сообщение

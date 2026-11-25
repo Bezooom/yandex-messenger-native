@@ -9,7 +9,7 @@
 
 | Component | Status | Path |
 |-----------|--------|------|
-| `TelemostWindow` | Stub (WebView/browser) | `src/ui/telemost.rs` |
+| `TelemostWindow` | Native GTK4 window | `src/ui/telemost_window.rs` |
 | `start_call` / `end_call` / `get_call_status` | REST stub | `src/api/mod.rs` |
 | `subscribe_call_updates` / `send_call_event_ws` | WebSocket stub | `src/api/mod.rs` |
 | `TelemostCall`, `CallStatus`, `CallParticipant` | Models exist | `src/models/mod.rs` / `src/models/telemost.rs` |

@@ -18,7 +18,6 @@ pub mod saved_panel;
 pub mod scheduled_panel;
 pub mod settings;
 pub mod sticker_panel;
-pub mod telemost;
 pub mod telemost_window;
 pub mod thread_view;
 pub mod tray;

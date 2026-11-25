@@ -541,11 +541,7 @@ impl Runner {
             }
             h.signaling_close_code = prev_close_code.map(|c| c as i32);
         }
-        if write
-            .send(self.out_frame(&hello))
-            .await
-            .is_err()
-        {
+        if write.send(self.out_frame(&hello)).await.is_err() {
             return SessionEnd::Transport("hello send failed".into());
         }
 
@@ -678,9 +674,9 @@ impl Runner {
 
     fn out_frame(&self, msg: &GoloomMessage) -> Message {
         if self.params.wire == "json" {
-            Message::Text(goloom::encode_message_json(msg).unwrap_or_default().into())
+            Message::Text(goloom::encode_message_json(msg).unwrap_or_default())
         } else {
-            Message::Binary(goloom::encode_message(msg).into())
+            Message::Binary(goloom::encode_message(msg))
         }
     }
 
@@ -1205,7 +1201,9 @@ mod tests {
             // 2. Server answers ServerHello + ping as text frames.
             write
                 .send(Message::Text(
-                    goloom::encode_message_json(&server_hello_msg()).unwrap().into(),
+                    goloom::encode_message_json(&server_hello_msg())
+                        .unwrap()
+                        .into(),
                 ))
                 .await
                 .ok();

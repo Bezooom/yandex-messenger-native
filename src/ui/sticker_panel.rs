@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+#![allow(clippy::type_complexity)]
 
 use gtk::prelude::*;
 use gtk::{
@@ -265,7 +266,7 @@ impl StickerPanel {
         pack_title.set_hexpand(true);
 
         let pack_count = gtk::Label::builder()
-            .label(&format!("{} стикеров", pack.sticker_count))
+            .label(format!("{} стикеров", pack.sticker_count))
             .build();
         pack_count.set_css_classes(&["sticker-grid-count"]);
         pack_count.set_halign(Align::End);
@@ -321,11 +322,9 @@ impl StickerPanel {
 
         let panel_rc = Rc::new(self.clone());
         btn.connect_clicked(move |_| {
-            panel_rc
-                .on_select
-                .borrow()
-                .as_ref()
-                .map(|cb| cb(sticker_id.clone(), pack_id.clone()));
+            if let Some(cb) = panel_rc.on_select.borrow().as_ref() {
+                cb(sticker_id.clone(), pack_id.clone())
+            }
             btn_rc.add_css_class("hover");
             let btn_clone = btn_rc.clone();
             glib::timeout_add_local(std::time::Duration::from_millis(150), move || {
@@ -405,7 +404,7 @@ impl StickerPanel {
         pack_title_label.set_hexpand(true);
 
         let pack_count = gtk::Label::builder()
-            .label(&format!("{} стикеров", filtered.len()))
+            .label(format!("{} стикеров", filtered.len()))
             .build();
         pack_count.set_css_classes(&["sticker-grid-count"]);
         pack_count.set_halign(Align::End);

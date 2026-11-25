@@ -363,7 +363,7 @@ impl Clone for VoiceRecorder {
 /// Peak amplitude of an S16LE mono chunk, 0.0–1.0.
 fn pcm_peak(bytes: &[u8]) -> f32 {
     let mut peak = 0f32;
-    for chunk in bytes.chunks_exact(2) {
+    for chunk in bytes.as_chunks::<2>().0 {
         let sample = i16::from_le_bytes([chunk[0], chunk[1]]) as f32 / 32768.0;
         peak = peak.max(sample.abs());
     }
@@ -372,7 +372,7 @@ fn pcm_peak(bytes: &[u8]) -> f32 {
 
 fn random_u16() -> u16 {
     use std::cell::Cell;
-    thread_local!(static SEED: Cell<u64> = Cell::new(42));
+    thread_local!(static SEED: Cell<u64> = const { Cell::new(42) });
     SEED.with(|s| {
         let mut val = s.get();
         val = val.wrapping_mul(6364136223846793005).wrapping_add(1);

@@ -105,7 +105,7 @@ impl FolderSidebar {
 
         if unread > 0 {
             let badge = Label::builder()
-                .label(&unread.to_string())
+                .label(unread.to_string())
                 .css_classes(vec!["folder-badge".to_string()])
                 .build();
             // Optional overlay would be better, but appended below for now

@@ -16,19 +16,14 @@ pub struct SavedMessage {
 }
 
 /// Filter type for saved messages list
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum SavedFilter {
+    #[default]
     All,
     Text,
     Images,
     Links,
     Files,
-}
-
-impl Default for SavedFilter {
-    fn default() -> Self {
-        SavedFilter::All
-    }
 }
 
 impl SavedFilter {

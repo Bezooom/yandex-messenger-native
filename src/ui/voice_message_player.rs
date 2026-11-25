@@ -155,7 +155,7 @@ impl VoiceMessagePlayer {
         // Time label
         let total_time = format_time(voice.duration);
         let time_label = Label::builder()
-            .label(&format!("00:00 / {}", total_time))
+            .label(format!("00:00 / {}", total_time))
             .css_classes(vec!["time-label"])
             .xalign(0.0)
             .hexpand(false)
@@ -512,7 +512,7 @@ impl VoiceMessagePlayer {
     ) {
         // The fetch button only lives while there is nothing to show.
         let has_content =
-            is_transcribing || text.as_ref().map_or(false, |t| !t.is_empty()) || error.is_some();
+            is_transcribing || text.as_ref().is_some_and(|t| !t.is_empty()) || error.is_some();
         if has_content {
             self.transcribe_btn.set_visible(false);
             self.transcribe_offered.set(false);

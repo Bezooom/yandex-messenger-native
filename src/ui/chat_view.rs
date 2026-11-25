@@ -1,4 +1,7 @@
 #![allow(dead_code)]
+// GTK panels are main-thread-only (!Send/!Sync); Arc is the handle-share idiom.
+// Nested Rc<RefCell<…>> callback types are pervasive UI plumbing.
+#![allow(clippy::arc_with_non_send_sync, clippy::type_complexity)]
 
 use gtk::prelude::*;
 use gtk::{
@@ -300,11 +303,11 @@ impl ChatView {
             bubble.add_css_class("skeleton-bubble");
             if i % 2 == 0 {
                 bubble.set_halign(Align::Start);
-                bubble.set_size_request(180 + (i * 20) as i32, 48);
+                bubble.set_size_request(180 + (i * 20), 48);
                 row.set_margin_end(80);
             } else {
                 bubble.set_halign(Align::End);
-                bubble.set_size_request(140 + (i * 15) as i32, 40);
+                bubble.set_size_request(140 + (i * 15), 40);
                 row.set_margin_start(80);
             }
             row.append(&bubble);
@@ -676,10 +679,8 @@ impl ChatView {
         this
     }
 
-    /// Инициализирует poll creator popover (вызывать после создания ChatView)
-    /// Этот метод должен вызываться когда ChatView находится внутри Arc, например:
-    /// `Arc::new(ChatView::new()).init_poll_creator()`
-
+    // Init poll creator popover after ChatView creation: the method expects
+    // ChatView inside an Arc, e.g. `Arc::new(ChatView::new()).init_poll_creator()`.
     pub fn init_callbacks(self: &Arc<Self>) {
         let cv_send = self.clone();
         self.send_btn.connect_clicked(move |_| {
@@ -1398,7 +1399,10 @@ impl ChatView {
                         // Resize image to max 1920x1080 to compress
                         let resized = img.resize(1920, 1080, image::imageops::FilterType::Lanczos3);
                         let mut cursor = std::io::Cursor::new(Vec::new());
-                        if let Ok(_) = resized.write_to(&mut cursor, image::ImageFormat::Jpeg) {
+                        if resized
+                            .write_to(&mut cursor, image::ImageFormat::Jpeg)
+                            .is_ok()
+                        {
                             cursor.into_inner()
                         } else {
                             std::fs::read(&path).unwrap_or_default()
@@ -1517,7 +1521,7 @@ impl ChatView {
                     gtk::DialogFlags::MODAL,
                     gtk::MessageType::Info,
                     gtk::ButtonsType::Ok,
-                    &format!(
+                    format!(
                         "Название: {}\nID: {}\nТип: {:?}",
                         chat.display_name(),
                         chat.id,
@@ -2012,7 +2016,7 @@ impl ChatView {
                     if let Some(parent_box) = parent.downcast_ref::<gtk::Box>() {
                         parent_box.reorder_child_after(&bot_container, None::<&gtk::Widget>);
                     } else {
-                        let _ = bot_container.set_parent(&parent);
+                        bot_container.set_parent(&parent);
                     }
                     bot_container.set_visible(true);
                 }
@@ -2024,7 +2028,7 @@ impl ChatView {
     pub fn set_bot_info(&self, bot_info: crate::models::BotInfo) {
         *self.bot_info.lock().unwrap() = Some(bot_info);
         if let Some(panel) = self.bot_panel.lock().unwrap().as_ref() {
-            panel.update(&self.bot_info.lock().unwrap().as_ref().unwrap());
+            panel.update(self.bot_info.lock().unwrap().as_ref().unwrap());
         }
     }
 
@@ -2127,7 +2131,7 @@ impl ChatView {
             // or when we got a full page (page size = 100).
             *self.has_more_history.lock().unwrap() = next_cursor.is_some() || filtered.len() >= 100;
             filtered.append(&mut *messages);
-            filtered.sort_by(|a, b| a.created.cmp(&b.created));
+            filtered.sort_by_key(|a| a.created);
             let mut seen = std::collections::HashSet::new();
             filtered.retain(|m| seen.insert(m.id.clone()));
             *messages = filtered;
@@ -2186,7 +2190,7 @@ impl ChatView {
         info.append(&name_label);
         if let Some(sz) = media.size {
             let size_label = Label::builder()
-                .label(&format_file_size(sz))
+                .label(format_file_size(sz))
                 .xalign(0.0)
                 .css_classes(vec!["dim-label".to_string()])
                 .build();
@@ -2727,11 +2731,11 @@ impl ChatView {
         let now = chrono::Utc::now();
         for m in &mut sorted_messages {
             let y: i32 = m.created.format("%Y").to_string().parse().unwrap_or(0);
-            if y < 2000 || y > 2100 {
+            if !(2000..=2100).contains(&y) {
                 m.created = now;
             }
         }
-        sorted_messages.sort_by(|a, b| a.created.cmp(&b.created));
+        sorted_messages.sort_by_key(|a| a.created);
 
         let start_time = std::time::Instant::now();
         let new_objects: Vec<glib::Object> = sorted_messages
@@ -3231,8 +3235,7 @@ impl ChatView {
             let image_media = msg
                 .media
                 .iter()
-                .filter(|m| m.type_ == crate::models::MediaType::Image)
-                .next();
+                .find(|m| m.type_ == crate::models::MediaType::Image);
 
             if let Some(media) = image_media {
                 let url = &media.url;
@@ -3575,7 +3578,7 @@ impl ChatView {
         if is_sent {
             let ticks = Label::builder()
                 .use_markup(true)
-                .label(&delivery_ticks_markup(msg.sent, msg.delivered, msg.read))
+                .label(delivery_ticks_markup(msg.sent, msg.delivered, msg.read))
                 .css_classes(vec![
                     "message-ticks".to_string(),
                     if msg.read {
@@ -4528,15 +4531,15 @@ fn is_emoji_only(text: &str) -> bool {
     while let Some(c) = chars.next() {
         // Пропускаем вспомогательные символы
         if c == '\u{200D}'
-            || (c >= '\u{FE00}' && c <= '\u{FE0F}')
-            || (c >= '\u{1F3FB}' && c <= '\u{1F3FF}')
+            || ('\u{FE00}'..='\u{FE0F}').contains(&c)
+            || ('\u{1F3FB}'..='\u{1F3FF}').contains(&c)
         {
             continue;
         }
         // Если это региональный индикатор (часть флага), то пара считается за один
-        if c >= '\u{1F1E6}' && c <= '\u{1F1FF}' {
+        if ('\u{1F1E6}'..='\u{1F1FF}').contains(&c) {
             if let Some(&next_c) = chars.peek() {
-                if next_c >= '\u{1F1E6}' && next_c <= '\u{1F1FF}' {
+                if ('\u{1F1E6}'..='\u{1F1FF}').contains(&next_c) {
                     chars.next(); // поглощаем второй символ флага
                 }
             }
@@ -4546,7 +4549,7 @@ fn is_emoji_only(text: &str) -> bool {
         }
     }
 
-    count >= 1 && count <= 3
+    (1..=3).contains(&count)
 }
 
 fn format_date_separator(dt: &chrono::DateTime<chrono::Utc>) -> String {
@@ -4756,4 +4759,3 @@ fn uri_to_local_path(uri: &str) -> Option<std::path::PathBuf> {
     }
     None
 }
-

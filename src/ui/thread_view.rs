@@ -221,7 +221,7 @@ impl ThreadView {
         // Thread message bubble
         let bubble = GtkBox::new(Orientation::Vertical, 2);
         let bg_class = if is_own { "accent" } else { "bubble-received" };
-        bubble.add_css_class(&bg_class);
+        bubble.add_css_class(bg_class);
         bubble.set_margin_start(4);
         bubble.set_margin_end(4);
         bubble.set_margin_top(2);

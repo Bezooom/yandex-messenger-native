@@ -1,4 +1,7 @@
 #![allow(dead_code)]
+// GTK panels are main-thread-only (!Send/!Sync); Arc is the handle-share idiom.
+// Nested Rc<RefCell<…>> callback types are pervasive UI plumbing.
+#![allow(clippy::arc_with_non_send_sync, clippy::type_complexity)]
 
 use gtk::glib;
 use gtk::prelude::ListModelExt;
@@ -994,7 +997,7 @@ impl ChatListPanel {
                 next = w.next_sibling();
             }
 
-            let avatar_widget = children.get(0);
+            let avatar_widget = children.first();
             let content_widget = children.get(1);
 
             if let (Some(av), Some(chat_row)) = (avatar_widget, item.as_ref()) {
@@ -1381,13 +1384,13 @@ impl ChatListPanel {
                     .as_ref()
                     .map(|m| m.created)
                     .or(a.updated)
-                    .unwrap_or_else(|| chrono::DateTime::<chrono::Utc>::MIN_UTC);
+                    .unwrap_or(chrono::DateTime::<chrono::Utc>::MIN_UTC);
                 let b_time = b
                     .last_message
                     .as_ref()
                     .map(|m| m.created)
                     .or(b.updated)
-                    .unwrap_or_else(|| chrono::DateTime::<chrono::Utc>::MIN_UTC);
+                    .unwrap_or(chrono::DateTime::<chrono::Utc>::MIN_UTC);
                 b_time.cmp(&a_time)
             });
         }
@@ -1450,14 +1453,14 @@ impl ChatListPanel {
                 .map(|m| m.created)
                 .or(a.updated)
                 .or(a.created)
-                .unwrap_or_else(|| chrono::DateTime::<chrono::Utc>::MIN_UTC);
+                .unwrap_or(chrono::DateTime::<chrono::Utc>::MIN_UTC);
             let b_time = b
                 .last_message
                 .as_ref()
                 .map(|m| m.created)
                 .or(b.updated)
                 .or(b.created)
-                .unwrap_or_else(|| chrono::DateTime::<chrono::Utc>::MIN_UTC);
+                .unwrap_or(chrono::DateTime::<chrono::Utc>::MIN_UTC);
             b_time.cmp(&a_time)
         });
 
@@ -1490,13 +1493,13 @@ impl ChatListPanel {
                 .as_ref()
                 .map(|m| m.created)
                 .or(a.updated)
-                .unwrap_or_else(|| chrono::DateTime::<chrono::Utc>::MIN_UTC);
+                .unwrap_or(chrono::DateTime::<chrono::Utc>::MIN_UTC);
             let b_time = b
                 .last_message
                 .as_ref()
                 .map(|m| m.created)
                 .or(b.updated)
-                .unwrap_or_else(|| chrono::DateTime::<chrono::Utc>::MIN_UTC);
+                .unwrap_or(chrono::DateTime::<chrono::Utc>::MIN_UTC);
             b_time.cmp(&a_time)
         });
         drop(chats);
@@ -1525,14 +1528,14 @@ impl ChatListPanel {
                 .map(|m| m.created)
                 .or(a.updated)
                 .or(a.created)
-                .unwrap_or_else(|| chrono::DateTime::<chrono::Utc>::MIN_UTC);
+                .unwrap_or(chrono::DateTime::<chrono::Utc>::MIN_UTC);
             let b_time = b
                 .last_message
                 .as_ref()
                 .map(|m| m.created)
                 .or(b.updated)
                 .or(b.created)
-                .unwrap_or_else(|| chrono::DateTime::<chrono::Utc>::MIN_UTC);
+                .unwrap_or(chrono::DateTime::<chrono::Utc>::MIN_UTC);
             b_time.cmp(&a_time)
         });
 

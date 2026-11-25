@@ -15,6 +15,9 @@
 //! intentionally omitted — protobuf decoders skip unknown fields, so this
 //! stays wire-compatible. Anything omitted is marked `// FOLLOW-UP`.
 
+// Wire-format mirror types: Goloom's own protobuf variant names/sizes win over style lints.
+#![allow(clippy::enum_variant_names, clippy::large_enum_variant)]
+
 // ── capabilities.proto ──────────────────────────────────────────────
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
@@ -676,10 +679,6 @@ pub enum PublisherTrackTransport {
     DcLabel(String),
 }
 
-
-
-
-
 #[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct SubscriberTrackDescription {
     #[prost(string, tag = "1")]
@@ -816,10 +815,6 @@ pub enum HelloAuth {
     #[prost(string, tag = "7")]
     SessionSecret(String),
 }
-
-
-
-
 
 #[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct RtcIceServer {
@@ -1026,10 +1021,6 @@ pub enum SlotsConfigSlotKind {
     ParticipantScreenSharingByMid(SlotParticipantVideoByMid),
 }
 
-
-
-
-
 #[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct SlotParticipant {
     #[prost(string, tag = "1")]
@@ -1057,10 +1048,6 @@ pub enum SlotsConfigView {
     #[prost(message, tag = "8")]
     PinConfig(PinLayoutConfig),
 }
-
-
-
-
 
 #[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct VadActivity {
@@ -1349,7 +1336,6 @@ pub fn decode_message(bytes: &[u8]) -> Result<GoloomMessage, ::prost::DecodeErro
 // session (server error frames name unknown types); payload field names come
 // from the APK proto (already camelCase in JSON).
 
-
 // Manual envelope serde for the desktop wire. prost-derive gives Serialize/
 // Deserialize to every payload struct and to the oneof enums, but NOT to the
 // top-level struct — and its default shape is not Goloom's frame anyway.
@@ -1425,15 +1411,6 @@ fn variant_tag(t: &str) -> Option<&'static str> {
     })
 }
 
-
-
-
-
-
-
-
-
-
 pub fn encode_message_json(msg: &GoloomMessage) -> Result<String, serde_json::Error> {
     let mut obj = serde_json::Map::new();
     obj.insert("uid".into(), serde_json::json!(msg.uid));
@@ -1459,11 +1436,18 @@ pub fn encode_message_json(msg: &GoloomMessage) -> Result<String, serde_json::Er
 
 pub fn decode_message_json(text: &str) -> Result<GoloomMessage, serde_json::Error> {
     let v: serde_json::Value = serde_json::from_str(text)?;
-    let uid = v.get("uid").and_then(|x| x.as_str()).unwrap_or_default().to_string();
+    let uid = v
+        .get("uid")
+        .and_then(|x| x.as_str())
+        .unwrap_or_default()
+        .to_string();
     let Some(t) = v.get("type").and_then(|x| x.as_str()) else {
         return Ok(GoloomMessage { uid, kind: None });
     };
-    let payload = v.get("payload").cloned().unwrap_or_else(|| serde_json::json!({}));
+    let payload = v
+        .get("payload")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!({}));
 
     let variant = variant_tag(t).ok_or_else(|| {
         serde_json::Error::io(std::io::Error::new(
@@ -1474,7 +1458,10 @@ pub fn decode_message_json(text: &str) -> Result<GoloomMessage, serde_json::Erro
     let mut tagged = serde_json::json!({ variant: payload });
     decode_defaults(t, &mut tagged);
     let kind: MessageKind = serde_json::from_value(tagged)?;
-    Ok(GoloomMessage { uid, kind: Some(kind) })
+    Ok(GoloomMessage {
+        uid,
+        kind: Some(kind),
+    })
 }
 
 /// Bridge APK roster → our chat model for the participants panel.
@@ -1740,8 +1727,4 @@ mod tests {
         assert!(text.contains("\"type\":\"subscriberSdpAnswerMessage\""));
         assert!(text.contains("\"sdp\":\"v=0"));
     }
-
-
-
-
 }
