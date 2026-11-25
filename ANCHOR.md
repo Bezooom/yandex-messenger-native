@@ -36,13 +36,26 @@ Ship a usable unofficial Linux desktop client for Yandex Messenger (Rust + GTK4 
 ### Still stubs / open
 
 - Voice, video and Telemost media need the `gstreamer` feature; the default and CI binary do not compile it.
+  The feature itself compiles green against the local dev prefix (see `YM-DEV` note below); runtime needs
+  `gstreamer1.0-nice`, which is installed on the dev machine.
+- Goloom signaling has two wire codecs (protobuf = APK, JSON envelope = desktop client, see
+  `TELEMOST_MAC_REVERSE.md`); `config::GOLOOM_WIRE` picks one. Which one the live server accepts for our
+  client identity is unverified; camelCase payload keys and exact `type` tags need a live-session smoke.
 - Telemost meetings HTTP paths are best-effort against a live server.
 - Chat-action RPC names are best-effort.
 - Full group/channel parity, a11y, i18n beyond RU previews.
 
+## YM-DEV: dev prefix without sudo
+
+GTK/WebKit/GStreamer headers on this box come from `-dev` debs unpacked to `/tmp/gtk-prefix`
+(`apt-get download` + `dpkg -x`), resolve missing `.pc` deps in a loop; `.so` link stubs are symlinked
+from system runtime libs into `/tmp/ym-liblinks`. Build:
+`PKG_CONFIG_PATH=/tmp/gtk-prefix/usr/lib/x86_64-linux-gnu/pkgconfig RUSTFLAGS="-L /tmp/ym-liblinks" cargo check --features gstreamer`.
+The prefix lives in /tmp — rebuild it after a reboot.
+
 ## Verification floor
 
-- `cargo check --bin yandex-messenger` and `cargo test --bin yandex-messenger` pass (68 tests, 1 ignored).
+- `cargo check --bin yandex-messenger` and `cargo test --bin yandex-messenger` pass (71 tests, 1 ignored).
 - This machine has GTK4 runtime but no `gtk4.pc`/headers; the check ran against pkg-config files extracted from Ubuntu `.deb` packages into `/tmp/gtk-prefix` with `-L /tmp/ym-liblinks`. A normal dev box should `apt install libgtk-4-dev libadwaita-1-dev libwebkitgtk-6.0-dev` instead.
 
 ## Next Steps
