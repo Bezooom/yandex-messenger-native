@@ -82,7 +82,13 @@ Endpoints: `https://api.messenger.yandex.ru/api/` (+ alpha/test/deploy), `wss://
 
 ## Не проверено / дальше
 
-- Точный wire-format (JSON vs protobuf) — бинарь не доказывает, нужна живая Goloom-сессия.
-- Ghidra 12.2 установлена (`~/storage/Tools/ghidra_12.2_PUBLIC`) — можно декомпилировать конкретные
-  функции (`room_connection`, `signaling`) для полей сообщений.
+- Точный wire-format: **доказано посимвольно** — в бинаре целые литералы `serverHelloMessage`,
+  `ackMessage`, `clientErrorMessage`, символы `HelloMessage::toJSON`, `SdkCodecsInfoMessage::toJSON`,
+  `SubscriberSdpAnswerMessage::toJSON`. Полные литералы остальных `<type>` не найдены (сборные строки) —
+  теги в `goloom.rs::type_tag` выведены из имён классов, подтверждать живой сессией.
+- Реализовано: `encode_message_json`/`decode_message_json` (payload без variant-обёртки, как в toJSON-кадрах),
+  `GoloomParams.wire` (env `YM_GOLOOM_WIRE=json`), loopback-тест всего handshake по текстовым кадрам.
+  `decode_defaults` закрывает строгость prost-serde к отсутствующим скалярам.
+- Ghidra 12.2 установлена (`~/storage/Tools/ghidra_12.2_PUBLIC`) — идёт headless-декомпиляция строк-тегов
+  (`~/storage/Tools/ghidra-out/`), чтобы сверить `type_tag` без живой сессии.
 - Не вскрывал win-версию (тот же код, но легче декомпилируется PE) — если пригодится.
