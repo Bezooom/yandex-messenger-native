@@ -105,6 +105,8 @@
 | Список чатов | Beta | Плотный список в стиле nheko, реальные счётчики участников и pin/mute из bootstrap, фильтры Все / Личные / Новые |
 | Текстовые сообщения | Beta | Отправка + reply/edit + outbox + черновики + пагинация + **delivery/read ticks** |
 | Файлы и вложения | Beta | Upload→send; **Скачать / Открыть**; **DnD** файлов; **Ctrl+V** картинок |
+| Стикеры и эмодзи | Beta | Док «Эмодзи / Стикеры» (`Ctrl+Shift+E`), каталог паков с CDN; **отправка стикера** идёт как `Image` с CDN-id и показывается стикером в официальных клиентах (проверено живым зондом); анимированные не поддерживаются |
+| Просмотр медиа | Beta | Картинка на размер окна, зум, галерея со свайпами, скачивание в Downloads |
 | Голосовые сообщения | Нет в default-сборке | Нужны `--features gstreamer` и `YM_ENABLE_VOICE`; default и CI-бинарь её не компилируют |
 | Воспроизведение видео | Нет в default-сборке | Инлайн-плеер требует фичу `gstreamer`; в default и CI-бинаре её нет |
 | Звонки (Телемост) | Частично | Сигналинг Goloom + `webrtcbin` в дереве; медиа в звонке требует `gstreamer`, `gstreamer1.0-nice` и `YM_ENABLE_TELEMOST_UI`; в default-бинаре WebRTC нет |
@@ -132,6 +134,8 @@
 - **Голосовые**: запись/плеер за `YM_ENABLE_VOICE` (нужна сборка с фичей `gstreamer`; транскрипция — только отображение, без запроса)
 - **Телемост**: живой звонок за `YM_ENABLE_TELEMOST_UI` (нужна сборка с фичей `gstreamer` + пакет `gstreamer1.0-nice`); REST встреч и часть SDP-политик — best-effort, требуют live-проверки
 - **Видеоплеер**: инлайн в чате (play/pause/скраб); нужен `gstreamer`
+- **Стикеры**: анимированные (`.tgs`/`.json`) не рендерятся; recent/favorites стикеров не сохраняются
+- **Глобальный поиск**: модуль `global_search` не подключён к окну, работает только фильтр списка чатов в шапке сайдбара
 - **Chat actions API**: best-effort reverse RPC — имена методов могут отличаться на стороне сервера
 - **WS status events**: зависят от payload сервера; history flags парсятся best-effort
 
@@ -161,7 +165,7 @@
 * **Черновики и outbox**: текст черновика живёт при смене чата; неотправленные сообщения повторяются после reconnect.
 * **Просмотр медиа**: Галерея картинок с поддержкой свайпов и скачивания в папку `Downloads`.
 * **Голосовые сообщения**: Запись аудио и отрисовка waveform с использованием опционального пайплайна GStreamer.
-* **Глобальный поиск**: Быстрый вызов по `Ctrl+K` с фильтрацией результатов.
+* **Фильтр списка чатов**: строка поиска в шапке сайдбара мгновенно фильтрует чаты.
 * **Расширенные сущности**: Поддержка ботов (инлайн-кнопки, клавиатуры), отложенных сообщений (Message Scheduling), раздела «Избранное» (Saved Messages), групповых чатов и каналов.
 
 ---
@@ -312,9 +316,9 @@ Earlier (2.175.3) focused on correctness rather than feature count:
 - image viewer uses `gtk::Picture` with `ContentFit::Contain`, so photos fill the window and zoom really scales them;
 - the full bootstrap dump is opt-in via `YM_DUMP_BOOTSTRAP`.
 
-**Verified on this tree:** `cargo check` clean, `cargo test --bin yandex-messenger` → 68 passed / 1 ignored, release binary 16 MB with every `NEEDED` library resolved. GUI and live network flows are manual; the dock and viewer are covered by widget and measure tests, not by a synthetic click in a live window.
+**Verified on this tree:** `cargo check` clean, `cargo test --bin yandex-messenger` → 74 passed / 3 ignored, release binary 16 MB with every `NEEDED` library resolved. Sticker send/receive was verified end-to-end against the live gateway and the official mobile client; other GUI and live network flows are manual, the dock and viewer are covered by widget and measure tests, not by a synthetic click in a live window.
 
-**Limitations:** voice, video and call media require `--features gstreamer` and are absent from the default and CI binary; Telemost meeting HTTP paths remain best-effort; there is no Telegram-style left folder rail yet.
+**Limitations:** voice, video and call media require `--features gstreamer` and are absent from the default and CI binary; Telemost meeting HTTP paths remain best-effort; animated stickers (`.tgs`/`.json`) do not render and sticker recents are not persisted; global search is not wired to the window yet (only the sidebar chat filter works); there is no Telegram-style left folder rail yet.
 
 **License:** MIT. Not affiliated with Yandex; brand and media assets are not distributed.
 
