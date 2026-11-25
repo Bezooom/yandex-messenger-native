@@ -42,7 +42,7 @@ pub struct StickerPanel {
     /// Index of the currently selected pack.
     pub selected_pack: RefCell<usize>,
     /// Callback fired when a user selects a sticker.
-    pub on_select: RefCell<Option<Rc<dyn Fn(String, String)>>>,
+    pub on_select: RefCell<Option<Rc<dyn Fn(String, String, String)>>>,
     /// Search entry widget.
     pub search_entry: Entry,
     /// Scrollable list of pack items (left side).
@@ -318,12 +318,13 @@ impl StickerPanel {
 
         let sticker_id = sticker.sticker_id.clone();
         let pack_id = sticker.pack_id.clone();
+        let file_url = sticker.file_url.clone();
         let btn_rc = Rc::new(btn.clone());
 
         let panel_rc = Rc::new(self.clone());
         btn.connect_clicked(move |_| {
             if let Some(cb) = panel_rc.on_select.borrow().as_ref() {
-                cb(sticker_id.clone(), pack_id.clone())
+                cb(sticker_id.clone(), pack_id.clone(), file_url.clone())
             }
             btn_rc.add_css_class("hover");
             let btn_clone = btn_rc.clone();
@@ -427,7 +428,7 @@ impl StickerPanel {
     }
 
     /// Set the callback for sticker selection events.
-    pub fn on_select(&self, callback: impl Fn(String, String) + 'static) {
+    pub fn on_select(&self, callback: impl Fn(String, String, String) + 'static) {
         *self.on_select.borrow_mut() = Some(Rc::new(callback));
     }
 

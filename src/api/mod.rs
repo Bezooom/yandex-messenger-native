@@ -1083,19 +1083,9 @@ impl WebSocketClient {
         bytes
     }
 
-    pub async fn send_text_message(
-        &self,
-        chat_id: &str,
-        text: &str,
-        reply_to: Option<&str>,
-    ) -> Result<models::Message, String> {
-        let payload_id = uuid::Uuid::new_v4().simple().to_string();
-
-        let mut counter = self.seq_counter.lock().await;
-        let seq = *counter;
-        *counter += 1;
-        drop(counter);
-
+    /// Base64 CustomPayload identifying the WEB client (shared by all
+    /// ClientMessage sends; server rejects messages without it).
+    fn service_custom_payload_b64() -> Result<String, String> {
         let yuid = Self::get_yuid_from_session().ok_or_else(|| {
             "Нет session yuid (session.json). Запустите scripts/login_browser.py или перелогиньтесь."
                 .to_string()
@@ -1117,36 +1107,27 @@ impl WebSocketClient {
                 "version": "3.18.0"
             }
         });
-
         let custom_payload_str = serde_json::to_string(&custom_payload_json).unwrap_or_default();
         use base64::Engine;
-        let custom_payload_b64 =
-            base64::engine::general_purpose::STANDARD.encode(custom_payload_str);
+        Ok(base64::engine::general_purpose::STANDARD.encode(custom_payload_str))
+    }
 
-        let mut plain = serde_json::json!({
-            "ChatId": chat_id,
-            "Text": {
-                "MessageText": text
-            },
-            "PayloadId": payload_id,
-            "CustomPayload": custom_payload_b64
-        });
-
-        if let Some(rtid) = reply_to {
-            plain["ReplyTo"] = serde_json::json!(rtid);
-        }
+    /// Frame a ClientMessage (0x01 + msgpack header + bin header + JSON) and
+    /// push it over the live WS. Returns the assigned seq.
+    async fn send_client_plain(&self, plain: serde_json::Value) -> Result<u64, String> {
+        let mut counter = self.seq_counter.lock().await;
+        let seq = *counter;
+        *counter += 1;
+        drop(counter);
 
         let payload = serde_json::json!({
-            "ClientMessage": {
-                "Plain": plain
-            }
+            "ClientMessage": { "Plain": plain }
         });
 
         let state = self.state.lock().await;
         if *state != WSState::Connected {
             return Err("Not connected".to_string());
         }
-        drop(state);
 
         let msgpack_header = Self::serialize_push_header(seq);
 
@@ -1166,7 +1147,32 @@ impl WebSocketClient {
         let tx_guard = self.tx.lock().await;
         if let Some(tx) = tx_guard.as_ref() {
             let _ = tx.send(Message::Binary(packet));
+        } else {
+            return Err("WS sender gone".to_string());
         }
+        Ok(seq)
+    }
+
+    pub async fn send_text_message(
+        &self,
+        chat_id: &str,
+        text: &str,
+        reply_to: Option<&str>,
+    ) -> Result<models::Message, String> {
+        let payload_id = uuid::Uuid::new_v4().simple().to_string();
+        let custom_payload_b64 = Self::service_custom_payload_b64()?;
+        let mut plain = serde_json::json!({
+            "ChatId": chat_id,
+            "Text": {
+                "MessageText": text
+            },
+            "PayloadId": payload_id,
+            "CustomPayload": custom_payload_b64
+        });
+        if let Some(rtid) = reply_to {
+            plain["ReplyTo"] = serde_json::json!(rtid);
+        }
+        self.send_client_plain(plain).await?;
 
         // Optimistic local message for UI
         let reply_to = reply_to.map(|rtid| models::MessageId {
@@ -1220,35 +1226,7 @@ impl WebSocketClient {
         height: Option<u32>,
         payload_id: &str,
     ) -> Result<models::Message, String> {
-        let mut counter = self.seq_counter.lock().await;
-        let seq = *counter;
-        *counter += 1;
-        drop(counter);
-
-        let yuid = Self::get_yuid_from_session().ok_or_else(|| {
-            "Нет session yuid (session.json). Перелогиньтесь, чтобы отправлять файлы.".to_string()
-        })?;
-        let custom_payload_json = serde_json::json!({
-            "service": {
-                "serviceName": "WEB",
-                "region": "Санкт-Петербург",
-                "yuid": yuid,
-                "isHistory": true,
-                "ui": "desktop",
-                "ua": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "id": format!("{}-{}-{}-{}",
-                    &uuid::Uuid::new_v4().simple().to_string()[..4],
-                    &uuid::Uuid::new_v4().simple().to_string()[..4],
-                    &uuid::Uuid::new_v4().simple().to_string()[..4],
-                    &uuid::Uuid::new_v4().simple().to_string()[..4]
-                ),
-                "version": "3.18.0"
-            }
-        });
-        let custom_payload_str = serde_json::to_string(&custom_payload_json).unwrap_or_default();
-        use base64::Engine;
-        let custom_payload_b64 =
-            base64::engine::general_purpose::STANDARD.encode(custom_payload_str);
+        let custom_payload_b64 = Self::service_custom_payload_b64()?;
 
         // FileSource.MDS = 0 (web client default for media_upload)
         let file_info = serde_json::json!({
@@ -1282,36 +1260,7 @@ impl WebSocketClient {
             });
         }
 
-        let payload = serde_json::json!({
-            "ClientMessage": {
-                "Plain": plain
-            }
-        });
-
-        let state = self.state.lock().await;
-        if *state != WSState::Connected {
-            return Err("Not connected".to_string());
-        }
-        drop(state);
-
-        let msgpack_header = Self::serialize_push_header(seq);
-        let mut bin_header = Vec::new();
-        bin_header.push(0x05);
-        bin_header.extend_from_slice(&0u64.to_be_bytes());
-        bin_header.extend_from_slice(&[0, 0, 0]);
-        let json_bytes = serde_json::to_vec(&payload).unwrap_or_default();
-        let mut packet = Vec::new();
-        packet.push(0x01);
-        packet.extend_from_slice(&msgpack_header);
-        packet.extend_from_slice(&bin_header);
-        packet.extend_from_slice(&json_bytes);
-
-        let tx_guard = self.tx.lock().await;
-        if let Some(tx) = tx_guard.as_ref() {
-            let _ = tx.send(Message::Binary(packet));
-        } else {
-            return Err("WebSocket send channel missing".to_string());
-        }
+        self.send_client_plain(plain).await?;
 
         let media_type = if is_image {
             models::MediaType::Image
@@ -1375,6 +1324,120 @@ impl WebSocketClient {
             updated: None,
             poll: None,
         })
+    }
+
+    /// Send a sticker already hosted on the messenger sticker CDN
+    /// (`sticker_id` = FileInfo.Id2, e.g. "stickers/images/1401/20964.png").
+    ///
+    /// Live-verified 2026-11-25: a ClientMessage with a top-level `Sticker`
+    /// field is dropped by the server (never stored), while `Image` carrying
+    /// the sticker CDN id is stored and renders in official clients. So the
+    /// wire format is Image; the local bubble keeps Sticker type for our
+    /// compact rendering.
+    pub async fn send_sticker_message(
+        &self,
+        chat_id: &str,
+        sticker_id: &str,
+        name: &str,
+        file_url: &str,
+    ) -> Result<models::Message, String> {
+        let custom_payload_b64 = Self::service_custom_payload_b64()?;
+        let payload_id = uuid::Uuid::new_v4().simple().to_string();
+        let animated = sticker_id.ends_with(".json") || sticker_id.ends_with(".tgs");
+        let plain = serde_json::json!({
+            "ChatId": chat_id,
+            "PayloadId": payload_id,
+            "CustomPayload": custom_payload_b64,
+            "Image": {
+                "Width": 512,
+                "Height": 512,
+                "FileInfo": {
+                    "Id2": sticker_id,
+                    "Name": name,
+                    "Size": 0,
+                    "Source": 0
+                },
+                "Animated": animated
+            }
+        });
+        self.send_client_plain(plain).await?;
+        Ok(self
+            .sticker_message_locally_with_id(chat_id, sticker_id, name, file_url, payload_id)
+            .await)
+    }
+
+    /// Local bubble model for a sticker (CDN url renders without server ack).
+    pub async fn sticker_message_locally(
+        &self,
+        chat_id: &str,
+        sticker_id: &str,
+        name: &str,
+        file_url: &str,
+    ) -> models::Message {
+        self.sticker_message_locally_with_id(
+            chat_id,
+            sticker_id,
+            name,
+            file_url,
+            uuid::Uuid::new_v4().simple().to_string(),
+        )
+        .await
+    }
+
+    async fn sticker_message_locally_with_id(
+        &self,
+        chat_id: &str,
+        sticker_id: &str,
+        name: &str,
+        file_url: &str,
+        payload_id: String,
+    ) -> models::Message {
+        models::Message {
+            id: payload_id.clone(),
+            chat_id: chat_id.to_string(),
+            from_id: self
+                .auth
+                .user_id()
+                .or(self.auth.get_current_account_id().await)
+                .unwrap_or_default(),
+            message_id: Some(payload_id),
+            rmid: None,
+            type_: models::MessageType::Sticker,
+            text: None,
+            entities: vec![],
+            reply_to: None,
+            forward: None,
+            media: vec![models::MediaAttachment {
+                id: sticker_id.to_string(),
+                type_: models::MediaType::Sticker,
+                url: file_url.to_string(),
+                thumbnail_url: None,
+                width: Some(512),
+                height: Some(512),
+                size: None,
+                duration: None,
+                filename: Some(name.to_string()),
+                mime_type: Some(if name.ends_with(".json") || name.ends_with(".tgs") {
+                    "application/json".to_string()
+                } else {
+                    "image/png".to_string()
+                }),
+                waveform: None,
+                transcription: None,
+            }],
+            reactions: vec![],
+            thread_id: None,
+            has_thread: false,
+            pinned: false,
+            edited: false,
+            edited_at: None,
+            sent: true,
+            delivered: true,
+            read: false,
+            created: chrono::Utc::now(),
+            updated: None,
+            poll: None,
+        }
     }
 
     /// Edit own text message (web-client protocol, reverse-engineered).
@@ -4764,51 +4827,6 @@ impl HttpClient {
         log::info!("install_sticker_pack is not supported via public API; pack stays local");
         Ok(())
     }
-
-    /// Получить информацию о стикере (CDN URL only — no metadata endpoint)
-    pub async fn get_sticker(&self, sticker_id: &str) -> Result<crate::models::Sticker, String> {
-        Ok(crate::models::Sticker {
-            sticker_id: sticker_id.to_string(),
-            pack_id: String::new(),
-            file_url: Self::sticker_cdn_url(sticker_id, "large"),
-            thumb_url: Self::sticker_cdn_url(sticker_id, "small"),
-            width: 512,
-            height: 512,
-            emoji: String::new(),
-            file_size: 0,
-            is_animated: sticker_id.ends_with(".json") || sticker_id.ends_with(".tgs"),
-            is_text_sticker: false,
-            text: None,
-        })
-    }
-
-    /// Отправить стикер в чат
-    pub async fn send_sticker(
-        &self,
-        chat_id: &str,
-        sticker_id: &str,
-        caption: Option<&str>,
-    ) -> Result<crate::models::Message, String> {
-        let url = format!("{}api/send_sticker", self.base_url);
-        let mut payload = serde_json::json!({
-            "chatId": chat_id,
-            "stickerId": sticker_id,
-        });
-        if let Some(cap) = caption {
-            payload["caption"] = serde_json::json!(cap);
-        }
-        let body = self.post(&url, payload).await?;
-        let json: serde_json::Value =
-            serde_json::from_str(&body).map_err(|e| format!("Send sticker parse failed: {}", e))?;
-        let data = json
-            .get("data")
-            .and_then(|v| v.as_object())
-            .and_then(|o| o.get("message"))
-            .ok_or("No data in send sticker response")?;
-        let message: crate::models::Message = serde_json::from_value(data.clone())
-            .map_err(|e| format!("Send sticker deserialization failed: {}", e))?;
-        Ok(message)
-    }
 }
 
 #[cfg(test)]
@@ -5195,5 +5213,97 @@ mod tests {
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].media.len(), 1, "media survives round trip");
         assert_eq!(parsed[0].media[0].id, "disk/aa11bb22");
+    }
+
+    /// Read-only: dump the tail of Избранное history to inspect what the
+    /// server actually stored from probe runs (no sends).
+    #[tokio::test]
+    #[ignore = "live read-only dump"]
+    async fn probe_dump_saved_history() {
+        let auth = Arc::new(AuthManager::new().unwrap());
+        let token = auth.get_token().await.unwrap();
+        let http = HttpClient::new(auth.clone()).with_token(&token.access_token);
+        let chats = http.get_chat_list(0, 50).await.expect("chat list");
+        let saved = chats
+            .iter()
+            .find(|c| c.title.as_deref() == Some("Избранное"))
+            .expect("no Избранное chat");
+        let history = http
+            .get_messages_fresh(&saved.id, None, 0, 25)
+            .await
+            .expect("history");
+        for m in history.iter().rev().take(25) {
+            println!(
+                "=== DUMP: mid={:?} type={:?} text={:?} media={:?} ===",
+                m.message_id,
+                m.type_,
+                m.text
+                    .as_deref()
+                    .map(|t| t.chars().take(40).collect::<String>()),
+                m.media
+                    .iter()
+                    .map(|a| (a.type_.clone(), a.id.clone()))
+                    .collect::<Vec<_>>()
+            );
+        }
+    }
+
+    /// Live check of the production sticker path (`send_sticker_message`,
+    /// wire = Image with CDN FileInfo.Id2; server drops `Sticker` on send —
+    /// verified 2026-11-25 via official client rendering).
+    /// Sends one sticker to Избранное; verify visually there or via
+    /// probe_dump_saved_history once the search index catches up.
+    #[tokio::test]
+    #[ignore = "live: sends one sticker to the user's Избранное"]
+    async fn probe_sticker_send_live() {
+        let auth = Arc::new(AuthManager::new().unwrap());
+        let token = auth.get_token().await.unwrap();
+        let http = HttpClient::new(auth.clone()).with_token(&token.access_token);
+        if !http.has_session() {
+            panic!("no session cookies — open the app once to capture them");
+        }
+        let chats = http.get_chat_list(0, 50).await.expect("chat list");
+        let saved = chats
+            .iter()
+            .find(|c| c.title.as_deref() == Some("Избранное"))
+            .expect("no Избранное chat");
+        let catalog = http.get_sticker_catalog(None).await.expect("catalog");
+        let sticker = catalog
+            .packs
+            .iter()
+            .flat_map(|p| p.stickers.iter())
+            .find(|s| !s.sticker_id.is_empty())
+            .expect("no sticker");
+
+        let ws = std::sync::Arc::new(WebSocketClient::new(auth.clone()));
+        let ws_spawn = ws.clone();
+        tokio::spawn(async move {
+            let _ = ws_spawn.connect().await;
+        });
+        for _ in 0..50 {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            if *ws.state.lock().await == WSState::Connected {
+                break;
+            }
+        }
+        assert_eq!(
+            *ws.state.lock().await,
+            WSState::Connected,
+            "ws not connected"
+        );
+
+        let name = sticker
+            .sticker_id
+            .rsplit('/')
+            .next()
+            .unwrap_or("sticker.png");
+        let msg = ws
+            .send_sticker_message(&saved.id, &sticker.sticker_id, name, &sticker.file_url)
+            .await
+            .expect("send sticker");
+        println!(
+            "=== PROBE live: sent sticker {} payload={} ===",
+            sticker.sticker_id, msg.id
+        );
     }
 }

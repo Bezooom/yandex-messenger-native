@@ -949,6 +949,39 @@ impl AppController {
         Ok(sent)
     }
 
+    /// Send a sticker from the CDN catalog as a real Sticker attachment
+    /// (WS ClientMessage). HTTP registry has no send path, so on WS failure
+    /// fall back to an optimistic local message; the sticker URL is public
+    /// CDN, so the local bubble renders regardless.
+    pub async fn send_sticker(
+        &self,
+        chat_id: &str,
+        sticker_id: &str,
+        file_url: &str,
+    ) -> Result<Message, String> {
+        let name = sticker_id.rsplit('/').next().unwrap_or("sticker.png");
+        let msg = match self
+            .ws
+            .send_sticker_message(chat_id, sticker_id, name, file_url)
+            .await
+        {
+            Ok(m) => m,
+            Err(e) => {
+                log::warn!("sticker WS send failed: {}", e);
+                self.ws
+                    .sticker_message_locally(chat_id, sticker_id, name, file_url)
+                    .await
+            }
+        };
+        let mut state = self.state.lock().await;
+        state
+            .messages_by_chat
+            .entry(chat_id.to_string())
+            .or_default()
+            .push(msg.clone());
+        Ok(msg)
+    }
+
     /// Retry all pending outbox messages. Returns (sent_ok, still_pending).
     pub async fn flush_outbox(&self) -> (usize, usize) {
         self.outbox.purge_dead(20);

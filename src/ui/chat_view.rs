@@ -67,6 +67,7 @@ pub struct ChatView {
     auth: Arc<AuthManager>,
     /// (chat_id, text, reply_to_msg_id, edit_msg_id)
     on_send: Rc<Mutex<Option<StdBox<dyn Fn(String, String, Option<String>, Option<String>)>>>>,
+    on_send_sticker: Rc<Mutex<Option<StdBox<dyn Fn(String, String, String, String)>>>>,
     on_attach: Rc<Mutex<Option<StdBox<dyn Fn(String, Vec<u8>, String)>>>>,
     on_call: Rc<Mutex<Option<StdBox<dyn Fn(String)>>>>,
     on_new_chat: Rc<Mutex<Option<StdBox<dyn Fn()>>>>,
@@ -608,6 +609,7 @@ impl ChatView {
             menu_btn,
             auth,
             on_send: Rc::new(Mutex::new(None)),
+            on_send_sticker: Rc::new(Mutex::new(None)),
             on_attach: Rc::new(Mutex::new(None)),
             on_call: Rc::new(Mutex::new(None)),
             on_new_chat,
@@ -1673,20 +1675,14 @@ impl ChatView {
 
         let cv_select = self.clone();
         let panel = self.side_panel.clone();
-        sticker_panel.on_select(move |sticker_id, pack_id| {
+        sticker_panel.on_select(move |sticker_id, pack_id, file_url| {
             let chat_id_opt = {
                 let chat = cv_select.chat.lock().unwrap();
                 chat.as_ref().map(|c| c.id.clone())
             };
             if let Some(chat_id) = &chat_id_opt {
-                if let Some(cb) = cv_select.on_send.lock().unwrap().as_ref() {
-                    let sticker = serde_json::json!({
-                        "sticker_id": sticker_id,
-                        "pack_id": pack_id,
-                    });
-                    if let Ok(json) = serde_json::to_string(&sticker) {
-                        cb(chat_id.clone(), json, None, None);
-                    }
+                if let Some(cb) = cv_select.on_send_sticker.lock().unwrap().as_ref() {
+                    cb(chat_id.clone(), sticker_id, pack_id, file_url);
                 }
             }
             panel.set_visible(false);
@@ -2607,6 +2603,13 @@ impl ChatView {
         *self.on_send.lock().unwrap() = Some(StdBox::new(on_send));
         *self.on_attach.lock().unwrap() = Some(StdBox::new(on_attach));
         *self.on_call.lock().unwrap() = Some(StdBox::new(on_call));
+    }
+
+    pub fn bind_sticker_callback(
+        &self,
+        on_send_sticker: impl Fn(String, String, String, String) + 'static,
+    ) {
+        *self.on_send_sticker.lock().unwrap() = Some(StdBox::new(on_send_sticker));
     }
 
     pub fn bind_schedule_callbacks(

@@ -390,6 +390,8 @@ fn create_app_layout(
     // Clone before move into closure to allow reuse in the file-attach callback
     let ctrl_send_for_file = ctrl_send.clone();
     let cv_for_send_for_file = cv_for_send.clone();
+    let ctrl_send_for_sticker = ctrl_send.clone();
+    let cv_for_send_for_sticker = cv_for_send.clone();
     chat_view.bind_callbacks(
         move |chat_id: String, text: String, reply_to: Option<String>, edit_id: Option<String>| {
             let ctrl = ctrl_send.clone();
@@ -460,7 +462,6 @@ fn create_app_layout(
                 log::warn!("Telemost is disabled");
                 return;
             }
-
             let ctrl = ctrl_call.clone();
             let app_clone = app_clone.clone();
             glib::spawn_future_local(async move {
@@ -487,6 +488,22 @@ fn create_app_layout(
                     join_url,
                 )
                 .await;
+            });
+        },
+    );
+
+    chat_view.bind_sticker_callback(
+        move |chat_id: String, sticker_id: String, _pack_id: String, file_url: String| {
+            let ctrl = ctrl_send_for_sticker.clone();
+            let cv = cv_for_send_for_sticker.clone();
+            glib::spawn_future_local(async move {
+                match ctrl.send_sticker(&chat_id, &sticker_id, &file_url).await {
+                    Ok(msg) => cv.add_message(msg),
+                    Err(e) => {
+                        log::warn!("sticker send failed: {}", e);
+                        cv.show_error(&format!("Стикер не отправлен: {}", e));
+                    }
+                }
             });
         },
     );
