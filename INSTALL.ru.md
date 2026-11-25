@@ -2,7 +2,7 @@
 
 [English version](INSTALL.md)
 
-Текущий релиз: **2.175.3**.
+Текущий релиз: \*\*2.176.0\*\*.
 
 ## Требования
 
@@ -70,7 +70,7 @@ debuild -us -uc
 
 ```bash
 make dist
-sudo apt install -y ./dist/yandex-messenger-native_2.175.3-*_amd64.deb
+sudo apt install -y ./dist/yandex-messenger-native_2.176.0-*_amd64.deb
 ```
 
 ## Окружение

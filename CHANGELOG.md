@@ -5,7 +5,23 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
-Current release: **2.175.3** (2026-11-14).
+Current release: **2.176.0** (2026-11-25).
+
+## 2.176.0 - 2026-11-25
+
+### Added
+* **Stickers send for real.** The panel now sends the sticker as an `Image` payload carrying the sticker's CDN `FileInfo.Id2` (`stickers/images/…`) – no upload, instant, and the official mobile/web clients render it as a sticker image, not as JSON text. Verified end-to-end against the live gateway: the probe matrix showed `Sticker{FileInfo}` in any composition is silently dropped by the server, while `Image{FileInfo{Id2}}` is stored and rendered everywhere.
+* **Media-bearing WS pushes are parsed.** Photos and files pushed over the socket previously produced empty messages (the parser required `Text`); incoming photos from partners now appear live.
+* **Goloom wire codec for the desktop shape** (JSON) with protobuf parity kept and a loopback test; signaling now matches the desktop protocol.
+
+### Fixed
+* **Sticker bubbles after refetch:** `FileInfo.Id2` starting with `stickers/` maps to the direct CDN URL (`{host}/{id}?size=large`) instead of `/file_shortterm/stickers/…`, which 404s. Refetched history showed broken sticker images before.
+* **Sticker rendering from the attachment** (no pack metadata needed): own sent stickers, official stickers and refetched history render as compact sticker bubbles via the media URL.
+* **Drag-and-drop fallback** for `uri-list` payloads without `x-special/gnome-icon-list`, with diagnostics.
+
+### Internal
+* `make check` green across the tree (`clippy --fix` + `cargo fmt`); main-thread UI handles moved from `Arc` to `Rc`, dropping the `arc_with_non_send_sync` allows.
+* 74 unit tests (new: sticker CDN URL, media round trip); probe tests kept `#[ignore]`d.
 
 ## 2.175.3 - 2026-11-14
 

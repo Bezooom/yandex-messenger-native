@@ -50,7 +50,7 @@
 
 [![CI](https://github.com/Bezooom/yandex-messenger-native/actions/workflows/ci.yml/badge.svg)](https://github.com/Bezooom/yandex-messenger-native/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/Bezooom/yandex-messenger-native)](https://github.com/Bezooom/yandex-messenger-native/releases/latest) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Версия 2.175.3** — нативный Linux-клиент Яндекс Мессенджера (чаты Телемоста) на Rust, GTK4 и Libadwaita. Быстрый, лёгкий, с night-темой Telegram Desktop и плотным списком чатов в стиле nheko.
+**Версия 2.176.0** — нативный Linux-клиент Яндекс Мессенджера (чаты Телемоста) на Rust, GTK4 и Libadwaita. Быстрый, лёгкий, с night-темой Telegram Desktop и плотным списком чатов в стиле nheko.
 
 [English summary](#-english-summary)
 
@@ -61,7 +61,15 @@
 > 
 > **Важный дисклеймер**: Данный проект является **неофициальным клиентом**, созданным сообществом для Яндекс Мессенджера. Он никак не связан, не поддерживается и не ассоциирован с ООО «Яндекс» или его дочерними компаниями. Разработчики проекта не заявляют никаких прав на товарные знаки, брендинг или медиа-ресурсы Яндекса. Используйте это программное обеспечение на свой страх и риск.
 
-> ✅ **Проверено на этом дереве (2.175.3):** `cargo check --bin yandex-messenger` чистый; `cargo test --bin yandex-messenger` → **68 passed, 1 ignored**; `cargo build --release` → бинарь 16 МБ, все `NEEDED`-библиотеки находятся. GUI и живые сетевые сценарии проверяются руками.
+> ✅ **Проверено на этом дереве (2.176.0):** `cargo check --bin yandex-messenger` чистый; `cargo test --bin yandex-messenger` → **74 passed, 3 ignored**; `cargo build --release` → бинарь 16 МБ, все `NEEDED`-библиотеки находятся. GUI и живые сетевые сценарии проверяются руками.
+
+### Что изменилось в 2.176.0
+
+- **Стикеры отправляются по-настоящему**: панель шлёт `Image` с CDN-идентификатором стикера (`FileInfo.Id2 = stickers/images/…`) вместо JSON-текста в `Text`. Телефон и веб показывают стикер-картинку; отправка мгновенная, без загрузки файла. Матрица живых зондов против шлюза зафиксирована в тестах и API-доке.
+- **Пузыри стикеров переживают перечитывание истории**: `stickers/`-идентификаторы маппятся на прямой CDN-URL (`/file_shortterm/stickers/…` отдавал 404), рендер идёт из вложения без метаданных пака.
+- **Входящие фото по WS больше не теряются**: парсер пушей принимает сообщения с медиа без `Text`.
+- **Goloom: JSON-провод desktop-формы** с protobuf-паритетом и loopback-тестом.
+- Дерево чистое по `make check`; UI-ручки на `Rc`; 74 юнит-теста.
 
 ### Что изменилось в 2.175.3
 
@@ -286,7 +294,15 @@ sudo apt install -y ./dist/yandex-messenger-native_*_amd64.deb
 
 An unofficial native Linux desktop client for Yandex Messenger (now Telemost chats), written in Rust with GTK4 and Libadwaita. No Electron, no embedded browser for the main UI.
 
-**Release 2.175.3** focuses on correctness rather than feature count:
+**Release 2.176.0** is the sticker release:
+
+- stickers now send for real: the panel sends an `Image` payload with the sticker's CDN `FileInfo.Id2` (`stickers/images/…`), no upload, and official mobile/web clients render it as a sticker image instead of JSON text; live-gateway probe matrix recorded in tests and the API doc;
+- sticker bubbles survive history refetch: `stickers/` ids map to the direct CDN URL (`/file_shortterm/stickers/…` returned 404) and rendering resolves from the media attachment;
+- media-bearing WS pushes are parsed, so incoming photos appear live;
+- Goloom signaling gained the desktop JSON wire codec with protobuf parity and a loopback test;
+- tree is `make check`-clean, main-thread UI handles moved to `Rc`, 74 unit tests.
+
+Earlier (2.175.3) focused on correctness rather than feature count:
 
 - chat list parsed from the real `bootstrap` payload (`members_count`, `private`, pin/mute buckets, member names) — group headers no longer claim "0 participants";
 - stable ordering: preview timestamps come from `create_timestamp` / `version`, not `Utc::now()`;

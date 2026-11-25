@@ -1,3 +1,16 @@
+yandex-messenger-native (2.176.0-1) unstable; urgency=medium
+
+  * Feature: stickers send as Image with sticker CDN FileInfo.Id2; official
+    clients render them as sticker images, not JSON text (live-gateway probes)
+  * Fix: media-bearing WS pushes parsed; incoming photos were empty messages
+  * Fix: stickers/ CDN ids map to direct CDN url (history sticker 404s gone)
+  * Fix: sticker bubbles render from the media attachment; DnD uri-list
+    fallback for payloads without x-special/gnome-icon-list
+  * Goloom: desktop JSON wire codec, protobuf parity kept, loopback test
+  * clippy/fmt clean tree; main-thread UI handles moved Arc -> Rc; 74 tests
+
+ -- BeZoom <naumov122@gmail.com>  Wed, 25 Nov 2026 15:00:00 +0300
+
 yandex-messenger-native (2.175.3-1) unstable; urgency=medium
 
   * Fix: sticker thumbnails no longer forced to 50px; chips and grid keep size

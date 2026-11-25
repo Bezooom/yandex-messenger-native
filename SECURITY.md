@@ -2,7 +2,7 @@
 
 [Русская версия](SECURITY.ru.md)
 
-Current release: **2.175.3**.
+Current release: \*\*2.176.0\*\*.
 
 ## Overview
 
