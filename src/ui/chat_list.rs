@@ -1,7 +1,7 @@
 #![allow(dead_code)]
-// GTK panels are main-thread-only (!Send/!Sync); Arc is the handle-share idiom.
+// GTK panels are main-thread-only (!Send/!Sync); Rc is the handle-share idiom.
 // Nested Rc<RefCell<…>> callback types are pervasive UI plumbing.
-#![allow(clippy::arc_with_non_send_sync, clippy::type_complexity)]
+#![allow(clippy::type_complexity)]
 
 use gtk::glib;
 use gtk::prelude::ListModelExt;
@@ -11,6 +11,7 @@ use gtk::{
     SingleSelection, StringList,
 };
 use libadwaita as adw;
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 use crate::api::auth::AuthManager;
@@ -47,27 +48,27 @@ struct ChatRowData {
 
 #[derive(Clone)]
 struct ChatListModel {
-    chats: Arc<Mutex<Vec<Chat>>>,
-    visible: Arc<Mutex<Vec<usize>>>,
-    selected: Arc<Mutex<Option<usize>>>,
-    chat_ids_list: Arc<gtk::StringList>,
-    query: Arc<Mutex<String>>,
-    list_filter: Arc<Mutex<crate::models::ChatListFilter>>,
+    chats: Rc<Mutex<Vec<Chat>>>,
+    visible: Rc<Mutex<Vec<usize>>>,
+    selected: Rc<Mutex<Option<usize>>>,
+    chat_ids_list: Rc<gtk::StringList>,
+    query: Rc<Mutex<String>>,
+    list_filter: Rc<Mutex<crate::models::ChatListFilter>>,
 }
 
 impl ChatListModel {
     fn new(
-        chats: Arc<Mutex<Vec<Chat>>>,
-        visible: Arc<Mutex<Vec<usize>>>,
-        chat_ids_list: Arc<gtk::StringList>,
+        chats: Rc<Mutex<Vec<Chat>>>,
+        visible: Rc<Mutex<Vec<usize>>>,
+        chat_ids_list: Rc<gtk::StringList>,
     ) -> Self {
         Self {
             chats,
             visible,
-            selected: Arc::new(Mutex::new(None)),
+            selected: Rc::new(Mutex::new(None)),
             chat_ids_list,
-            query: Arc::new(Mutex::new(String::new())),
-            list_filter: Arc::new(Mutex::new(crate::models::ChatListFilter::All)),
+            query: Rc::new(Mutex::new(String::new())),
+            list_filter: Rc::new(Mutex::new(crate::models::ChatListFilter::All)),
         }
     }
 
@@ -158,16 +159,16 @@ pub struct ChatListPanel {
     list_view: gtk::ListView,
     selection: SingleSelection,
     model: ChatListModel,
-    chat_ids_list: Arc<gtk::StringList>,
+    chat_ids_list: Rc<gtk::StringList>,
     _search_timeout: Option<glib::SourceId>,
     search_entry: Entry,
-    logout_callback: Arc<Mutex<Option<Box<dyn Fn()>>>>,
-    settings_callback: Arc<Mutex<Option<Box<dyn Fn()>>>>,
-    switch_account_callback: Arc<Mutex<Option<Box<dyn Fn(String)>>>>,
-    add_account_callback: Arc<Mutex<Option<Box<dyn Fn()>>>>,
-    create_group_callback: Arc<Mutex<Option<Box<dyn Fn()>>>>,
+    logout_callback: Rc<Mutex<Option<Box<dyn Fn()>>>>,
+    settings_callback: Rc<Mutex<Option<Box<dyn Fn()>>>>,
+    switch_account_callback: Rc<Mutex<Option<Box<dyn Fn(String)>>>>,
+    add_account_callback: Rc<Mutex<Option<Box<dyn Fn()>>>>,
+    create_group_callback: Rc<Mutex<Option<Box<dyn Fn()>>>>,
     /// (chat_id, action): mark_read | mute | pin | archive | delete
-    chat_action_callback: Arc<Mutex<Option<Box<dyn Fn(String, String)>>>>,
+    chat_action_callback: Rc<Mutex<Option<Box<dyn Fn(String, String)>>>>,
     user_avatar: GtkBox,
     avatar_label: Label,
     user_name_label: Label,
@@ -220,29 +221,29 @@ impl ChatListPanel {
     }
 
     pub fn new(auth: Arc<AuthManager>) -> Self {
-        let chats: Arc<Mutex<Vec<Chat>>> = Arc::new(Mutex::new(Vec::new()));
-        let visible: Arc<Mutex<Vec<usize>>> = Arc::new(Mutex::new(Vec::new()));
+        let chats: Rc<Mutex<Vec<Chat>>> = Rc::new(Mutex::new(Vec::new()));
+        let visible: Rc<Mutex<Vec<usize>>> = Rc::new(Mutex::new(Vec::new()));
 
         // Create a StringList as the model for the ListView.
-        let chat_ids_list = Arc::new(StringList::new(&[]));
+        let chat_ids_list = Rc::new(StringList::new(&[]));
         let model = ChatListModel::new(
-            Arc::clone(&chats),
-            Arc::clone(&visible),
-            Arc::clone(&chat_ids_list),
+            Rc::clone(&chats),
+            Rc::clone(&visible),
+            Rc::clone(&chat_ids_list),
         );
 
-        let logout_callback = Arc::new(Mutex::new(None));
+        let logout_callback = Rc::new(Mutex::new(None));
         let logout_callback_clone = logout_callback.clone();
-        let settings_callback = Arc::new(Mutex::new(None));
+        let settings_callback = Rc::new(Mutex::new(None));
         let settings_callback_clone = settings_callback.clone();
-        let switch_account_callback = Arc::new(Mutex::new(None));
+        let switch_account_callback = Rc::new(Mutex::new(None));
         let switch_account_callback_clone = switch_account_callback.clone();
-        let add_account_callback = Arc::new(Mutex::new(None));
+        let add_account_callback = Rc::new(Mutex::new(None));
         let add_account_callback_clone = add_account_callback.clone();
-        let create_group_callback = Arc::new(Mutex::new(None));
+        let create_group_callback = Rc::new(Mutex::new(None));
         let create_group_callback_clone = create_group_callback.clone();
-        let chat_action_callback: Arc<Mutex<Option<Box<dyn Fn(String, String)>>>> =
-            Arc::new(Mutex::new(None));
+        let chat_action_callback: Rc<Mutex<Option<Box<dyn Fn(String, String)>>>> =
+            Rc::new(Mutex::new(None));
 
         // Use StringList with SingleSelection — gtk::StringList implements IsA<gio::ListModel>
         let selection = SingleSelection::new(Some((*chat_ids_list).clone()));
@@ -412,7 +413,7 @@ impl ChatListPanel {
         container.append(&chat_container);
 
         // ── Search debounce ──
-        let search_rc: Arc<Mutex<Option<glib::SourceId>>> = Arc::new(Mutex::new(None));
+        let search_rc: Rc<Mutex<Option<glib::SourceId>>> = Rc::new(Mutex::new(None));
         let model_clone = model.clone();
         let list_stack_search = list_stack.clone();
         let empty_title_s = empty_title.clone();
@@ -763,11 +764,11 @@ impl ChatListPanel {
 
     fn create_header(
         auth: Arc<AuthManager>,
-        logout_cb: &Arc<Mutex<Option<Box<dyn Fn()>>>>,
-        settings_cb: &Arc<Mutex<Option<Box<dyn Fn()>>>>,
-        switch_ac_cb: &Arc<Mutex<Option<Box<dyn Fn(String)>>>>,
-        add_ac_cb: &Arc<Mutex<Option<Box<dyn Fn()>>>>,
-        create_gp_cb: &Arc<Mutex<Option<Box<dyn Fn()>>>>,
+        logout_cb: &Rc<Mutex<Option<Box<dyn Fn()>>>>,
+        settings_cb: &Rc<Mutex<Option<Box<dyn Fn()>>>>,
+        switch_ac_cb: &Rc<Mutex<Option<Box<dyn Fn(String)>>>>,
+        add_ac_cb: &Rc<Mutex<Option<Box<dyn Fn()>>>>,
+        create_gp_cb: &Rc<Mutex<Option<Box<dyn Fn()>>>>,
     ) -> (GtkBox, GtkBox, Label, Label) {
         // Compact sidebar chrome (TG: menu + title + new-chat icons)
         let header = GtkBox::new(Orientation::Horizontal, 8);
@@ -1261,13 +1262,13 @@ impl ChatListPanel {
 
     fn create_context_gesture(
         selection: &SingleSelection,
-        chats: &Arc<Mutex<Vec<Chat>>>,
-        action_cb: Arc<Mutex<Option<Box<dyn Fn(String, String)>>>>,
+        chats: &Rc<Mutex<Vec<Chat>>>,
+        action_cb: Rc<Mutex<Option<Box<dyn Fn(String, String)>>>>,
     ) -> gtk::GestureClick {
         let gesture = gtk::GestureClick::new();
         gesture.set_button(3);
         let sel_clone = selection.clone();
-        let chats_clone = Arc::clone(chats);
+        let chats_clone = Rc::clone(chats);
 
         gesture.connect_pressed(move |gesture, _, _, _y| {
             let idx = sel_clone.selected();
@@ -1280,7 +1281,7 @@ impl ChatListPanel {
         gesture
     }
 
-    fn show_context_menu(chat: Chat, action_cb: Arc<Mutex<Option<Box<dyn Fn(String, String)>>>>) {
+    fn show_context_menu(chat: Chat, action_cb: Rc<Mutex<Option<Box<dyn Fn(String, String)>>>>) {
         let menu = GtkBox::new(Orientation::Vertical, 2);
         menu.add_css_class("chat-context-menu");
 
@@ -1561,8 +1562,8 @@ impl ChatListPanel {
     }
 
     pub fn connect_chat_selected<F: Fn(Chat) + 'static>(&self, callback: F) {
-        let chats = Arc::clone(&self.model.chats);
-        let visible = Arc::clone(&self.model.visible);
+        let chats = Rc::clone(&self.model.chats);
+        let visible = Rc::clone(&self.model.visible);
 
         self.selection
             .connect_notify_local(Some("selected"), move |obj, _| {
@@ -1587,7 +1588,7 @@ impl ChatListPanel {
         &self.container
     }
 
-    pub fn chats(&self) -> &Arc<Mutex<Vec<Chat>>> {
+    pub fn chats(&self) -> &Rc<Mutex<Vec<Chat>>> {
         &self.model.chats
     }
 }

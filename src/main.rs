@@ -1,7 +1,3 @@
-// UI objects (panels, viewers) are GTK types: !Send/!Sync by design, used on the
-// main loop thread only; Arc here is a handle-share idiom, not cross-thread sync.
-#![allow(clippy::arc_with_non_send_sync)]
-
 use std::sync::{Arc, Mutex};
 use std::{cell::RefCell, collections::HashSet, rc::Rc};
 
@@ -119,7 +115,7 @@ fn start_main_window(app: &adw::Application, auth: Arc<AuthManager>, access_toke
     win.set_icon_name(Some("yandex-messenger"));
 
     // System tray
-    let tray = Arc::new(ui::tray::TrayHandle::init());
+    let tray = Rc::new(ui::tray::TrayHandle::init());
     let tray_for_poll = tray.clone();
     let win_for_tray = win.clone();
     let app_for_tray = app.clone();
@@ -237,7 +233,7 @@ fn create_app_layout(
     app: &adw::Application,
     win: &adw::ApplicationWindow,
     controller: Arc<AppController>,
-    tray: Arc<ui::tray::TrayHandle>,
+    tray: Rc<ui::tray::TrayHandle>,
     minimize_to_tray: Arc<std::sync::atomic::AtomicBool>,
     settings_store: Option<ui::settings::SettingsStore>,
 ) -> gtk::Box {
@@ -279,11 +275,11 @@ fn create_app_layout(
     sidebar_stack.set_hexpand(false);
 
     // ── Sidebar (chat list) ──
-    let chat_list = Arc::new(Mutex::new(ui::ChatListPanel::new(
+    let chat_list = Rc::new(Mutex::new(ui::ChatListPanel::new(
         controller.auth().clone(),
     )));
 
-    let saved_panel = Arc::new(ui::saved_panel::SavedPanel::new(controller.auth().clone()));
+    let saved_panel = Rc::new(ui::saved_panel::SavedPanel::new(controller.auth().clone()));
 
     sidebar_stack.add_named(chat_list.lock().unwrap().container(), Some("chat_list"));
     sidebar_stack.add_named(saved_panel.container(), Some("saved_panel"));
@@ -1577,7 +1573,7 @@ fn create_app_layout(
     overlay.set_child(Some(&root));
 
     // ── ImageViewer ──
-    let image_viewer = Arc::new(ui::image_viewer::ImageViewer::new());
+    let image_viewer = Rc::new(ui::image_viewer::ImageViewer::new());
     let iv_container = image_viewer.container.clone();
     iv_container.set_visible(false);
     overlay.add_overlay(&iv_container);

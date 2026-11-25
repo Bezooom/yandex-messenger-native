@@ -1,7 +1,7 @@
 #![allow(dead_code)]
-// GTK panels are main-thread-only (!Send/!Sync); Arc is the handle-share idiom.
+// GTK panels are main-thread-only (!Send/!Sync); Rc is the handle-share idiom.
 // Nested Rc<RefCell<…>> callback types are pervasive UI plumbing.
-#![allow(clippy::arc_with_non_send_sync, clippy::type_complexity)]
+#![allow(clippy::type_complexity)]
 
 use gtk::prelude::*;
 use gtk::{
@@ -10,6 +10,7 @@ use gtk::{
 };
 
 use std::boxed::Box as StdBox;
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 use crate::api::auth::AuthManager;
@@ -65,33 +66,33 @@ pub struct ChatView {
     /// Shared AuthManager — used for user_id lookups and avatar URLs
     auth: Arc<AuthManager>,
     /// (chat_id, text, reply_to_msg_id, edit_msg_id)
-    on_send: Arc<Mutex<Option<StdBox<dyn Fn(String, String, Option<String>, Option<String>)>>>>,
-    on_attach: Arc<Mutex<Option<StdBox<dyn Fn(String, Vec<u8>, String)>>>>,
-    on_call: Arc<Mutex<Option<StdBox<dyn Fn(String)>>>>,
-    on_new_chat: Arc<Mutex<Option<StdBox<dyn Fn()>>>>,
-    on_thread_open: Arc<Mutex<Option<StdBox<dyn Fn(String, String)>>>>,
-    on_voice_send: Arc<Mutex<Option<StdBox<dyn Fn(String, Vec<u8>, f64, Vec<f32>)>>>>,
-    on_translate: Arc<Mutex<Option<StdBox<dyn Fn(String, String)>>>>,
-    on_image_open: Arc<Mutex<Option<StdBox<dyn Fn(String, String, Vec<(String, String)>)>>>>,
+    on_send: Rc<Mutex<Option<StdBox<dyn Fn(String, String, Option<String>, Option<String>)>>>>,
+    on_attach: Rc<Mutex<Option<StdBox<dyn Fn(String, Vec<u8>, String)>>>>,
+    on_call: Rc<Mutex<Option<StdBox<dyn Fn(String)>>>>,
+    on_new_chat: Rc<Mutex<Option<StdBox<dyn Fn()>>>>,
+    on_thread_open: Rc<Mutex<Option<StdBox<dyn Fn(String, String)>>>>,
+    on_voice_send: Rc<Mutex<Option<StdBox<dyn Fn(String, Vec<u8>, f64, Vec<f32>)>>>>,
+    on_translate: Rc<Mutex<Option<StdBox<dyn Fn(String, String)>>>>,
+    on_image_open: Rc<Mutex<Option<StdBox<dyn Fn(String, String, Vec<(String, String)>)>>>>,
     /// (file_id, url, filename, open_after)
-    on_file_download: Arc<Mutex<Option<StdBox<dyn Fn(String, String, String, bool)>>>>,
-    on_typing: Arc<Mutex<Option<StdBox<dyn Fn(String)>>>>,
-    last_typing_time: Arc<Mutex<i64>>,
-    current_thread_view: Mutex<Option<Arc<crate::ui::ThreadView>>>,
+    on_file_download: Rc<Mutex<Option<StdBox<dyn Fn(String, String, String, bool)>>>>,
+    on_typing: Rc<Mutex<Option<StdBox<dyn Fn(String)>>>>,
+    last_typing_time: Rc<Mutex<i64>>,
+    current_thread_view: Mutex<Option<Rc<crate::ui::ThreadView>>>,
     reaction_popover: Mutex<Option<Popover>>,
     reactions_config: Mutex<Option<ExtendedReactionsConfig>>,
-    on_reaction_toggle: Arc<Mutex<Option<StdBox<dyn Fn(String, String, bool)>>>>,
+    on_reaction_toggle: Rc<Mutex<Option<StdBox<dyn Fn(String, String, bool)>>>>,
     reply_preview_box: GtkBox,
     reply_preview_label: Label,
     reply_preview_close_btn: Button,
-    reply_to_msg_id: Arc<Mutex<Option<String>>>,
-    edit_msg_id: Arc<Mutex<Option<String>>>,
+    reply_to_msg_id: Rc<Mutex<Option<String>>>,
+    edit_msg_id: Rc<Mutex<Option<String>>>,
     /// Button to open poll creator
     poll_btn: Button,
     /// Poll creator popover/overlay
     poll_popover: Mutex<Option<Popover>>,
     /// Active poll renderers (poll_id -> PollRenderer)
-    poll_renderers: Mutex<Vec<(String, Arc<PollRenderer>)>>,
+    poll_renderers: Mutex<Vec<(String, Rc<PollRenderer>)>>,
     // Emoji picker state
     emoji_btn: Button,
     /// Right-hand dock: emoji and sticker tabs, Telegram-style.
@@ -106,24 +107,24 @@ pub struct ChatView {
     /// Reused attach menu popover (avoid creating nested shells each click)
     attach_menu_popover: Mutex<Option<Popover>>,
     // Voice recording state
-    voice_recorder: Mutex<Option<Arc<VoiceRecorder>>>,
+    voice_recorder: Mutex<Option<Rc<VoiceRecorder>>>,
     voice_recording: Mutex<bool>,
     /// Timer handle for long-press detection (500ms threshold)
     long_press_timer: Mutex<Option<glib::SourceId>>,
     /// Whether the button is currently in recording mode
     in_recording_mode: Mutex<bool>,
     /// Callback for saving a message to favorites
-    on_save: Arc<Mutex<Option<Box<dyn Fn(String, String, Option<String>) + Send>>>>,
+    on_save: Rc<Mutex<Option<Box<dyn Fn(String, String, Option<String>) + Send>>>>,
     /// Server-side delete after the undo window: (chat_id, message_id)
-    on_delete: Arc<Mutex<Option<StdBox<dyn Fn(String, String)>>>>,
+    on_delete: Rc<Mutex<Option<StdBox<dyn Fn(String, String)>>>>,
     undo_bar: GtkBox,
     undo_label: Label,
     undo_btn: Button,
-    pending_delete_msg_id: Arc<Mutex<Option<String>>>,
-    pending_delete_row: Arc<Mutex<Option<GtkBox>>>,
+    pending_delete_msg_id: Rc<Mutex<Option<String>>>,
+    pending_delete_row: Rc<Mutex<Option<GtkBox>>>,
     pinned_box: GtkBox,
     pinned_label: Label,
-    pinned_message_id: Arc<Mutex<Option<String>>>,
+    pinned_message_id: Rc<Mutex<Option<String>>>,
     /// Bot panel (shown when a bot chat is selected)
     bot_panel: Mutex<Option<BotPanel>>,
     /// Bot info for current chat
@@ -145,11 +146,11 @@ pub struct ChatView {
     /// Button for scheduling (clock icon)
     schedule_btn: Button,
     /// Callback for scheduling a message
-    on_schedule: Arc<Mutex<Option<StdBox<dyn Fn(String, String, chrono::DateTime<chrono::Utc>)>>>>,
+    on_schedule: Rc<Mutex<Option<StdBox<dyn Fn(String, String, chrono::DateTime<chrono::Utc>)>>>>,
     /// Callback for canceling a scheduled message
-    on_cancel_schedule: Arc<Mutex<Option<StdBox<dyn Fn(String, String)>>>>,
+    on_cancel_schedule: Rc<Mutex<Option<StdBox<dyn Fn(String, String)>>>>,
     /// Load older history: (chat_id, oldest_message_id, server cursor)
-    on_load_older: Arc<Mutex<Option<StdBox<dyn Fn(String, String, Option<String>)>>>>,
+    on_load_older: Rc<Mutex<Option<StdBox<dyn Fn(String, String, Option<String>)>>>>,
     /// Prevent concurrent pagination requests
     loading_older: Mutex<bool>,
     /// Whether more history may exist above
@@ -163,7 +164,7 @@ pub struct ChatView {
 }
 
 impl ChatView {
-    pub fn new(auth: Arc<AuthManager>) -> Arc<Self> {
+    pub fn new(auth: Arc<AuthManager>) -> Rc<Self> {
         let container = GtkBox::new(Orientation::Vertical, 0);
         container.set_hexpand(true);
         container.set_vexpand(true);
@@ -217,7 +218,7 @@ impl ChatView {
 
         // Home hub when no chat is selected. Layout follows the official
         // Telemost desktop empty state: title plus action cards, not a logo splash.
-        let on_new_chat: Arc<Mutex<Option<StdBox<dyn Fn()>>>> = Arc::new(Mutex::new(None));
+        let on_new_chat: Rc<Mutex<Option<StdBox<dyn Fn()>>>> = Rc::new(Mutex::new(None));
         let welcome_box = GtkBox::new(Orientation::Vertical, 16);
         welcome_box.add_css_class("empty-chat");
         welcome_box.add_css_class("welcome-state");
@@ -346,7 +347,7 @@ impl ChatView {
             schedule_btn,
         ) = Self::create_input();
 
-        let pinned_message_id = Arc::new(Mutex::new(None));
+        let pinned_message_id = Rc::new(Mutex::new(None));
         let pinned_box = GtkBox::new(Orientation::Horizontal, 8);
         pinned_box.set_visible(false);
         pinned_box.set_hexpand(false);
@@ -379,8 +380,8 @@ impl ChatView {
             *pmid_clone.lock().unwrap() = None;
         });
 
-        let reply_to_msg_id = Arc::new(Mutex::new(None));
-        let edit_msg_id = Arc::new(Mutex::new(None));
+        let reply_to_msg_id = Rc::new(Mutex::new(None));
+        let edit_msg_id = Rc::new(Mutex::new(None));
 
         let reply_preview_box = GtkBox::new(Orientation::Horizontal, 8);
         reply_preview_box.set_visible(false);
@@ -424,8 +425,8 @@ impl ChatView {
         undo_bar.append(&undo_label);
         undo_bar.append(&undo_btn);
 
-        let pending_delete_msg_id: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
-        let pending_delete_row: Arc<Mutex<Option<GtkBox>>> = Arc::new(Mutex::new(None));
+        let pending_delete_msg_id: Rc<Mutex<Option<String>>> = Rc::new(Mutex::new(None));
+        let pending_delete_row: Rc<Mutex<Option<GtkBox>>> = Rc::new(Mutex::new(None));
 
         let undo_bar_clone = undo_bar.clone();
         let pending_msg_clone = pending_delete_msg_id.clone();
@@ -606,21 +607,21 @@ impl ChatView {
             call_btn,
             menu_btn,
             auth,
-            on_send: Arc::new(Mutex::new(None)),
-            on_attach: Arc::new(Mutex::new(None)),
-            on_call: Arc::new(Mutex::new(None)),
+            on_send: Rc::new(Mutex::new(None)),
+            on_attach: Rc::new(Mutex::new(None)),
+            on_call: Rc::new(Mutex::new(None)),
             on_new_chat,
-            on_thread_open: Arc::new(Mutex::new(None)),
-            on_voice_send: Arc::new(Mutex::new(None)),
-            on_translate: Arc::new(Mutex::new(None)),
-            on_image_open: Arc::new(Mutex::new(None)),
-            on_file_download: Arc::new(Mutex::new(None)),
-            on_typing: Arc::new(Mutex::new(None)),
-            last_typing_time: Arc::new(Mutex::new(0)),
+            on_thread_open: Rc::new(Mutex::new(None)),
+            on_voice_send: Rc::new(Mutex::new(None)),
+            on_translate: Rc::new(Mutex::new(None)),
+            on_image_open: Rc::new(Mutex::new(None)),
+            on_file_download: Rc::new(Mutex::new(None)),
+            on_typing: Rc::new(Mutex::new(None)),
+            last_typing_time: Rc::new(Mutex::new(0)),
             current_thread_view: Mutex::new(None),
             reaction_popover: Mutex::new(None),
             reactions_config: Mutex::new(None),
-            on_reaction_toggle: Arc::new(Mutex::new(None)),
+            on_reaction_toggle: Rc::new(Mutex::new(None)),
             reply_preview_box: reply_preview_box.clone(),
             reply_preview_label: reply_preview_label.clone(),
             reply_preview_close_btn: reply_preview_close_btn.clone(),
@@ -650,21 +651,21 @@ impl ChatView {
             pinned_box,
             pinned_label,
             pinned_message_id,
-            on_save: Arc::new(Mutex::new(None)),
-            on_delete: Arc::new(Mutex::new(None)),
+            on_save: Rc::new(Mutex::new(None)),
+            on_delete: Rc::new(Mutex::new(None)),
             bot_panel: Mutex::new(None),
             bot_info: Mutex::new(None),
             scheduled_messages: Mutex::new(Vec::new()),
             send_at_popover: Mutex::new(None),
             popover_open: Mutex::new(false),
             schedule_btn,
-            on_schedule: Arc::new(Mutex::new(None)),
-            on_cancel_schedule: Arc::new(Mutex::new(None)),
+            on_schedule: Rc::new(Mutex::new(None)),
+            on_cancel_schedule: Rc::new(Mutex::new(None)),
             on_inline_click: std::sync::Arc::new(std::sync::Mutex::new(None)),
             on_keyboard_click: std::sync::Arc::new(std::sync::Mutex::new(None)),
             on_command_click: std::sync::Arc::new(std::sync::Mutex::new(None)),
             keyboard_area: Mutex::new(None),
-            on_load_older: Arc::new(Mutex::new(None)),
+            on_load_older: Rc::new(Mutex::new(None)),
             loading_older: Mutex::new(false),
             has_more_history: Mutex::new(true),
             pagination_cursor: Mutex::new(None),
@@ -672,7 +673,7 @@ impl ChatView {
             stick_to_bottom: Mutex::new(false),
         };
 
-        let this = Arc::new(view);
+        let this = Rc::new(view);
         this.setup_history_scroll();
         this.setup_stick_to_bottom();
         this.setup_file_drop_and_paste();
@@ -680,8 +681,8 @@ impl ChatView {
     }
 
     // Init poll creator popover after ChatView creation: the method expects
-    // ChatView inside an Arc, e.g. `Arc::new(ChatView::new()).init_poll_creator()`.
-    pub fn init_callbacks(self: &Arc<Self>) {
+    // ChatView inside an Rc, e.g. `Rc::new(ChatView::new()).init_poll_creator()`.
+    pub fn init_callbacks(self: &Rc<Self>) {
         let cv_send = self.clone();
         self.send_btn.connect_clicked(move |_| {
             cv_send.handle_send();
@@ -804,7 +805,7 @@ impl ChatView {
             let mut recorder = cv_voice.voice_recorder.lock().unwrap();
 
             if recorder.is_none() {
-                *recorder = Some(Arc::new(VoiceRecorder::new()));
+                *recorder = Some(Rc::new(VoiceRecorder::new()));
             }
 
             if !*recording {
@@ -866,7 +867,7 @@ impl ChatView {
         });
     }
 
-    pub fn init_poll_creator(self: &Arc<Self>) {
+    pub fn init_poll_creator(self: &Rc<Self>) {
         // Skip if already initialized
         if self.poll_popover.lock().unwrap().is_some() {
             return;
@@ -921,7 +922,7 @@ impl ChatView {
 
     /// Рендерит сообщение-опрос
     fn render_poll_message(&self, msg: &Message, poll: &Poll, parent_box: &GtkBox) {
-        let renderer = Arc::new(PollRenderer::new(poll.clone(), msg.chat_id.clone()));
+        let renderer = Rc::new(PollRenderer::new(poll.clone(), msg.chat_id.clone()));
         let container = renderer.container().clone();
 
         let on_send = self.on_send.clone();
@@ -1158,7 +1159,7 @@ impl ChatView {
         self.messages_store.insert(position as u32, &obj);
     }
 
-    fn show_reaction_picker(self: &Arc<Self>, msg: &Message, target: &impl IsA<gtk::Widget>) {
+    fn show_reaction_picker(self: &Rc<Self>, msg: &Message, target: &impl IsA<gtk::Widget>) {
         let message_id = msg.message_id.clone().unwrap_or_else(|| msg.id.clone());
         let panel = ReactionPanel::new(message_id.clone());
         panel.set_reactions(msg.reactions.clone());
@@ -1185,7 +1186,7 @@ impl ChatView {
     }
 
     fn create_reaction_chips_row(
-        self: &Arc<Self>,
+        self: &Rc<Self>,
         msg: &Message,
         is_sent: bool,
         picker_target: &impl IsA<gtk::Widget>,
@@ -1421,7 +1422,7 @@ impl ChatView {
         });
     }
 
-    fn show_attach_menu(self: &Arc<Self>) {
+    fn show_attach_menu(self: &Rc<Self>) {
         // Reuse a single popover — creating a new one every click left orphan shells
         // and looked like a "window inside a window".
         {
@@ -1496,7 +1497,7 @@ impl ChatView {
         popover.popup();
     }
 
-    fn show_header_menu(self: &Arc<Self>) {
+    fn show_header_menu(self: &Rc<Self>) {
         let popover = Popover::builder().has_arrow(false).autohide(true).build();
         popover.set_parent(&self.menu_btn);
         popover.set_position(gtk::PositionType::Bottom);
@@ -1607,7 +1608,7 @@ impl ChatView {
     }
 
     /// Инициализирует панель эмодзи в правом доке
-    pub fn init_emoji_picker(self: &Arc<Self>) {
+    pub fn init_emoji_picker(self: &Rc<Self>) {
         if self.side_stack.child_by_name("emoji").is_some() {
             return;
         }
@@ -1661,7 +1662,7 @@ impl ChatView {
     }
 
     /// Инициализирует панель стикеров в правом доке
-    pub fn init_sticker_panel(self: &Arc<Self>) {
+    pub fn init_sticker_panel(self: &Rc<Self>) {
         if self.sticker_panel.lock().unwrap().is_some() {
             return;
         }
@@ -2239,7 +2240,7 @@ impl ChatView {
         row
     }
 
-    fn setup_history_scroll(self: &Arc<Self>) {
+    fn setup_history_scroll(self: &Rc<Self>) {
         let this = self.clone();
         let adj = self.scrolled.vadjustment();
         adj.connect_value_changed(move |adj| {
@@ -2280,7 +2281,7 @@ impl ChatView {
     }
 
     /// Drag-and-drop files + paste images into the chat.
-    fn setup_file_drop_and_paste(self: &Arc<Self>) {
+    fn setup_file_drop_and_paste(self: &Rc<Self>) {
         // DnD target on the whole chat container
         let drop_target =
             gtk::DropTarget::new(gio::File::static_type(), gtk::gdk::DragAction::COPY);
@@ -2377,7 +2378,7 @@ impl ChatView {
 
     /// Try to paste an image/screenshot from the system clipboard.
     /// Returns true if an image paste was initiated (caller should stop key propagation).
-    fn try_paste_clipboard_image(self: &Arc<Self>) -> bool {
+    fn try_paste_clipboard_image(self: &Rc<Self>) -> bool {
         if self.current_chat_id().is_none() {
             self.show_error("Сначала выберите чат");
             return true;
@@ -2434,7 +2435,7 @@ impl ChatView {
         true
     }
 
-    fn paste_clipboard_image_mime(self: &Arc<Self>) {
+    fn paste_clipboard_image_mime(self: &Rc<Self>) {
         let Some(display) = gtk::gdk::Display::default() else {
             return;
         };
@@ -2493,7 +2494,7 @@ impl ChatView {
         );
     }
 
-    fn paste_clipboard_uri_file(self: &Arc<Self>) {
+    fn paste_clipboard_uri_file(self: &Rc<Self>) {
         let Some(display) = gtk::gdk::Display::default() else {
             return;
         };
@@ -2617,7 +2618,7 @@ impl ChatView {
         *self.on_cancel_schedule.lock().unwrap() = Some(StdBox::new(on_cancel_schedule));
     }
 
-    pub fn init_factory(self: &Arc<Self>) {
+    pub fn init_factory(self: &Rc<Self>) {
         let factory = gtk::SignalListItemFactory::new();
         let this = self.clone();
 
@@ -2802,7 +2803,7 @@ impl ChatView {
     }
 
     /// While stick_to_bottom is set, re-pin to the end whenever ListView height grows.
-    fn setup_stick_to_bottom(self: &Arc<Self>) {
+    fn setup_stick_to_bottom(self: &Rc<Self>) {
         let this = self.clone();
         let adj = self.scrolled.vadjustment();
         adj.connect_changed(move |adj| {
@@ -2837,7 +2838,7 @@ impl ChatView {
         });
     }
 
-    pub fn create_message_row(self: &Arc<Self>, msg: &Message, show_date_sep: bool) -> GtkBox {
+    pub fn create_message_row(self: &Rc<Self>, msg: &Message, show_date_sep: bool) -> GtkBox {
         let current_user_id = self.auth.user_id();
         let text = msg
             .text
@@ -2994,7 +2995,7 @@ impl ChatView {
 
         let view_for_menu = self.clone();
         let bubble_for_menu = bubble.clone();
-        // Proper weak widget ref: the temporary-Arc downgrade used before
+        // Proper weak widget ref: the temporary-Rc downgrade used before
         // always failed, leaving the popover parentless (menu never shown).
         let bubble_weak = bubble.downgrade();
         right_click_gesture.connect_pressed(move |gesture, _n_press, x, y| {
@@ -3326,7 +3327,7 @@ impl ChatView {
                 play_overlay.set_valign(Align::Center);
                 play_overlay.set_css_classes(&["video-play-btn"]);
 
-                let play_overlay_clone = Arc::new(play_overlay.clone());
+                let play_overlay_clone = Rc::new(play_overlay.clone());
                 play_overlay_clone.set_visible(false);
                 let play_overlay_ref = play_overlay_clone.as_ref().clone();
                 video_box.append(&play_overlay_ref);
@@ -4618,7 +4619,7 @@ enum HubAction {
 
 fn hub_card(
     label: &str,
-    on_new_chat: Arc<Mutex<Option<StdBox<dyn Fn()>>>>,
+    on_new_chat: Rc<Mutex<Option<StdBox<dyn Fn()>>>>,
     action: HubAction,
 ) -> Button {
     let button = Button::builder()
