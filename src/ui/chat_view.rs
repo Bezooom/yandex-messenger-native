@@ -2282,8 +2282,12 @@ impl ChatView {
             gtk::DropTarget::new(gio::File::static_type(), gtk::gdk::DragAction::COPY);
         let this = self.clone();
         drop_target.connect_drop(move |_target, value, _x, _y| {
-            let Ok(file) = value.get::<gio::File>() else {
-                return false;
+            let file = match value.get::<gio::File>() {
+                Ok(f) => f,
+                Err(_) => {
+                    log::warn!("drop: value is not gio::File — uri-list fallback will try");
+                    return false;
+                }
             };
             let Some(path) = file.path() else {
                 return false;
@@ -2307,6 +2311,48 @@ impl ChatView {
             false
         });
         self.container.add_controller(drop_target);
+
+        // Fallback target: some sources (KDE apps, browsers) offer only a raw
+        // text/uri-list and the GFile conversion fails — parse the list ourselves.
+        let uri_target =
+            gtk::DropTarget::new(glib::GString::static_type(), gtk::gdk::DragAction::COPY);
+        let this_uri = self.clone();
+        uri_target.connect_drop(move |_target, value, _x, _y| {
+            let Ok(text) = value.get::<glib::GString>() else {
+                return false;
+            };
+            let Some(chat_id) = this_uri.current_chat_id() else {
+                return false;
+            };
+            let mut handled = false;
+            for line in text.lines() {
+                let uri = line.trim();
+                if uri.is_empty() || uri.starts_with('#') {
+                    continue;
+                }
+                let Some(path) = uri_to_local_path(uri) else {
+                    continue;
+                };
+                let filename = path
+                    .file_name()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "file.bin".into());
+                let Ok(bytes) = std::fs::read(&path) else {
+                    log::warn!("drop: cannot read {}", path.display());
+                    continue;
+                };
+                if bytes.is_empty() {
+                    continue;
+                }
+                if let Some(ref cb) = *this_uri.on_attach.lock().unwrap() {
+                    log::info!("drop uri-list fallback: {} -> chat {}", filename, chat_id);
+                    cb(chat_id.clone(), bytes, filename);
+                    handled = true;
+                }
+            }
+            handled
+        });
+        self.container.add_controller(uri_target);
 
         // Also accept image paste on the whole chat surface (not only TextView)
         let key = gtk::EventControllerKey::new();
@@ -4693,3 +4739,21 @@ mod layout_tests {
         });
     }
 }
+
+/// Map a dropped uri-list line to a local path (file:// URIs or bare paths).
+fn uri_to_local_path(uri: &str) -> Option<std::path::PathBuf> {
+    if let Some(rest) = uri.strip_prefix("file://") {
+        if let Ok(u) = url::Url::parse(uri) {
+            if let Ok(p) = u.to_file_path() {
+                return Some(p);
+            }
+        }
+        let decoded = urlencoding::decode(rest).ok()?;
+        return Some(std::path::PathBuf::from(decoded.into_owned()));
+    }
+    if uri.starts_with('/') {
+        return Some(std::path::PathBuf::from(uri));
+    }
+    None
+}
+

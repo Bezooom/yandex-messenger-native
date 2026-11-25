@@ -631,102 +631,62 @@ impl WebSocketClient {
                                     let mut mapped_msg = serde_json::json!({});
 
                                     if let Some(client_msg) = parsed_json.get("ClientMessage") {
-                                        if let Some(plain) = client_msg.get("Plain") {
-                                            let chat_id = plain
-                                                .get("ChatId")
-                                                .and_then(|v| v.as_str())
-                                                .unwrap_or("");
-                                            let text_obj = plain.get("Text");
-                                            let text = text_obj
-                                                .and_then(|t| t.get("MessageText"))
-                                                .and_then(|t| t.as_str())
-                                                .unwrap_or("");
-                                            let payload_id = plain
-                                                .get("PayloadId")
-                                                .and_then(|p| p.as_str())
-                                                .unwrap_or("");
-                                            let from_guid = parsed_json
-                                                .get("ServerMessageInfo")
-                                                .and_then(|smi| smi.get("From"))
-                                                .and_then(|f| f.get("Guid"))
-                                                .and_then(|g| g.as_str())
-                                                .or_else(|| {
-                                                    parsed_json
-                                                        .get("ServerMessageInfo")
-                                                        .and_then(|smi| smi.get("FromGuid"))
-                                                        .and_then(|fg| fg.as_str())
-                                                })
-                                                .unwrap_or("system");
-                                            let timestamp = parsed_json
-                                                .get("ServerMessageInfo")
-                                                .and_then(|smi| smi.get("Timestamp"))
-                                                .and_then(|t| t.as_i64())
-                                                .unwrap_or_else(|| {
-                                                    chrono::Utc::now().timestamp_millis()
-                                                });
-                                            let created_secs =
-                                                normalize_unix_timestamp_secs(timestamp);
-
-                                            if !chat_id.is_empty() && !text.is_empty() {
-                                                method = "new_message";
-                                                let msg_id_val: String = if !payload_id.is_empty() {
-                                                    payload_id.to_string()
-                                                } else {
-                                                    uuid::Uuid::new_v4().simple().to_string()
-                                                };
-                                                mapped_msg = serde_json::json!({
-                                                    "method": "new_message",
-                                                    "messages": [{
-                                                        "id": format!("{}_{}", created_secs, msg_id_val),
-                                                        "chat_id": chat_id,
-                                                        "from_id": from_guid,
-                                                        "message_id": Some(msg_id_val.clone()),
-                                                        "type": "text",
-                                                        "text": text,
-                                                        "created": created_secs
-                                                    }]
-                                                });
+                                        // Full parse via the history parser: images/files/voice
+                                        // carry no Text.MessageText, and the old text-only
+                                        // mapping dropped such pushes entirely.
+                                        let chat_id = client_msg
+                                            .get("Plain")
+                                            .and_then(|p| p.get("ChatId"))
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("")
+                                            .to_string();
+                                        if !chat_id.is_empty() {
+                                            let wrapper = serde_json::json!({ "data": parsed_json });
+                                            if let Some(msg) =
+                                            HttpClient::parse_search_message(&wrapper, &chat_id)
+                                            {
+                                                let has_text = msg
+                                                    .text
+                                                    .as_ref()
+                                                    .map(|t| !t.trim().is_empty())
+                                                    .unwrap_or(false);
+                                                if has_text
+                                                    || !msg.media.is_empty()
+                                                    || msg.poll.is_some()
+                                                    || msg.forward.is_some()
+                                                {
+                                                    if let Ok(v) = serde_json::to_value(&msg) {
+                                                        method = "new_message";
+                                                        mapped_msg = serde_json::json!({
+                                                            "method": "new_message",
+                                                            "messages": [v]
+                                                        });
+                                                    }
+                                                }
                                             }
                                         }
                                     } else if parsed_json.get("ServerMessage").is_some() {
-                                        let chat_id = Self::find_json_field(&parsed_json, "ChatId")
-                                            .unwrap_or_default();
-                                        let text = Self::find_json_field(&parsed_json, "Text")
-                                            .unwrap_or_default();
-                                        let from_guid =
-                                            Self::find_json_field(&parsed_json, "FromGuid")
-                                                .unwrap_or_else(|| "system".to_string());
-                                        let message_id =
-                                            Self::find_json_field(&parsed_json, "MessageId")
-                                                .or_else(|| {
-                                                    Self::find_json_field(&parsed_json, "PayloadId")
-                                                })
-                                                .unwrap_or_else(|| {
-                                                    uuid::Uuid::new_v4().simple().to_string()
-                                                });
-                                        let timestamp = parsed_json
-                                            .get("ServerMessageInfo")
-                                            .and_then(|smi| smi.get("Timestamp"))
-                                            .and_then(|t| t.as_i64())
-                                            .unwrap_or_else(|| {
-                                                chrono::Utc::now().timestamp_millis()
-                                            });
-                                        let created_secs = normalize_unix_timestamp_secs(timestamp);
-
-                                        if !chat_id.is_empty() && !text.is_empty() {
-                                            method = "new_message";
-                                            mapped_msg = serde_json::json!({
-                                                "method": "new_message",
-                                                "messages": [{
-                                                    "id": format!("{}_{}", created_secs, message_id),
-                                                    "chat_id": chat_id,
-                                                    "from_id": from_guid,
-                                                    "message_id": Some(message_id),
-                                                    "type": "text",
-                                                    "text": text,
-                                                    "created": created_secs
-                                                }]
-                                            });
+                                        if let Some(msg) =
+                                            Self::parse_ws_server_message(&parsed_json, "")
+                                        {
+                                            let has_text = msg
+                                                .text
+                                                .as_ref()
+                                                .map(|t| !t.trim().is_empty())
+                                                .unwrap_or(false);
+                                            if has_text
+                                                || !msg.media.is_empty()
+                                                || msg.poll.is_some()
+                                                || msg.forward.is_some()
+                                            {
+                                                if let Ok(v) = serde_json::to_value(&msg) {
+                                                    method = "new_message";
+                                                    mapped_msg = serde_json::json!({
+                                                        "method": "new_message",
+                                                        "messages": [v]
+                                                    });
+                                                }
+                                            }
                                         }
                                     }
 
@@ -5194,5 +5154,49 @@ mod tests {
         assert_eq!(msg.media.len(), 1);
         assert_eq!(msg.media[0].filename.as_deref(), Some("file.docx"));
         assert!(msg.read, "SeenByPartnerMcs marks outgoing as read");
+    }
+
+    #[test]
+    fn ws_push_image_keeps_media_through_incoming_parser() {
+        // Live passive push for an incoming photo: no Text object at all.
+        let node = serde_json::json!({
+            "ServerMessage": {
+                "ClientMessage": {
+                    "Plain": {
+                        "Image": {
+                            "FileInfo": {
+                                "Name": "photo.png",
+                                "Size": 20480,
+                                "Id2": "disk/aa11bb22",
+                                "Source": 1
+                            },
+                            "Width": 1024,
+                            "Height": 768
+                        },
+                        "ChatId": "c1",
+                        "PayloadId": "pimg1"
+                    }
+                },
+                "ServerMessageInfo": {
+                    "Timestamp": 1788769947464045_i64,
+                    "SeqNo": 13700,
+                    "From": {"Guid": "u2", "DisplayName": "Partner"}
+                }
+            },
+            "Meta": {"Origin": 27}
+        });
+        let msg = WebSocketClient::parse_ws_server_message(&node, "c1")
+            .expect("photo push must parse even without Text");
+        assert_eq!(msg.type_, models::MessageType::Image);
+        assert_eq!(msg.media.len(), 1);
+        assert_eq!(msg.media[0].id, "disk/aa11bb22");
+
+        // main.rs feeds the serialized message back through this parser —
+        // media must survive the round trip, not flatten to empty.
+        let v = serde_json::to_value(&msg).expect("serialize");
+        let parsed = HttpClient::parse_ws_incoming_messages(&serde_json::json!({ "messages": [v] }));
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].media.len(), 1, "media survives round trip");
+        assert_eq!(parsed[0].media[0].id, "disk/aa11bb22");
     }
 }
