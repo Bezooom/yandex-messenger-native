@@ -147,6 +147,9 @@ pub struct GoloomParams {
     /// Best-effort transport auth (see module docs).
     pub cookies: Option<String>,
     pub max_attempts: u32,
+    /// Frame codec: "binary" (protobuf, APK wire) or "json" (desktop wire).
+    /// Default from `config::goloom_wire()` (env `YM_GOLOOM_WIRE`).
+    pub wire: String,
 }
 
 impl GoloomParams {
@@ -163,6 +166,7 @@ impl GoloomParams {
             app_version: app_version.to_string(),
             oauth_token: None,
             cookies: None,
+            wire: config::goloom_wire(),
             max_attempts: config::WS_MAX_RECONNECT_ATTEMPTS,
         }
     }
@@ -673,7 +677,7 @@ impl Runner {
     }
 
     fn out_frame(&self, msg: &GoloomMessage) -> Message {
-        if config::GOLOOM_WIRE == "json" {
+        if self.params.wire == "json" {
             Message::Text(goloom::encode_message_json(msg).unwrap_or_default().into())
         } else {
             Message::Binary(goloom::encode_message(msg).into())
@@ -681,7 +685,7 @@ impl Runner {
     }
 
     fn decode_frame(&self, bytes: &[u8]) -> Result<GoloomMessage, String> {
-        if config::GOLOOM_WIRE == "json" {
+        if self.params.wire == "json" {
             goloom::decode_message_json(std::str::from_utf8(bytes).unwrap_or_default())
                 .map_err(|e| e.to_string())
         } else {
@@ -1168,6 +1172,107 @@ mod tests {
         }
         assert_eq!(conns.load(Ordering::SeqCst), 2, "must reconnect once");
         assert!(saw_retry_disconnect && saw_reconnected);
+        server.await.expect("server task");
+    }
+
+    /// The same handshake over the desktop JSON wire: text frames in and out.
+    #[tokio::test]
+    async fn loopback_json_wire_handshake() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("accept");
+            let ws = tokio_tungstenite::accept_async(stream).await.expect("ws");
+            let (mut write, mut read) = ws.split();
+
+            // 1. Client must send the hello as a JSON text frame.
+            let msg = tokio::time::timeout(std::time::Duration::from_secs(10), read.next())
+                .await
+                .expect("hello timeout")
+                .expect("frame");
+            let text = match msg.expect("frame ok") {
+                Message::Text(t) => t.to_string(),
+                other => panic!("expected text frame, got {other:?}"),
+            };
+            assert!(text.contains("\"type\":\"helloMessage\""));
+            let hello = goloom::decode_message_json(&text).expect("decode hello");
+            match hello.kind {
+                Some(MessageKind::Hello(h)) => assert_eq!(h.room_id, "room-1"),
+                other => panic!("expected Hello, got {other:?}"),
+            }
+
+            // 2. Server answers ServerHello + ping as text frames.
+            write
+                .send(Message::Text(
+                    goloom::encode_message_json(&server_hello_msg()).unwrap().into(),
+                ))
+                .await
+                .ok();
+            write
+                .send(Message::Text(
+                    goloom::encode_message_json(&goloom::ping(Some("srv-ping-j1".into())))
+                        .unwrap()
+                        .into(),
+                ))
+                .await
+                .ok();
+
+            // 3. Client acks over the same JSON wire.
+            let ack_text = loop {
+                let m = tokio::time::timeout(std::time::Duration::from_secs(10), read.next())
+                    .await
+                    .expect("ack timeout")
+                    .expect("frame");
+                if let Ok(Message::Text(t)) = m {
+                    let s = t.to_string();
+                    if s.contains("ackMessage") {
+                        break s;
+                    }
+                }
+            };
+            assert!(ack_text.contains("srv-ping-j1"));
+
+            write
+                .send(Message::Close(Some(CloseFrame {
+                    code: 4009u16.into(),
+                    reason: "done".into(),
+                })))
+                .await
+                .ok();
+        });
+
+        let mut params = GoloomParams::new("room-1", "peer-1", "test");
+        params.ws_url = format!("ws://{addr}/join");
+        params.credentials = Some("cred".to_string());
+        params.max_attempts = 1;
+        params.wire = "json".to_string();
+        let mut handle = GoloomClient::spawn(params);
+
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(25);
+        let mut saw_connected = false;
+        let mut saw_ack = false;
+        while tokio::time::Instant::now() < deadline {
+            let ev = tokio::time::timeout(std::time::Duration::from_secs(5), handle.next_event())
+                .await
+                .expect("event STARVED")
+                .expect("stream closed early");
+            match ev {
+                GoloomEvent::Connected { session_secret, .. } => {
+                    assert_eq!(session_secret, "s3");
+                    saw_connected = true;
+                }
+                GoloomEvent::AckReceived { uid, .. } if uid == "srv-ping-j1" => {
+                    saw_ack = true;
+                }
+                GoloomEvent::Disconnected { will_retry, .. } => {
+                    assert!(!will_retry);
+                    break;
+                }
+                _ => {}
+            }
+        }
+        assert!(saw_connected && saw_ack, "json wire handshake incomplete");
         server.await.expect("server task");
     }
 }

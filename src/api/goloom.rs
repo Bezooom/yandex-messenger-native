@@ -1439,8 +1439,20 @@ pub fn encode_message_json(msg: &GoloomMessage) -> Result<String, serde_json::Er
     obj.insert("uid".into(), serde_json::json!(msg.uid));
     if let Some(kind) = &msg.kind {
         obj.insert("type".into(), serde_json::json!(type_tag(kind)));
-        // prost's own Serialize for the oneof enum: {"<snake_variant>": payload}
-        obj.insert("payload".into(), serde_json::to_value(kind)?);
+        // prost's Serialize for the oneof enum yields {"<Variant>": {...}};
+        // the Goloom frame keeps the payload object untagged (desktop shape).
+        let mut pv = serde_json::to_value(kind)?;
+        let untagged = {
+            let o = pv.as_object_mut();
+            match o {
+                Some(map) if map.len() == 1 => {
+                    let key = map.keys().next().unwrap().clone();
+                    Some(map.remove(&key).unwrap())
+                }
+                _ => None,
+            }
+        };
+        obj.insert("payload".into(), untagged.unwrap_or(pv));
     }
     serde_json::to_string(&serde_json::Value::Object(obj))
 }
@@ -1452,13 +1464,15 @@ pub fn decode_message_json(text: &str) -> Result<GoloomMessage, serde_json::Erro
         return Ok(GoloomMessage { uid, kind: None });
     };
     let payload = v.get("payload").cloned().unwrap_or_else(|| serde_json::json!({}));
+
     let variant = variant_tag(t).ok_or_else(|| {
         serde_json::Error::io(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
             format!("unknown goloom message type {t}"),
         ))
     })?;
-    let tagged = serde_json::json!({ variant: payload });
+    let mut tagged = serde_json::json!({ variant: payload });
+    decode_defaults(t, &mut tagged);
     let kind: MessageKind = serde_json::from_value(tagged)?;
     Ok(GoloomMessage { uid, kind: Some(kind) })
 }
@@ -1476,6 +1490,46 @@ pub fn to_telemost_participant(
         video_enabled: Some(desc.send_video),
         screen_share: Some(desc.send_sharing),
         joined_at: None,
+    }
+}
+
+/// Fill prost-strict decode gaps: prost-derive serde requires every scalar
+/// field to be present, real Goloom JSON omits defaults. Adds known-missing
+/// scalar fields to a payload object (shallow; extend per live-session need).
+fn decode_defaults(t: &str, tagged: &mut serde_json::Value) {
+    fn fill(v: &mut serde_json::Value, defaults: &[(&str, serde_json::Value)]) {
+        if !v.is_object() {
+            return;
+        }
+        let o = v.as_object_mut().unwrap();
+        for (k, d) in defaults {
+            o.entry(*k).or_insert_with(|| d.clone());
+        }
+    }
+    let Some(inner) = tagged.as_object_mut().and_then(|o| o.values_mut().next()) else {
+        return;
+    };
+    let inner: &mut serde_json::Value = inner;
+    match t {
+        "helloMessage" | "serverHelloMessage" | "sfuHelloMessage" => {
+            fill(
+                inner,
+                &[
+                    ("service_name", serde_json::json!("telemost")),
+                    ("room_id", serde_json::json!("")),
+                    ("participant_id", serde_json::json!("")),
+                    ("sdk_initialization_id", serde_json::json!("")),
+                    ("send_audio", serde_json::json!(false)),
+                    ("send_video", serde_json::json!(false)),
+                    ("send_sharing", serde_json::json!(false)),
+                    ("disable_subscriber", serde_json::json!(false)),
+                    ("disable_subscriber_audio", serde_json::json!(false)),
+                    ("disable_publisher", serde_json::json!(false)),
+                    ("participant_attributes", serde_json::json!({})),
+                ],
+            );
+        }
+        _ => {}
     }
 }
 
@@ -1657,17 +1711,15 @@ mod tests {
         // prost-derive serde shape: one payload object keyed by the snake_case
         // oneof variant, snake_case fields. camelCase (desktop wire) conversion
         // is a documented follow-up pending live-session confirmation.
-        let flat = v["payload"].as_object().unwrap().values().next().unwrap();
+        let flat = &v["payload"];
         assert_eq!(flat["room_id"], "room-1");
         assert_eq!(flat["participant_id"], "peer-1");
         assert_eq!(flat["send_audio"], true);
         assert_eq!(flat["send_video"], false);
         assert_eq!(flat["send_sharing"], true);
         assert!(flat["capabilities_offer"].is_object());
-        // NOTE: prost-derive serde is strict on decode (every scalar field must
-        // be present), while real Goloom JSON omits defaults. Decode-side
-        // tolerance is a follow-up gated on the live-session smoke; until then
-        // the json wire is verified by encode-shape + protobuf roundtrips.
+        let back = decode_message_json(&text).expect("json decode");
+        assert_eq!(back, msg);
     }
 
     #[test]
@@ -1688,4 +1740,8 @@ mod tests {
         assert!(text.contains("\"type\":\"subscriberSdpAnswerMessage\""));
         assert!(text.contains("\"sdp\":\"v=0"));
     }
+
+
+
+
 }

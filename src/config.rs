@@ -35,8 +35,10 @@ pub const TELEMOST_API_PATH: &str = "/v1/telemost";
 /// Goloom WS frame encoding: "binary" = protobuf (Android APK wire, default),
 /// "json" = desktop wire (`{"type","payload","uid"}`, see TELEMOST_MAC_REVERSE.md).
 /// Server-side acceptance of each is verifiable only against a live session;
-/// both codecs exist, switch here after the live smoke.
-pub const GOLOOM_WIRE: &str = "binary";
+/// both codecs exist; env `YM_GOLOOM_WIRE` overrides per session.
+pub fn goloom_wire() -> String {
+    std::env::var("YM_GOLOOM_WIRE").unwrap_or_else(|_| "binary".to_string())
+}
 
 // OAuth
 // Desktop app uses implicit flow (response_type=token) — redirect_uri is
