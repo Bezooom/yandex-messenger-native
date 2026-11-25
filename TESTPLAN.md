@@ -11,7 +11,7 @@
 | 2 — Calls / Telemost | Shell only — WebRTC is still a stub |
 | Desktop trust | Notifications, tray, settings, ticks |
 
-**Tests:** `cargo test --all-targets` (13 unit/smoke tests at last check).
+**Tests:** `cargo test --all-targets` (74 passed, 3 ignored --bin yandex-messenger at last check).
 
 ---
 
@@ -38,6 +38,7 @@ Check:
 - Pagination: long chat → scroll up → older history loads; “Loading history…” is visible.
 - Drafts: type text → switch chat → come back → text is still there.
 - DnD: drop a file into the chat → send; Ctrl+V for a clipboard image.
+- Stickers: `Ctrl+Shift+E` → Stickers tab → click a sticker → compact local bubble, sticker image in the official mobile client, image intact after re-entering the chat;
 - Attachment: Download / Open → file appears in Downloads.
 - Offline cold start: chat list / history from SQLite after a previous session.
 - UX: startup skeleton → list; no chat selected → welcome; empty chat → empty conversation.

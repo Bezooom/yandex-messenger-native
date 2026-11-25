@@ -58,7 +58,7 @@ The prefix lives in /tmp — rebuild it after a reboot.
 
 ## Verification floor
 
-- `make check` (clippy `-D warnings` + `cargo fmt --check`) is green — it was chronically red until 2026-11-25 (fixed mechanically: clippy --fix, dead-code removal, Rc migration for main-thread UI handles, file-level `#![allow]` only for GTK `type_complexity`). `cargo test --bin yandex-messenger` passes (73 tests, 1 ignored).
+- `make check` (clippy `-D warnings` + `cargo fmt --check`) is green — it was chronically red until 2026-11-25 (fixed mechanically: clippy --fix, dead-code removal, Rc migration for main-thread UI handles, file-level `#![allow]` only for GTK `type_complexity`). `cargo test --bin yandex-messenger` passes (74 tests, 3 ignored).
 - This machine has GTK4 runtime but no `gtk4.pc`/headers; the check ran against pkg-config files extracted from Ubuntu `.deb` packages into `/tmp/gtk-prefix` with `-L /tmp/ym-liblinks`. A normal dev box should `apt install libgtk-4-dev libadwaita-1-dev libwebkitgtk-6.0-dev` instead.
 
 ## Next Steps

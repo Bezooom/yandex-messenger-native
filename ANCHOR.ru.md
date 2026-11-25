@@ -43,7 +43,7 @@
 
 ## Уровень проверки
 
-- `cargo check --bin yandex-messenger` и `cargo test --bin yandex-messenger` проходят (73 теста, 1 ignored).
+- `cargo check --bin yandex-messenger` и `cargo test --bin yandex-messenger` проходят (74 теста, 3 ignored).
 - `make check` (clippy `-D warnings` + `cargo fmt --check`) проходит с 2026-11-25 (был хронически красный; починен механически: clippy --fix, удаление мёртвого кода, миграция UI-ручек на `Rc`, файл-уровневый `#![allow]` только для GTK `type_complexity`).
 - На этой машине есть GTK4 runtime, но нет `gtk4.pc`/заголовков; проверка шла на pkg-config из распакованных Ubuntu `.deb` в `/tmp/gtk-prefix` и `-L /tmp/ym-liblinks`. На обычной dev-машине нужен `apt install libgtk-4-dev libadwaita-1-dev libwebkitgtk-6.0-dev`.
 

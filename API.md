@@ -211,6 +211,39 @@ Request application state upon connection.
 }
 ```
 
+#### Sending a sticker via `Plain` (verified by live probe 2026-11-25)
+
+Stickers travel on the same channel as text (`ClientMessage.Plain`), but the `Text` field is replaced by an `Image` object whose `FileInfo.Id2` is the sticker's direct CDN path (no upload):
+
+```json
+{
+  "ClientMessage": {
+    "Plain": {
+      "ChatId": "chat-uuid",
+      "PayloadId": "uuid-payload",
+      "CustomPayload": "<base64 service payload>",
+      "Image": {
+        "Width": 512,
+        "Height": 512,
+        "FileInfo": { "Id2": "stickers/images/1401/20964.png", "Name": "20964.png", "Size": 0, "Source": 0 },
+        "Animated": false
+      }
+    }
+  }
+}
+```
+
+Server behavior matrix (each variant sent to Saved Messages, outcome checked against the official client):
+
+| `Plain` shape | Server response |
+|---|---|
+| `Text` holding the sticker JSON string | stored, but rendered as text (historical implementation) |
+| `Sticker{FileInfo}` in any composition | message silently dropped entirely |
+| `Image{FileInfo{Id2: "stickers/…"}}` | stored, rendered as a sticker everywhere |
+| `MiscFile` with the same Id2 | stored as a file |
+
+A `stickers/` id is a CDN path: the working URL is `{FILE_PUBLIC_HOST}/{id}?size=large`, while `/file_shortterm/{id}` returns 404 for it (unlike `disk/` ids).
+
 ### 4.3. Incoming Message Format
 
 #### Client Request Response
