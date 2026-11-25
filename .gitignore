@@ -91,3 +91,6 @@ codegraph_index.pid
 
 # APK docs are versioned snapshots; ignore new dropped-in copies
 docs/apk-*/
+
+# реверс оф. клиента (dmg 387МБ + распакованный бандл)
+telemost-mac/

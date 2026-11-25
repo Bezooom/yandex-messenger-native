@@ -4,6 +4,13 @@
 
 > Основано на реинжиниринге APK `ru.yandex.telemost` v3.12.0.138  
 > Актуально для релиза **2.175.3**: сигналинг Goloom и `webrtcbin` есть в дереве, но медиа требуют фичи `gstreamer` и пакета `gstreamer1.0-nice`; default-бинарь собирается без них.
+>
+> **Апдейт 2026-11 (мак-реверс, `TELEMOST_MAC_REVERSE.md`):** оф. desktop-клиент (Qt, 3.6.4) ходит в тот же
+> `goloom.strm.yandex.net/join`, но кадрами **JSON** (`{"type","payload","uid"}`, ключи `sendAudio`,
+> `capabilitiesOffer`, `iceServers`; символы `HelloMessage::toJSON`). Protobuf-модель из APK покрывает ту же
+> схему — обе кодировки теперь реализованы в `src/api/goloom.rs` (`encode_message`/`encode_message_json`),
+> переключатель `config::GOLOOM_WIRE` (`binary` по умолчанию, `json` — wire desktop-клиента).
+> Ветки «полный protobuf вместо JSON» больше нет: выбор — по live-смоу, не по догадке.
 
 ## Текущее состояние
 

@@ -32,6 +32,11 @@ pub const TELEMOST_URL: &str = "https://telemost.yandex.ru";
 pub const TELEMOST_CLOUD_API: &str = "https://api.messenger.yandex.net";
 pub const GOLOOM_WS_URL: &str = "wss://goloom.strm.yandex.net/join";
 pub const TELEMOST_API_PATH: &str = "/v1/telemost";
+/// Goloom WS frame encoding: "binary" = protobuf (Android APK wire, default),
+/// "json" = desktop wire (`{"type","payload","uid"}`, see TELEMOST_MAC_REVERSE.md).
+/// Server-side acceptance of each is verifiable only against a live session;
+/// both codecs exist, switch here after the live smoke.
+pub const GOLOOM_WIRE: &str = "binary";
 
 // OAuth
 // Desktop app uses implicit flow (response_type=token) — redirect_uri is

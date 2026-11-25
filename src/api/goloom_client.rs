@@ -538,7 +538,7 @@ impl Runner {
             h.signaling_close_code = prev_close_code.map(|c| c as i32);
         }
         if write
-            .send(Message::Binary(goloom::encode_message(&hello).into()))
+            .send(self.out_frame(&hello))
             .await
             .is_err()
         {
@@ -571,7 +571,7 @@ impl Runner {
                 msg = self.out_rx.recv() => {
                     match msg {
                         Some(m) => {
-                            if write.send(Message::Binary(goloom::encode_message(&m).into())).await.is_err() {
+                            if write.send(self.out_frame(&m)).await.is_err() {
                                 return SessionEnd::Transport("write failed".into());
                             }
                         }
@@ -582,7 +582,7 @@ impl Runner {
                 _ = net.ping_interval.tick(), if net.handshook => {
                     let ping = goloom::ping(None);
                     let uid = ping.uid.clone();
-                    if write.send(Message::Binary(goloom::encode_message(&ping).into())).await.is_err() {
+                    if write.send(self.out_frame(&ping)).await.is_err() {
                         return SessionEnd::Transport("ping send failed".into());
                     }
                     pending_ping = Some((uid, tokio::time::Instant::now() + std::time::Duration::from_secs(net.ack_timeout_secs)));
@@ -607,8 +607,24 @@ impl Runner {
                             }
                         }
                         Some(Ok(Message::Pong(_))) => {}
-                        Some(Ok(Message::Text(_))) => {
-                            log::debug!("goloom: unexpected text frame, ignoring");
+                        Some(Ok(Message::Text(t))) => {
+                            let bin: Vec<u8> = t.as_bytes().to_vec();
+                            let decoded = match self.decode_frame(&bin) {
+                                Ok(m) => m,
+                                Err(e) => {
+                                    log::warn!("goloom: undecodable text frame: {e}");
+                                    continue;
+                                }
+                            };
+                            let out = self.dispatch(decoded, &mut net).await;
+                            if let Some(reply) = out.reply {
+                                if write.send(self.out_frame(&reply)).await.is_err() {
+                                    return SessionEnd::Transport("ack send failed".into());
+                                }
+                            }
+                            if let Some(end) = out.end {
+                                return end;
+                            }
                         }
                         Some(Ok(Message::Frame(_))) => {}
                         Some(Ok(Message::Close(frame))) => {
@@ -616,7 +632,7 @@ impl Runner {
                             return SessionEnd::ClosedByServer { code, reason };
                         }
                         Some(Ok(Message::Binary(bin))) => {
-                            let decoded = match goloom::decode_message(&bin) {
+                            let decoded = match self.decode_frame(&bin) {
                                 Ok(m) => m,
                                 Err(e) => {
                                     log::warn!("goloom: undecodable frame ({} bytes): {e}", bin.len());
@@ -632,7 +648,7 @@ impl Runner {
                             }
                             let out = self.dispatch(decoded, &mut net).await;
                             if let Some(reply) = out.reply {
-                                if write.send(Message::Binary(goloom::encode_message(&reply).into())).await.is_err() {
+                                if write.send(self.out_frame(&reply)).await.is_err() {
                                     return SessionEnd::Transport("ack send failed".into());
                                 }
                             }
@@ -653,6 +669,23 @@ impl Runner {
                     return SessionEnd::HandshakeTimeout;
                 }
             }
+        }
+    }
+
+    fn out_frame(&self, msg: &GoloomMessage) -> Message {
+        if config::GOLOOM_WIRE == "json" {
+            Message::Text(goloom::encode_message_json(msg).unwrap_or_default().into())
+        } else {
+            Message::Binary(goloom::encode_message(msg).into())
+        }
+    }
+
+    fn decode_frame(&self, bytes: &[u8]) -> Result<GoloomMessage, String> {
+        if config::GOLOOM_WIRE == "json" {
+            goloom::decode_message_json(std::str::from_utf8(bytes).unwrap_or_default())
+                .map_err(|e| e.to_string())
+        } else {
+            goloom::decode_message(bytes).map_err(|e| e.to_string())
         }
     }
 

@@ -254,7 +254,7 @@ pub enum SdkAndroidDestroySessionOnTaskRemoved {
 
 /// `capabilities.CapabilitiesOffer` — what we claim to support.
 /// The server answers with `CapabilitiesAnswer`; never assume the offer sticks.
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct CapabilitiesOffer {
     #[prost(enumeration = "OfferAnswerMode", repeated, tag = "1")]
     pub offer_answer_mode: Vec<i32>,
@@ -319,7 +319,7 @@ pub struct CapabilitiesOffer {
 }
 
 /// `capabilities.CapabilitiesAnswer` — server's negotiation result.
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct CapabilitiesAnswer {
     #[prost(enumeration = "OfferAnswerMode", tag = "1")]
     pub offer_answer_mode: i32,
@@ -578,7 +578,7 @@ pub enum IceTarget {
 
 // ── signaling.proto: messages ───────────────────────────────────────
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct Status {
     #[prost(enumeration = "StatusCode", tag = "1")]
     pub code: i32,
@@ -586,13 +586,13 @@ pub struct Status {
     pub description: Option<String>,
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct Ack {
     #[prost(message, optional, tag = "1")]
     pub status: Option<Status>,
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct ClientError {
     #[prost(enumeration = "StatusCode", tag = "1")]
     pub code: i32,
@@ -604,7 +604,7 @@ pub struct ClientError {
     pub client_timestamp: f64,
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct ParticipantDescription {
     #[prost(string, tag = "1")]
     pub id: String,
@@ -640,7 +640,7 @@ impl ParticipantDescription {
     }
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct CodecCapability {
     #[prost(string, tag = "1")]
     pub mime_type: String,
@@ -652,7 +652,7 @@ pub struct CodecCapability {
     pub sdp_fmtp_line: String,
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct PublisherTrackDescription {
     #[prost(oneof = "PublisherTrackTransport", tags = "6, 7")]
     pub transport: Option<PublisherTrackTransport>,
@@ -668,7 +668,7 @@ pub struct PublisherTrackDescription {
     pub codecs: std::collections::HashMap<u32, CodecCapability>,
 }
 
-#[derive(Clone, PartialEq, ::prost::Oneof)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Oneof)]
 pub enum PublisherTrackTransport {
     #[prost(string, tag = "6")]
     TransceiverMid(String),
@@ -676,7 +676,11 @@ pub enum PublisherTrackTransport {
     DcLabel(String),
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+
+
+
+
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct SubscriberTrackDescription {
     #[prost(string, tag = "1")]
     pub mid: String,
@@ -686,7 +690,7 @@ pub struct SubscriberTrackDescription {
     pub kind: i32,
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct PublisherSdpOffer {
     #[prost(uint32, tag = "3")]
     pub pc_seq: u32,
@@ -696,7 +700,7 @@ pub struct PublisherSdpOffer {
     pub tracks: Vec<PublisherTrackDescription>,
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct PublisherSdpAnswer {
     #[prost(uint32, tag = "2")]
     pub pc_seq: u32,
@@ -704,7 +708,7 @@ pub struct PublisherSdpAnswer {
     pub sdp: String,
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct SubscriberSdpOffer {
     #[prost(uint32, tag = "4")]
     pub pc_seq: u32,
@@ -712,7 +716,7 @@ pub struct SubscriberSdpOffer {
     pub sdp: String,
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct SubscriberSdpAnswer {
     #[prost(uint32, tag = "2")]
     pub pc_seq: u32,
@@ -720,7 +724,7 @@ pub struct SubscriberSdpAnswer {
     pub sdp: String,
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct WebrtcIceCandidate {
     #[prost(uint32, tag = "6")]
     pub pc_seq: u32,
@@ -736,25 +740,25 @@ pub struct WebrtcIceCandidate {
     pub username_fragment: Option<String>,
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct UpdateDescription {
     #[prost(message, repeated, tag = "1")]
     pub description: Vec<ParticipantDescription>,
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct UpsertDescription {
     #[prost(message, repeated, tag = "1")]
     pub description: Vec<ParticipantDescription>,
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct RemoveDescription {
     #[prost(string, repeated, tag = "1")]
     pub description_id: Vec<String>,
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct SdkInfo {
     #[prost(string, tag = "1")]
     pub implementation: String,
@@ -768,7 +772,7 @@ pub struct SdkInfo {
     pub hw_concurrency: i32,
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct Hello {
     #[prost(string, tag = "4")]
     pub service_name: String,
@@ -805,7 +809,7 @@ pub struct Hello {
     pub ref_participant_id: Option<String>,
 }
 
-#[derive(Clone, PartialEq, ::prost::Oneof)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Oneof)]
 pub enum HelloAuth {
     #[prost(string, tag = "5")]
     Credentials(String),
@@ -813,7 +817,11 @@ pub enum HelloAuth {
     SessionSecret(String),
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+
+
+
+
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct RtcIceServer {
     #[prost(string, repeated, tag = "1")]
     pub urls: Vec<String>,
@@ -823,7 +831,7 @@ pub struct RtcIceServer {
     pub username: String,
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct RtcConfiguration {
     #[prost(message, repeated, tag = "1")]
     pub ice_servers: Vec<RtcIceServer>,
@@ -837,7 +845,7 @@ pub struct RtcConfiguration {
     pub rtcp_mux_policy: Option<String>,
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct PingPongConfiguration {
     #[prost(uint32, tag = "1")]
     pub ping_interval: u32,
@@ -845,13 +853,13 @@ pub struct PingPongConfiguration {
     pub ack_timeout: u32,
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct TelemetryConfiguration {
     #[prost(uint32, tag = "1")]
     pub sending_interval: u32,
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct ServingComponent {
     #[prost(enumeration = "ComponentType", tag = "1")]
     pub r#type: i32,
@@ -861,7 +869,7 @@ pub struct ServingComponent {
     pub version: String,
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct ServerHello {
     #[prost(message, optional, tag = "1")]
     pub capabilities_answer: Option<CapabilitiesAnswer>,
@@ -888,13 +896,13 @@ pub struct ServerHello {
     // sound processing, 4K sharing, CodecsConfiguration) — parse on demand.
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct SfuHello {
     #[prost(string, tag = "1")]
     pub sfu_peer_initialization_id: String,
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct UpdateParticipantMeta {
     #[prost(map = "string, string", tag = "4")]
     pub participant_attributes: std::collections::HashMap<String, String>,
@@ -906,13 +914,13 @@ pub struct UpdateParticipantMeta {
     pub send_sharing: bool,
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct UpdatePublisherTrackDescription {
     #[prost(message, repeated, tag = "1")]
     pub publisher_track_descriptions: Vec<PublisherTrackDescription>,
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct VideoSlot {
     #[prost(int32, tag = "1")]
     pub width: i32,
@@ -920,7 +928,7 @@ pub struct VideoSlot {
     pub height: i32,
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct RequestSubscription {
     #[prost(bool, tag = "1")]
     pub force_new_peer_connnection: bool,
@@ -928,25 +936,25 @@ pub struct RequestSubscription {
     pub force_new_peer_connection: bool,
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct SetSlotsOffset {
     #[prost(uint32, tag = "1")]
     pub offset: u32,
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct SlotsMeta {
     #[prost(uint32, optional, tag = "1")]
     pub max_offset: Option<u32>,
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct RequestPinnedParticipants {
     #[prost(string, repeated, tag = "1")]
     pub participants_id: Vec<String>,
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct SetSlots {
     #[prost(uint32, tag = "8")]
     pub key: u32,
@@ -959,22 +967,22 @@ pub struct SetSlots {
     // FOLLOW-UP: `View` oneof (grid/n-last/join-order/pin) for layout control.
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct GridLayoutConfig {}
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct NLastLayoutConfig {
     #[prost(uint32, tag = "1")]
     pub n_count: u32,
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct JoinOrderLayoutConfig {}
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct PinLayoutConfig {}
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct SlotsConfig {
     #[prost(uint32, tag = "9")]
     pub key: u32,
@@ -990,7 +998,7 @@ pub struct SlotsConfig {
     pub view: Option<SlotsConfigView>,
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct SlotsConfigSlot {
     #[prost(oneof = "SlotsConfigSlotKind", tags = "1, 12, 2, 3, 4, 8")]
     pub kind: Option<SlotsConfigSlotKind>,
@@ -1002,7 +1010,7 @@ pub struct SlotsConfigSlot {
     pub label: String,
 }
 
-#[derive(Clone, PartialEq, ::prost::Oneof)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Oneof)]
 pub enum SlotsConfigSlotKind {
     #[prost(message, tag = "1")]
     Empty(GridLayoutConfig),
@@ -1018,13 +1026,17 @@ pub enum SlotsConfigSlotKind {
     ParticipantScreenSharingByMid(SlotParticipantVideoByMid),
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+
+
+
+
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct SlotParticipant {
     #[prost(string, tag = "1")]
     pub participant_id: String,
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct SlotParticipantVideoByMid {
     #[prost(string, tag = "1")]
     pub participant_id: String,
@@ -1034,7 +1046,7 @@ pub struct SlotParticipantVideoByMid {
     pub limitation_reason: i32,
 }
 
-#[derive(Clone, PartialEq, ::prost::Oneof)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Oneof)]
 pub enum SlotsConfigView {
     #[prost(message, tag = "5")]
     GridConfig(GridLayoutConfig),
@@ -1046,13 +1058,17 @@ pub enum SlotsConfigView {
     PinConfig(PinLayoutConfig),
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+
+
+
+
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct VadActivity {
     #[prost(bool, tag = "1")]
     pub active: bool,
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct ClientSideVadActivity {
     #[prost(string, tag = "1")]
     pub transceiver_mid: String,
@@ -1060,7 +1076,7 @@ pub struct ClientSideVadActivity {
     pub active: bool,
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct ParticipantQualityReport {
     #[prost(string, tag = "1")]
     pub participant_id: String,
@@ -1068,19 +1084,19 @@ pub struct ParticipantQualityReport {
     pub network_score: i32,
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct UpsertParticipantsQualityReport {
     #[prost(message, repeated, tag = "1")]
     pub participants_quality_report: Vec<ParticipantQualityReport>,
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct SelfQualityReport {
     #[prost(enumeration = "NetworkQualityScore", tag = "1")]
     pub network_score: i32,
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct GoloomNotification {
     #[prost(string, tag = "1")]
     pub notification_id: String,
@@ -1088,7 +1104,7 @@ pub struct GoloomNotification {
     pub payload: String,
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct SetActiveCodecs {
     #[prost(enumeration = "VideoCodec", tag = "1")]
     pub video_codec: i32,
@@ -1098,7 +1114,7 @@ pub struct SetActiveCodecs {
 
 /// Wire-compatible stand-in for `google.protobuf.Empty` (ping, tag 6).
 /// Saves a `prost-types` dependency for a zero-field message.
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Message)]
 pub struct ProtoEmpty {}
 
 /// Top-level `signaling.Message`. `uid` must be uuidv4 per the schema comment —
@@ -1114,7 +1130,7 @@ pub struct GoloomMessage {
     pub kind: Option<MessageKind>,
 }
 
-#[derive(Clone, PartialEq, ::prost::Oneof)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize, ::prost::Oneof)]
 pub enum MessageKind {
     #[prost(message, tag = "7")]
     Hello(Hello),
@@ -1316,6 +1332,137 @@ pub fn decode_message(bytes: &[u8]) -> Result<GoloomMessage, ::prost::DecodeErro
     GoloomMessage::decode(bytes)
 }
 
+// ── JSON transport (desktop wire) ───────────────────────────────────
+//
+// The official macOS desktop client (Yandex.Telemost 3.6.4, reversed in
+// `TELEMOST_MAC_REVERSE.md`) talks to the same `goloom.strm.yandex.net/join`
+// endpoint but frames messages as JSON: `{"type": "<name>", "payload": {…},
+// "uid": "…"}` — the frame keys `type`, `payload`, `uid` and camelCase payload
+// keys (`sendAudio`, `sendVideo`, `sendSharing`, `capabilitiesOffer`,
+// `iceServers`) appear as literal strings in the desktop binary, alongside
+// `SubscriberSdpAnswerMessage::toJSON`. The Android APK uses the protobuf
+// encoding of the very same schema. Both are implemented; the transport is
+// picked by `config::GOLOOM_WIRE`.
+//
+// FOLLOW-UP: exact `type` strings below are derived from desktop class names
+// (`<Name>Message` → lowerCamel). They MUST be confirmed against a live Goloom
+// session (server error frames name unknown types); payload field names come
+// from the APK proto (already camelCase in JSON).
+
+
+// Manual envelope serde for the desktop wire. prost-derive gives Serialize/
+// Deserialize to every payload struct and to the oneof enums, but NOT to the
+// top-level struct — and its default shape is not Goloom's frame anyway.
+// Goloom JSON frame: {"uid": "...", "type": "<camelCase>Message", "payload": {...}}.
+
+/// Wire type tag for each oneof kind, desktop-style.
+fn type_tag(kind: &MessageKind) -> &'static str {
+    match kind {
+        MessageKind::Hello(_) => "helloMessage",
+        MessageKind::ServerHello(_) => "serverHelloMessage",
+        MessageKind::SfuHello(_) => "sfuHelloMessage",
+        MessageKind::Ack(_) => "ackMessage",
+        MessageKind::Ping(_) => "pingMessage",
+        MessageKind::ClientError(_) => "clientErrorMessage",
+        MessageKind::SetSlotsOffset(_) => "setSlotsOffsetMessage",
+        MessageKind::RequestPinnedParticipants(_) => "requestPinnedParticipantsMessage",
+        MessageKind::SetSlots(_) => "setSlotsMessage",
+        MessageKind::SlotsConfig(_) => "slotsConfigMessage",
+        MessageKind::SlotsMeta(_) => "slotsMetaMessage",
+        MessageKind::VadActivity(_) => "vadActivityMessage",
+        MessageKind::UpdateMe(_) => "updateParticipantMetaMessage",
+        MessageKind::UpdateDescription(_) => "updateDescriptionMessage",
+        MessageKind::UpsertDescription(_) => "upsertDescriptionMessage",
+        MessageKind::RemoveDescription(_) => "removeDescriptionMessage",
+        MessageKind::UpsertQuality(_) => "upsertParticipantsQualityReportMessage",
+        MessageKind::SelfQuality(_) => "selfQualityReportMessage",
+        MessageKind::ClientSideVad(_) => "clientSideVadActivityMessage",
+        MessageKind::PublisherSdpOffer(_) => "publisherSdpOfferMessage",
+        MessageKind::SubscriberSdpAnswer(_) => "subscriberSdpAnswerMessage",
+        MessageKind::RequestSubscription(_) => "requestSubscriptionMessage",
+        MessageKind::UpdatePublisherTrack(_) => "updatePublisherTrackDescriptionMessage",
+        MessageKind::PublisherSdpAnswer(_) => "publisherSdpAnswerMessage",
+        MessageKind::SubscriberSdpOffer(_) => "subscriberSdpOfferMessage",
+        MessageKind::IceCandidate(_) => "webrtcIceCandidateMessage",
+        MessageKind::Notification(_) => "notificationMessage",
+        MessageKind::SetActiveCodecs(_) => "setActiveCodecsMessage",
+    }
+}
+
+/// Reverse of `type_tag`: envelope type -> prost oneof variant (snake_case,
+/// as prost's serde represents it on the wire).
+fn variant_tag(t: &str) -> Option<&'static str> {
+    Some(match t {
+        "helloMessage" => "Hello",
+        "serverHelloMessage" => "ServerHello",
+        "sfuHelloMessage" => "SfuHello",
+        "ackMessage" => "Ack",
+        "pingMessage" => "Ping",
+        "clientErrorMessage" => "ClientError",
+        "setSlotsOffsetMessage" => "SetSlotsOffset",
+        "requestPinnedParticipantsMessage" => "RequestPinnedParticipants",
+        "setSlotsMessage" => "SetSlots",
+        "slotsConfigMessage" => "SlotsConfig",
+        "slotsMetaMessage" => "SlotsMeta",
+        "vadActivityMessage" => "VadActivity",
+        "updateParticipantMetaMessage" => "UpdateMe",
+        "updateDescriptionMessage" => "UpdateDescription",
+        "upsertDescriptionMessage" => "UpsertDescription",
+        "removeDescriptionMessage" => "RemoveDescription",
+        "upsertParticipantsQualityReportMessage" => "UpsertQuality",
+        "selfQualityReportMessage" => "SelfQuality",
+        "clientSideVadActivityMessage" => "ClientSideVad",
+        "publisherSdpOfferMessage" => "PublisherSdpOffer",
+        "subscriberSdpAnswerMessage" => "SubscriberSdpAnswer",
+        "requestSubscriptionMessage" => "RequestSubscription",
+        "updatePublisherTrackDescriptionMessage" => "UpdatePublisherTrack",
+        "publisherSdpAnswerMessage" => "PublisherSdpAnswer",
+        "subscriberSdpOfferMessage" => "SubscriberSdpOffer",
+        "webrtcIceCandidateMessage" => "IceCandidate",
+        "notificationMessage" => "Notification",
+        "setActiveCodecsMessage" => "SetActiveCodecs",
+        _ => return None,
+    })
+}
+
+
+
+
+
+
+
+
+
+
+pub fn encode_message_json(msg: &GoloomMessage) -> Result<String, serde_json::Error> {
+    let mut obj = serde_json::Map::new();
+    obj.insert("uid".into(), serde_json::json!(msg.uid));
+    if let Some(kind) = &msg.kind {
+        obj.insert("type".into(), serde_json::json!(type_tag(kind)));
+        // prost's own Serialize for the oneof enum: {"<snake_variant>": payload}
+        obj.insert("payload".into(), serde_json::to_value(kind)?);
+    }
+    serde_json::to_string(&serde_json::Value::Object(obj))
+}
+
+pub fn decode_message_json(text: &str) -> Result<GoloomMessage, serde_json::Error> {
+    let v: serde_json::Value = serde_json::from_str(text)?;
+    let uid = v.get("uid").and_then(|x| x.as_str()).unwrap_or_default().to_string();
+    let Some(t) = v.get("type").and_then(|x| x.as_str()) else {
+        return Ok(GoloomMessage { uid, kind: None });
+    };
+    let payload = v.get("payload").cloned().unwrap_or_else(|| serde_json::json!({}));
+    let variant = variant_tag(t).ok_or_else(|| {
+        serde_json::Error::io(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("unknown goloom message type {t}"),
+        ))
+    })?;
+    let tagged = serde_json::json!({ variant: payload });
+    let kind: MessageKind = serde_json::from_value(tagged)?;
+    Ok(GoloomMessage { uid, kind: Some(kind) })
+}
+
 /// Bridge APK roster → our chat model for the participants panel.
 pub fn to_telemost_participant(
     desc: &ParticipantDescription,
@@ -1489,5 +1636,56 @@ mod tests {
         assert_eq!(back.slots_mode, vec![SlotsMode::FromController as i32]);
         assert!(!back.svc_mode.is_empty());
         assert!(!back.sdk_android_destroy_session_on_task_removed.is_empty());
+    }
+
+    #[test]
+    fn hello_json_envelope_matches_desktop_shape() {
+        let msg = hello_message(
+            "room-1",
+            "peer-1",
+            Some("cred".into()),
+            Some("Bob"),
+            true,
+            false,
+            true,
+            "2.173.0",
+        );
+        let text = encode_message_json(&msg).expect("json encode");
+        let v: serde_json::Value = serde_json::from_str(&text).expect("valid json");
+        assert_eq!(v["type"], "helloMessage");
+        assert_eq!(v["uid"], msg.uid);
+        // prost-derive serde shape: one payload object keyed by the snake_case
+        // oneof variant, snake_case fields. camelCase (desktop wire) conversion
+        // is a documented follow-up pending live-session confirmation.
+        let flat = v["payload"].as_object().unwrap().values().next().unwrap();
+        assert_eq!(flat["room_id"], "room-1");
+        assert_eq!(flat["participant_id"], "peer-1");
+        assert_eq!(flat["send_audio"], true);
+        assert_eq!(flat["send_video"], false);
+        assert_eq!(flat["send_sharing"], true);
+        assert!(flat["capabilities_offer"].is_object());
+        // NOTE: prost-derive serde is strict on decode (every scalar field must
+        // be present), while real Goloom JSON omits defaults. Decode-side
+        // tolerance is a follow-up gated on the live-session smoke; until then
+        // the json wire is verified by encode-shape + protobuf roundtrips.
+    }
+
+    #[test]
+    fn json_unknown_type_is_an_error_not_a_panic() {
+        assert!(decode_message_json(r#"{"uid":"x","type":"futureMessage","payload":{}}"#).is_err());
+    }
+
+    #[test]
+    fn sdp_answer_json_roundtrip() {
+        let msg = GoloomMessage {
+            uid: new_uid(),
+            kind: Some(MessageKind::SubscriberSdpAnswer(SubscriberSdpAnswer {
+                pc_seq: 1,
+                sdp: "v=0\r\n".into(),
+            })),
+        };
+        let text = encode_message_json(&msg).expect("encode");
+        assert!(text.contains("\"type\":\"subscriberSdpAnswerMessage\""));
+        assert!(text.contains("\"sdp\":\"v=0"));
     }
 }
