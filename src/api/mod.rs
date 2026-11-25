@@ -2952,6 +2952,11 @@ impl HttpClient {
     fn shortterm_url(file_id: &str) -> String {
         let host = config::FILE_PUBLIC_HOST.trim_end_matches('/');
         let id = file_id.trim_start_matches('/');
+        if id.starts_with("stickers/") {
+            // Sticker CDN ids are direct CDN paths, not disk files:
+            // /file_shortterm/stickers/... 404s (verified 2026-11-25).
+            return Self::sticker_cdn_url(id, "large");
+        }
         format!("{host}/file_shortterm/{id}")
     }
 
@@ -5213,6 +5218,44 @@ mod tests {
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].media.len(), 1, "media survives round trip");
         assert_eq!(parsed[0].media[0].id, "disk/aa11bb22");
+    }
+
+    /// Sticker CDN ids (FileInfo.Id2 = "stickers/...") are direct CDN paths;
+    /// /file_shortterm/stickers/... 404s on the CDN (verified 2026-11-25).
+    #[test]
+    fn ws_push_sticker_cdn_id_gets_cdn_url() {
+        let node = serde_json::json!({
+            "ServerMessage": {
+                "ClientMessage": {
+                    "Plain": {
+                        "Image": {
+                            "Width": 512,
+                            "Height": 512,
+                            "FileInfo": {
+                                "Id2": "stickers/images/1401/20964.png",
+                                "Name": "20964.png"
+                            }
+                        },
+                        "ChatId": "c1",
+                        "PayloadId": "pstk1"
+                    }
+                },
+                "ServerMessageInfo": {
+                    "Timestamp": 1788769947464045_i64,
+                    "SeqNo": 13701,
+                    "From": {"Guid": "u2", "DisplayName": "Partner"}
+                }
+            },
+            "Meta": {"Origin": 27}
+        });
+        let msg =
+            WebSocketClient::parse_ws_server_message(&node, "c1").expect("sticker push must parse");
+        assert_eq!(msg.media.len(), 1);
+        assert_eq!(msg.media[0].id, "stickers/images/1401/20964.png");
+        assert_eq!(
+            msg.media[0].url,
+            "https://files.messenger.yandex.net/stickers/images/1401/20964.png?size=large"
+        );
     }
 
     /// Read-only: dump the tail of Избранное history to inspect what the

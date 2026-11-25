@@ -2884,9 +2884,17 @@ impl ChatView {
             .as_deref()
             .map(|t| t.starts_with("stickers/") || t.contains("/stickers/"))
             .unwrap_or(false);
+        // Stickers we sent (and official ones) arrive back as Image with a
+        // "stickers/..." CDN FileInfo.Id2 — render those compactly as stickers.
+        let media_sticker = msg
+            .media
+            .iter()
+            .find(|a| a.type_ == crate::models::MediaType::Sticker || a.id.starts_with("stickers/"))
+            .cloned();
         let is_sticker = msg.type_ == MessageType::Sticker
             || sticker_payload.is_some()
-            || looks_like_sticker_path;
+            || looks_like_sticker_path
+            || media_sticker.is_some();
         if is_sticker {
             if let Some(ref payload) = sticker_payload {
                 let packs = self.sticker_packs.lock().unwrap();
@@ -2933,6 +2941,21 @@ impl ChatView {
                             "{}/{}?size=large",
                             crate::config::FILE_PUBLIC_HOST,
                             id
+                        ));
+                    }
+                }
+            }
+            // Media attachment carries the CDN id/url (our sends, official
+            // stickers, refetched history) — last-resort but most common.
+            if let Some(att) = &media_sticker {
+                if sticker_url.is_none() {
+                    if !att.url.is_empty() {
+                        sticker_url = Some(att.url.clone());
+                    } else {
+                        sticker_url = Some(format!(
+                            "{}/{}?size=large",
+                            crate::config::FILE_PUBLIC_HOST,
+                            att.id.trim_start_matches('/')
                         ));
                     }
                 }
